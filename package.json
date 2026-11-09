@@ -1,0 +1,29 @@
+{
+  "name": "fantaventi",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "prebuild": "tsx scripts/ci-engine-suite.ts",
+    "build": "next build",
+    "start": "next start",
+    "test:engine": "tsx scripts/ci-engine-suite.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.7.0",
+    "@supabase/supabase-js": "^2.81.1",
+    "docx": "^9.15.3",
+    "exceljs": "^4.4.0",
+    "next": "^15.5.6",
+    "postgres": "^4.1.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1",
+    "web-push": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.19.0",
+    "@types/react": "^19.1.16",
+    "@types/react-dom": "^19.1.9",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  }
+}

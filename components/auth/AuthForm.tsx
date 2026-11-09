@@ -16,26 +16,31 @@ export function AuthForm() {
     setPending(true);
     setError(null);
     setMessage(null);
-    const supabase = createBrowserSupabase();
-    const credentials = { email, password };
-    const result = mode === "sign-in"
-      ? await supabase.auth.signInWithPassword(credentials)
-      : await supabase.auth.signUp(credentials);
-    setPending(false);
-    if (result.error) {
-      setError(result.error.message);
-      return;
+    try {
+      const supabase = createBrowserSupabase();
+      const credentials = { email, password };
+      const result = mode === "sign-in"
+        ? await supabase.auth.signInWithPassword(credentials)
+        : await supabase.auth.signUp(credentials);
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+      if (mode === "sign-up" && !result.data.session) {
+        setMessage("Account creato. Se la conferma email è attiva, apri il messaggio e poi accedi.");
+        return;
+      }
+      router.push("/");
+      router.refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Accesso non riuscito.");
+    } finally {
+      setPending(false);
     }
-    if (mode === "sign-up" && !result.data.session) {
-      setMessage("Account creato. Se la conferma email è attiva, apri il messaggio e poi entra.");
-      return;
-    }
-    router.push("/");
-    router.refresh();
   }
 
   return (
-    <form className="stack" onSubmit={(event) => event.preventDefault()}>
+    <form className="stack" onSubmit={(event) => { event.preventDefault(); void submit("sign-in"); }}>
       <label>
         Email
         <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
@@ -47,11 +52,11 @@ export function AuthForm() {
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}
       <div className="row">
-        <button className="primary" type="button" disabled={pending} onClick={() => submit("sign-in")}>
-          Entra
+        <button className="primary" type="submit" disabled={pending}>
+          Accedi
         </button>
         <button className="ghost" type="button" disabled={pending} onClick={() => submit("sign-up")}>
-          Crea account
+          Registrati
         </button>
       </div>
     </form>

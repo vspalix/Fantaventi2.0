@@ -52,6 +52,9 @@ button { cursor: pointer; }
 .brand span { color: var(--muted); font-size: 12px; }
 .nav { display: flex; align-items: center; gap: 8px; }
 .nav a, .text-button, .primary, .ghost, .danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 999px;
   border: 1px solid transparent;
   padding: 8px 14px;

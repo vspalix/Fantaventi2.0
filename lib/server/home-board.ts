@@ -87,7 +87,7 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   }
 
   const cards: HomeLeagueCard[] = [];
-  for (const league of leagues.slice(0, 4)) {
+  for (const league of leagues) {
     cards.push(await leagueCard(admin, season.id, league.id, league.name, team?.id ?? null, calendar));
   }
 

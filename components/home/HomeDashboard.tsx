@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
+import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
 import type { HomeBoard, HomeLeagueCard } from "@/lib/server/home-board";
 
 function formatLabel(format: string) {
@@ -37,6 +38,24 @@ export function HomeDashboard({ board }: { board: HomeBoard }) {
         <p className="small muted">{board.competitionName}</p>
         <h1 className="section-title">La tua giornata</h1>
       </header>
+      <article className="card news-feature">
+        <h2>News</h2>
+        {board.news.length === 0 ? <p>Nessun avviso in questo momento.</p> : (
+          <ul className="news-list">
+            {board.news.map((item) => (
+              <li key={item.id}>
+                <strong>{item.title}</strong>
+                <p>{item.body}</p>
+                {item.linkUrl ? <a className="primary" href={item.linkUrl} target="_blank" rel="noreferrer">{item.linkLabel ?? "Apri"}</a> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </article>
+      <div className="dash-grid">
+        {board.leagues.map((card) => <LeagueSummary key={card.id} card={card} />)}
+        <LeagueOnboarding variant="card" />
+      </div>
       <div className="dash-grid">
         <article className="card">
           <h2>Deadline</h2>
@@ -60,29 +79,6 @@ export function HomeDashboard({ board }: { board: HomeBoard }) {
           )}
         </article>
       </div>
-      <div className="dash-grid">
-        {board.leagues.length === 0 ? (
-          <article className="card">
-            <h2>Leghe</h2>
-            <p>Non sei ancora in una lega di questa stagione.</p>
-            <Link className="primary" href="/leghe">Apri le leghe</Link>
-          </article>
-        ) : board.leagues.map((card) => <LeagueSummary key={card.id} card={card} />)}
-      </div>
-      <article className="card">
-        <h2>News</h2>
-        {board.news.length === 0 ? <p>Nessun avviso in questo momento.</p> : (
-          <ul className="news-list">
-            {board.news.map((item) => (
-              <li key={item.id}>
-                <strong>{item.title}</strong>
-                <p>{item.body}</p>
-                {item.linkUrl ? <a className="primary" href={item.linkUrl}>{item.linkLabel ?? "Apri"}</a> : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </article>
     </section>
   );
 }

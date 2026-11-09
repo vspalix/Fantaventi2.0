@@ -30,7 +30,7 @@ export function AuthForm() {
       setMessage("Account creato. Se la conferma email è attiva, apri il messaggio e poi entra.");
       return;
     }
-    router.push("/leghe");
+    router.push("/");
     router.refresh();
   }
 

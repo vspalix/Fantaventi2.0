@@ -24,18 +24,9 @@ export default async function HomePage() {
     <section className="hero">
       <p className="small muted">Fantaventi</p>
       <h1>Costruisci la rosa. Invita la lega.</h1>
-      <p className="lede">
-        Un calciatore per club. La home, dopo l&apos;accesso, riunisce classifica, deadline, partite e news.
-      </p>
-      <div className="grid-2">
-        <Link className="card" href="/leghe">
-          <h2>Leghe</h2>
-          <p>Crea un codice invito oppure entra in una lega già aperta.</p>
-        </Link>
-        <Link className="card" href="/accesso">
-          <h2>Entra</h2>
-          <p>La plancia personale si apre con il tuo account.</p>
-        </Link>
+      <p className="lede">Un calciatore per club. Entra e trovi la tua lega.</p>
+      <div className="landing-actions">
+        <Link className="primary" href="/accesso">Accedi / Registrati</Link>
       </div>
     </section>
   );

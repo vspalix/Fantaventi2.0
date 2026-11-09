@@ -52,6 +52,10 @@ $enum$;
 
 create table if not exists public.profiles (
   id            uuid primary key references auth.users (id) on delete cascade,
+  email         text,
+  first_name    text,
+  last_name     text,
+  phone         text,
   display_name  text not null,
   locale        text not null default 'it',
   created_at    timestamptz not null default now()

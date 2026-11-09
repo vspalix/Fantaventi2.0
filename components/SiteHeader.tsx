@@ -86,7 +86,7 @@ export function SiteHeader({
                 Esci
               </button>
             </>
-          ) : (
+          ) : pathname.startsWith("/accesso") ? null : (
             <Link className="primary" href="/accesso">Accedi</Link>
           )}
         </nav>

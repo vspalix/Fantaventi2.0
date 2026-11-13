@@ -47,7 +47,8 @@ create table if not exists public.gameweek_overrides (
   check (deadline_at is not null or status is not null)
 );
 
-create or replace view public.gameweeks_with_overrides as
+create or replace view public.gameweeks_with_overrides
+with (security_invoker = true) as
 select
   g.id,
   g.season_id,

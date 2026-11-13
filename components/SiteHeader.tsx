@@ -82,6 +82,7 @@ export function SiteHeader({
                   Laboratorio
                 </Link>
               ) : null}
+              <Link href="/account">Account</Link>
               <button className="text-button" type="button" onClick={signOut}>
                 Esci
               </button>

@@ -16,7 +16,11 @@ export function ModeSwitch({ mode }: { mode: "player" | "host" }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ mode: next }),
       });
-      if (response.ok) router.refresh();
+      if (!response.ok) return;
+      const body = (await response.json()) as { lab?: boolean };
+      if (next === "host" && body.lab) router.push("/admin");
+      else if (next === "player") router.push("/");
+      else router.refresh();
     } finally {
       setPending(null);
     }

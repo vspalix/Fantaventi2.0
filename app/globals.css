@@ -75,6 +75,10 @@ button { cursor: pointer; }
 .news-feature { border-color: var(--accent); }
 .landing-actions .primary, .landing-actions .ghost { font-size: 16px; padding: 14px 22px; }
 .nav a.primary { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 700; }
+.user-table-wrap { overflow-x: auto; }
+.user-table { width: 100%; border-collapse: collapse; }
+.user-table th, .user-table td { text-align: left; padding: 12px 8px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+.user-table th { color: var(--muted); font-size: 13px; font-weight: 600; }
 .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 28px; }
 .card, .panel {
   background: rgba(26, 36, 32, 0.92);

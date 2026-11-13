@@ -58,6 +58,7 @@ create table if not exists public.profiles (
   phone         text,
   display_name  text not null,
   locale        text not null default 'it',
+  must_reset_password boolean not null default false,
   created_at    timestamptz not null default now()
 );
 

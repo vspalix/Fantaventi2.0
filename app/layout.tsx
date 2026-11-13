@@ -1,6 +1,9 @@
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { SiteHeader, type HeaderSeason } from "@/components/SiteHeader";
+import { mustResetPassword } from "@/lib/server/account-password";
 import { readMaintenance } from "@/lib/server/maintenance";
 import { getCurrentSeason, listPlayableSeasons } from "@/lib/server/catalog";
 import { getSessionUser } from "@/lib/server/session";
@@ -22,6 +25,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     ? await hostAccess(user.id)
     : { platformAdmin: false, canSwitch: false, hostMode: false };
   const { platformAdmin, canSwitch, hostMode } = access;
+  const path = (await headers()).get("x-pathname") ?? "";
+  if (user && hasServiceSupabaseEnv() && !path.startsWith("/accesso/nuova-password")) {
+    if (await mustResetPassword(user.id).catch(() => false)) redirect("/accesso/nuova-password");
+  }
   const maintenance = hasServiceSupabaseEnv()
     ? await readMaintenance().catch(() => ({ enabled: false, message: "", updatedAt: null }))
     : { enabled: false, message: "", updatedAt: null };

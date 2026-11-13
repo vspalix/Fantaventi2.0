@@ -12,7 +12,7 @@ function signInMessage(message: string) {
 }
 
 export function AuthForm() {
-  const [mode, setMode] = useState<"sign-in" | "sign-up">("sign-in");
+  const [mode, setMode] = useState<"sign-in" | "sign-up" | "recover">("sign-in");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
@@ -22,11 +22,13 @@ export function AuthForm() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [acceptRules, setAcceptRules] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
-  function switchMode(next: "sign-in" | "sign-up") {
+  function switchMode(next: "sign-in" | "sign-up" | "recover") {
     setMode(next);
     setError(null);
+    setNotice(null);
   }
 
   async function signIn(event: FormEvent) {
@@ -86,6 +88,44 @@ export function AuthForm() {
     }
   }
 
+  async function recover(event: FormEvent) {
+    event.preventDefault();
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const supabase = createBrowserSupabase();
+      const redirectTo = `${window.location.origin}/accesso/nuova-password`;
+      const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+      if (result.error) {
+        setError(result.error.message);
+        return;
+      }
+      setNotice("Se l'email è registrata, ti abbiamo inviato il link per scegliere una nuova password.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Recupero non riuscito.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (mode === "recover") {
+    return (
+      <form className="stack" onSubmit={(event) => void recover(event)}>
+        <h1 className="section-title">Recupera la password</h1>
+        <p className="lede">Ti inviamo un link per sceglierne una nuova.</p>
+        <label>
+          Email
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
+        </label>
+        {error ? <p className="banner">{error}</p> : null}
+        {notice ? <p className="banner ok">{notice}</p> : null}
+        <button className="primary" type="submit" disabled={pending}>Invia il link</button>
+        <p><button className="text-button" type="button" onClick={() => switchMode("sign-in")}>Torna all&apos;accesso</button></p>
+      </form>
+    );
+  }
+
   if (mode === "sign-in") {
     return (
       <form className="stack" onSubmit={(event) => void signIn(event)}>
@@ -101,6 +141,7 @@ export function AuthForm() {
         </label>
         {error ? <p className="banner">{error}</p> : null}
         <button className="primary" type="submit" disabled={pending}>Accedi</button>
+        <p><button className="text-button" type="button" onClick={() => switchMode("recover")}>Password dimenticata</button></p>
         <p>Non hai un account? <button className="text-button" type="button" onClick={() => switchMode("sign-up")}>Registrati</button></p>
       </form>
     );

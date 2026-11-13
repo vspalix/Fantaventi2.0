@@ -26,7 +26,7 @@ export async function POST(request: Request) {
       sameSite: "lax",
       maxAge: 60 * 60 * 24 * 400,
     });
-    return NextResponse.json({ mode });
+    return NextResponse.json({ mode, lab: platformAdmin && mode === "host" });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }

@@ -18,6 +18,12 @@ const TEAM_COUNT = 100;
 const WEEK_CAP = 200;
 const FAR_DEADLINE = "2099-01-01T00:00:00.000Z";
 
+export type SandboxPodiumRow = {
+  rank: number;
+  name: string;
+  total: number;
+};
+
 export type SandboxReport = {
   elapsedMs: number;
   weeks: number[];
@@ -25,6 +31,7 @@ export type SandboxReport = {
   anomalies: string[];
   nextCursor: number | null;
   teams: number;
+  podium: SandboxPodiumRow[];
 };
 
 type PreparedTeam = {
@@ -135,11 +142,11 @@ export async function seedSandbox(ownerId: string) {
     const picked = buildLegalRoster(catalog.players, catalog.clubs, catalog.rules, index);
     const report = evaluateRoster(picked, catalog.clubs, catalog.rules);
     if (!report.ready || report.duplicateClubs.length > 0 || new Set(picked.map((player) => player.clubId)).size !== picked.length) {
-      throw new Error(`Team Test ${pad(index + 1)} non rispetta un calciatore per club o i limiti di ruolo.`);
+      throw new Error(`Squadra Test ${pad(index + 1)} non rispetta un calciatore per club o i limiti di ruolo.`);
     }
     const lineup = autoLineup(picked);
     if (!lineup || lineup.playerIds.length !== 11 || formationIssue(picked, lineup.playerIds)) {
-      throw new Error(`Team Test ${pad(index + 1)} non ha una formazione valida.`);
+      throw new Error(`Squadra Test ${pad(index + 1)} non ha una formazione valida.`);
     }
     return { picked, lineup };
   });
@@ -224,7 +231,7 @@ export async function seedSandbox(ownerId: string) {
     id: randomUUID(),
     user_id: ownerId,
     season_id: real.id,
-    name: `Team Test ${pad(index + 1)}`,
+    name: `Squadra Test ${pad(index + 1)}`,
     is_sandbox: true,
   }));
   const createdTeams = await admin.from("fantasy_teams").insert(teams);
@@ -260,10 +267,10 @@ export async function seedSandbox(ownerId: string) {
 export async function simulateSandbox(cursor: number, requested: number): Promise<SandboxReport> {
   const started = Date.now();
   await assertSandboxSchema();
-  const size = [1, 10, 50, 200].includes(requested) ? requested : 1;
+  const size = [1, 10, 40, 50, 200].includes(requested) ? requested : 40;
   const from = Math.max(1, Math.floor(cursor) || 1);
   if (from > size) {
-    return { elapsedMs: 0, weeks: [], checkpoints: 0, anomalies: [], nextCursor: null, teams: 0 };
+    return { elapsedMs: 0, weeks: [], checkpoints: 0, anomalies: [], nextCursor: null, teams: 0, podium: [] };
   }
   const admin = createAdminSupabase();
   const league = await sandboxLeague();
@@ -333,6 +340,12 @@ export async function simulateSandbox(cursor: number, requested: number): Promis
       })), { onConflict: "fantasy_team_id,gameweek_id" });
       if (saved.error) anomalies.push(`Giornata ${number}: ${saved.error.message}`);
     }
+    const closed = await admin
+      .from("gameweeks")
+      .update({ status: "scored", scored_at: new Date().toISOString() })
+      .eq("id", gameweekId)
+      .eq("season_id", seasonId);
+    if (closed.error) anomalies.push(`Giornata ${number}: chiusura non registrata. ${closed.error.message}`);
     if (CHECKPOINTS.includes(number)) {
       checkpoints += 1;
       if (!validatorMissing) {
@@ -353,6 +366,8 @@ export async function simulateSandbox(cursor: number, requested: number): Promis
   }
 
   const next = until >= size ? null : until + 1;
+  const names = new Map(prepared.map((team) => [team.id, team.name]));
+  const podium = next == null ? await loadPodium(seasonId, size, names) : [];
   return {
     elapsedMs: Date.now() - started,
     weeks: done,
@@ -360,7 +375,42 @@ export async function simulateSandbox(cursor: number, requested: number): Promis
     anomalies: anomalies.slice(0, 40),
     nextCursor: next,
     teams: prepared.length,
+    podium,
   };
+}
+
+async function loadPodium(seasonId: string, size: number, names: Map<string, string>): Promise<SandboxPodiumRow[]> {
+  const admin = createAdminSupabase();
+  const weeks = await admin.from("gameweeks").select("id").eq("season_id", seasonId).gte("number", 1).lte("number", size);
+  if (weeks.error) throw new Error(weeks.error.message);
+  const weekIds = (weeks.data ?? []).map((row) => row.id as string);
+  const totals = new Map<string, number>();
+  let start = 0;
+  while (weekIds.length > 0) {
+    const page = await admin
+      .from("team_gameweek_scores")
+      .select("fantasy_team_id, total")
+      .in("gameweek_id", weekIds)
+      .range(start, start + 999);
+    if (page.error) throw new Error(page.error.message);
+    const rows = page.data ?? [];
+    for (const row of rows) {
+      const total = Number(row.total);
+      if (!Number.isFinite(total)) continue;
+      const id = row.fantasy_team_id as string;
+      totals.set(id, (totals.get(id) ?? 0) + total);
+    }
+    if (rows.length < 1000) break;
+    start += 1000;
+  }
+  return [...totals.entries()]
+    .sort((left, right) => right[1] - left[1] || (names.get(left[0]) ?? "").localeCompare(names.get(right[0]) ?? "", "it"))
+    .slice(0, 3)
+    .map(([id, total], index) => ({
+      rank: index + 1,
+      name: names.get(id) ?? id,
+      total: Math.round(total * 100) / 100,
+    }));
 }
 
 function statFor(playerId: string, role: PlayerRole, hole: boolean, rand: () => number): PlayerStat {
@@ -368,7 +418,7 @@ function statFor(playerId: string, role: PlayerRole, hole: boolean, rand: () => 
   return {
     playerId,
     role,
-    voto: hole ? null : Math.round((5 + roll * 3) * 2) / 2,
+    voto: hole ? null : Math.round((4 + roll * 6) * 2) / 2,
     goals: hole || rand() > 0.12 ? 0 : rand() > 0.8 ? 2 : 1,
     assists: hole || rand() > 0.1 ? 0 : 1,
     yellowCards: hole || rand() > 0.15 ? 0 : 1,

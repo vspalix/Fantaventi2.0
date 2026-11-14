@@ -118,6 +118,24 @@ input, select, textarea {
 }
 .admin-grid { display: grid; gap: 16px; }
 .summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.lab-panel { display: grid; gap: 18px; }
+.lab-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.lab-head h2 { margin: 0; }
+.lab-status { font-size: 15px; padding: 8px 14px; }
+.lab-status[data-status="running"] { border-color: #8a7340; }
+.lab-status[data-status="done"] { color: var(--ok); border-color: #2f5a38; }
+.lab-status[data-status="error"] { color: var(--danger); border-color: #7a4036; }
+.lab-go { width: 100%; min-height: 76px; padding: 18px 22px; font-size: clamp(18px, 2.5vw, 22px); line-height: 1.25; text-align: center; }
+.lab-step { margin: 0; font-size: 17px; }
+.lab-report { display: grid; gap: 14px; }
+.lab-report h3 { margin: 0; }
+.lab-report .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.lab-podium { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.lab-podium li { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; font-size: 17px; }
+.lab-reset-wrap { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
+.lab-reset { width: 100%; min-height: 52px; }
+.lab-more summary { cursor: pointer; font-weight: 700; font-size: 16px; }
+.lab-more .stack { margin-top: 16px; }
 .listone-scroll { max-height: 68vh; overflow: auto; }
 .admin-controls { align-items: end; }
 .admin-controls label { flex: 1 1 220px; }

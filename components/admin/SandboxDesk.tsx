@@ -2,17 +2,35 @@
 
 import { useRef, useState } from "react";
 import { BusyLabel } from "@/components/BusyLabel";
-import type { SandboxReport } from "@/lib/server/sandbox-lab";
+import type { SandboxPodiumRow, SandboxReport } from "@/lib/server/sandbox-lab";
 
-const SIZES = [1, 10, 50, 200] as const;
+const WEEKS = 40;
+
+type Status = "ready" | "running" | "done" | "error";
+
+type Report = {
+  elapsedMs: number;
+  weeks: number;
+  checkpoints: number;
+  anomalies: string[];
+  teams: number;
+  podium: SandboxPodiumRow[];
+};
+
+const STATUS_LABEL: Record<Status, string> = {
+  ready: "Pronto",
+  running: "In esecuzione",
+  done: "Completato",
+  error: "Interrotto",
+};
 
 export function SandboxDesk() {
-  const [size, setSize] = useState<(typeof SIZES)[number]>(1);
-  const [pending, setPending] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status>("ready");
+  const [step, setStep] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState<string | null>(null);
-  const [report, setReport] = useState<{ elapsedMs: number; weeks: number; checkpoints: number; anomalies: string[]; teams: number } | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
   const flight = useRef(false);
+  const pending = status === "running";
 
   async function post(body: Record<string, unknown>) {
     const response = await fetch("/api/admin/sandbox", {
@@ -25,112 +43,126 @@ export function SandboxDesk() {
     return payload;
   }
 
-  async function seed() {
+  async function run() {
     if (flight.current) return;
-    const confirmed = window.confirm("Generare SANDBOX_STRESS_TEST con 100 squadre? Se esiste già, viene ricreata. Le leghe reali restano intatte.");
+    const confirmed = window.confirm("Avviare lo stress test? Cancella la sandbox precedente, crea 100 squadre e simula 40 giornate. Le leghe reali non vengono toccate.");
     if (!confirmed) return;
     flight.current = true;
-    setPending("seed");
+    setStatus("running");
     setError(null);
     setReport(null);
+    const totals: Report = { elapsedMs: 0, weeks: 0, checkpoints: 0, anomalies: [], teams: 0, podium: [] };
     try {
-      const result = await post({ action: "seed" }) as { teams: number; rostersValid: number };
-      setProgress(`${result.teams} squadre create. Rose valide per il validatore: ${result.rostersValid}.`);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Generazione non riuscita.");
-    } finally {
-      flight.current = false;
-      setPending(null);
-    }
-  }
-
-  async function simulate() {
-    if (flight.current) return;
-    const confirmed = window.confirm(`Simulare ${size} giornate nella sola lega sandbox, a gruppi di 5, con il motore di calcolo reale?`);
-    if (!confirmed) return;
-    flight.current = true;
-    setPending("simulate");
-    setError(null);
-    const totals = { elapsedMs: 0, weeks: 0, checkpoints: 0, anomalies: [] as string[], teams: 0 };
-    try {
+      setStep("Preparo la lega e le 100 squadre.");
+      await post({ action: "seed" });
       let cursor = 1;
       while (cursor) {
-        setProgress(`Giornate sandbox fino a ${cursor} di ${size}...`);
-        const batch = await post({ action: "simulate", cursor, size }) as SandboxReport;
+        setStep(`Calcolo la giornata ${Math.min(cursor, WEEKS)} di ${WEEKS}.`);
+        const batch = await post({ action: "simulate", cursor, size: WEEKS }) as SandboxReport;
         totals.elapsedMs += batch.elapsedMs;
         totals.weeks += batch.weeks.length;
         totals.checkpoints += batch.checkpoints;
         totals.teams = batch.teams;
         totals.anomalies.push(...batch.anomalies);
+        totals.podium = batch.podium;
         if (batch.nextCursor == null) break;
         cursor = batch.nextCursor;
       }
       setReport({ ...totals, anomalies: totals.anomalies.slice(0, 40) });
-      setProgress(null);
+      setStep(null);
+      setStatus("done");
     } catch (reason) {
-      setReport(totals.weeks > 0 ? totals : null);
-      setError(reason instanceof Error ? reason.message : "Simulazione non riuscita.");
+      if (totals.weeks > 0) setReport({ ...totals, anomalies: totals.anomalies.slice(0, 40) });
+      setError(reason instanceof Error ? reason.message : "Stress test non riuscito.");
+      setStep(null);
+      setStatus("error");
     } finally {
       flight.current = false;
-      setPending(null);
     }
   }
 
   async function reset() {
     if (flight.current) return;
-    const confirmed = window.confirm("Svuotare solo i dati con is_sandbox = true? Formazioni, voti simulati, squadre e lega sandbox vengono eliminati. Le leghe reali no.");
+    const confirmed = window.confirm("Svuotare solo la sandbox? Le leghe reali restano intatte.");
     if (!confirmed) return;
     flight.current = true;
-    setPending("reset");
+    setStatus("running");
+    setStep("Svuoto la sandbox.");
     setError(null);
     setReport(null);
     try {
-      const result = await post({ action: "reset" }) as { teams: number; weeks: number };
-      setProgress(`Sandbox svuotata. Squadre rimosse: ${result.teams}. Giornate rimosse: ${result.weeks}.`);
+      await post({ action: "reset" });
+      setStep(null);
+      setStatus("ready");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Reset non riuscito.");
+      setStep(null);
+      setStatus("error");
     } finally {
       flight.current = false;
-      setPending(null);
     }
   }
 
   return (
-    <section className="card stack">
-      <h2>Laboratorio Stress Test (Sandbox)</h2>
-      <p className="small muted">
-        La lega SANDBOX_STRESS_TEST e le sue 100 squadre nascono con is_sandbox. Calendario, voti e punteggi stanno su una stagione separata. Il cron del gioco reale non le legge.
+    <section className="card lab-panel">
+      <header className="lab-head">
+        <h2>Pannello di controllo</h2>
+        <span className="status-pill lab-status" data-status={status}>Stato: {STATUS_LABEL[status]}</span>
+      </header>
+      <p className="lede">
+        Un passaggio crea SANDBOX_STRESS_TEST, assegna 100 rose valide e calcola 40 giornate con il motore reale. Le leghe vere restano fuori.
       </p>
+      <button className="primary lab-go" type="button" disabled={pending} aria-busy={pending && step !== "Svuoto la sandbox."} onClick={() => void run()}>
+        <BusyLabel pending={pending && step !== "Svuoto la sandbox."} idle="🚀 Avvia Stress Test Completo (100 Squadre & 40 Giornate)" busy="Stress test in corso..." />
+      </button>
+      {step ? <p className="lab-step">{step}</p> : null}
       {error ? <p className="banner">{error}</p> : null}
-      {progress ? <p className="banner ok">{progress}</p> : null}
-      <div className="row">
-        <button className="primary" type="button" disabled={pending !== null} aria-busy={pending === "seed"} onClick={() => void seed()}>
-          <BusyLabel pending={pending === "seed"} idle="Genera Lega Sandbox + 100 Squadre" busy="Genero..." />
-        </button>
-        <label>
-          Giornate
-          <select value={size} disabled={pending !== null} onChange={(event) => setSize(Number(event.target.value) as (typeof SIZES)[number])}>
-            {SIZES.map((value) => <option key={value} value={value}>{value}</option>)}
-          </select>
-        </label>
-        <button className="ghost" type="button" disabled={pending !== null} aria-busy={pending === "simulate"} onClick={() => void simulate()}>
-          <BusyLabel pending={pending === "simulate"} idle="Simula giornate" busy="Simulo..." />
-        </button>
-        <button className="danger" type="button" disabled={pending !== null} aria-busy={pending === "reset"} onClick={() => void reset()}>
-          <BusyLabel pending={pending === "reset"} idle="Svuota e Resetta Sandbox" busy="Svuoto..." />
+      {report ? <ReportBox report={report} /> : null}
+      <div className="lab-reset-wrap">
+        <button className="danger lab-reset" type="button" disabled={pending} aria-busy={step === "Svuoto la sandbox."} onClick={() => void reset()}>
+          <BusyLabel pending={step === "Svuoto la sandbox."} idle="Svuota Sandbox" busy="Svuoto..." />
         </button>
       </div>
-      {report ? (
-        <div className="stack">
-          <h3>Report diagnostico</h3>
-          <p>Tempo totale: {report.elapsedMs} ms. Giornate elaborate: {report.weeks}. Checkpoint elaborati: {report.checkpoints}. Squadre: {report.teams}.</p>
-          {report.anomalies.length === 0 ? <p className="small muted">Nessuna anomalia rilevata.</p> : (
-            <ul className="audit-lines">
-              {report.anomalies.map((item) => <li key={item}>{item}</li>)}
-            </ul>
-          )}
-        </div>
-      ) : null}
     </section>
   );
+}
+
+function ReportBox({ report }: { report: Report }) {
+  const average = report.weeks > 0 ? Math.round(report.elapsedMs / report.weeks) : 0;
+  return (
+    <div className="lab-report">
+      <h3>Report</h3>
+      <div className="summary-grid">
+        <p className="stat">Tempo totale<strong>{formatDuration(report.elapsedMs)}</strong></p>
+        <p className="stat">Giornate<strong>{report.weeks}</strong></p>
+        <p className="stat">Checkpoint<strong>{report.checkpoints}</strong></p>
+        <p className="stat">Media a giornata<strong>{average.toLocaleString("it-IT")} ms</strong></p>
+      </div>
+      <div>
+        <h3>Podio</h3>
+        {report.podium.length === 0 ? <p className="small muted">Classifica non disponibile.</p> : (
+          <ol className="lab-podium">
+            {report.podium.map((row) => (
+              <li key={row.rank}>
+                <span>{row.rank}° {row.name}</span>
+                <strong>{row.total.toLocaleString("it-IT", { maximumFractionDigits: 1 })}</strong>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
+      {report.anomalies.length === 0 ? <p className="small muted">Nessuna anomalia rilevata.</p> : (
+        <ul className="audit-lines">
+          {report.anomalies.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function formatDuration(ms: number) {
+  const precise = `${ms.toLocaleString("it-IT")} ms`;
+  if (ms < 1000) return precise;
+  const seconds = (ms / 1000).toLocaleString("it-IT", { maximumFractionDigits: 1 });
+  return `${seconds} s · ${precise}`;
 }

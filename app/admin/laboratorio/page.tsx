@@ -18,7 +18,7 @@ export default async function LabPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Collaudo</h1>
+          <h1 className="section-title">Laboratorio</h1>
         </header>
         <AdminNav />
         <Link className="primary" href="/accesso">Entra</Link>
@@ -31,23 +31,28 @@ export default async function LabPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Collaudo</h1>
+          <h1 className="section-title">Laboratorio</h1>
           <p className="lede">
-            Strumenti di stagione: calendario, squadre di test, caos e motore. La giornata vera si gestisce da Admin.
+            Stress test isolato. La giornata vera si gestisce da Admin.
           </p>
         </header>
         <AdminNav />
         <SandboxDesk />
-        <MaintenanceSwitch />
-        <ChaosDesk />
-        <TestLab initial={lab} />
+        <details className="card lab-more">
+          <summary>Altri strumenti di collaudo</summary>
+          <div className="stack">
+            <MaintenanceSwitch />
+            <ChaosDesk />
+            <TestLab initial={lab} />
+          </div>
+        </details>
       </section>
     );
   } catch (error) {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Collaudo</h1>
+          <h1 className="section-title">Laboratorio</h1>
         </header>
         <p className="banner">{errorMessage(error)}</p>
       </section>

@@ -51,7 +51,7 @@ export function UserDesk({ initial }: { initial: PlatformUserRow[] }) {
     <div className="stack">
       {error ? <p className="banner">{error}</p> : null}
       <div className="card user-table-wrap">
-        <table className="user-table">
+        <table className="user-table as-cards">
           <thead>
             <tr>
               <th>Nome</th>
@@ -65,13 +65,13 @@ export function UserDesk({ initial }: { initial: PlatformUserRow[] }) {
               <tr><td colSpan={4}>Nessun utente registrato.</td></tr>
             ) : users.map((user) => (
               <tr key={user.id}>
-                <td>
+                <td data-label="Nome">
                   <strong>{[user.firstName, user.lastName].filter(Boolean).join(" ") || user.displayName || "Senza nome"}</strong>
                   {user.mustResetPassword ? <span className="small muted"> · nuova password al prossimo accesso</span> : null}
                 </td>
-                <td>{user.email || "—"}</td>
-                <td>{user.phone || "—"}</td>
-                <td className="row">
+                <td data-label="Email">{user.email || "—"}</td>
+                <td data-label="Telefono">{user.phone || "—"}</td>
+                <td className="row user-actions" data-label="Azioni">
                   <button className="ghost" type="button" disabled={pendingId === user.id} onClick={() => void resetPassword(user)}>
                     Reimposta password
                   </button>

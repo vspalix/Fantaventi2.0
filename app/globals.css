@@ -684,6 +684,10 @@ button.shirt-empty:disabled { cursor: default; }
   .shell { width: min(1120px, calc(100% - 24px)); }
   .page { padding: 20px 0 40px; }
   body:has(.tabbar) .page { padding-bottom: calc(88px + env(safe-area-inset-bottom)); }
+  .site-header {
+    background: #101410;
+    backdrop-filter: none;
+  }
   .site-header .shell {
     flex-wrap: wrap;
     align-items: stretch;
@@ -691,6 +695,7 @@ button.shirt-empty:disabled { cursor: default; }
     padding: 10px 0;
     gap: 8px;
   }
+  .tabbar { background: #101410; }
   .brand span { display: none; }
   .nav { flex: 1 1 160px; flex-wrap: wrap; justify-content: flex-end; }
   .nav-links { display: none; }
@@ -769,7 +774,9 @@ button.shirt-empty:disabled { cursor: default; }
     overscroll-behavior-x: contain;
     scrollbar-width: none;
     scroll-snap-type: x proximity;
-    padding-bottom: 4px;
+    scroll-padding-inline: 8px;
+    padding: 2px 20px 4px 2px;
+    mask-image: linear-gradient(to right, #000 0, #000 calc(100% - 22px), transparent);
   }
   .gw-row::-webkit-scrollbar { display: none; }
   .gw-chip { flex: 0 0 auto; min-height: 44px; min-width: 44px; scroll-snap-align: start; }
@@ -787,7 +794,7 @@ button.shirt-empty:disabled { cursor: default; }
   }
   .code { letter-spacing: 0.08em; }
   .card, .panel, .modal, .stack, .row, .lineup-layout, .roster-layout, .builder { min-width: 0; max-width: 100%; }
-  table.standings:not(.as-cards), table.user-table, .user-table-wrap, .sheet-scroll, .listone-scroll {
+  table.standings:not(.as-cards), table.user-table:not(.as-cards), .sheet-scroll, .listone-scroll {
     display: block;
     max-width: 100%;
     overflow-x: auto;
@@ -829,6 +836,14 @@ button.shirt-empty:disabled { cursor: default; }
   }
   table.as-cards tr[data-mine="true"] { box-shadow: inset 3px 0 0 var(--accent); }
   table.as-cards tr[data-mine="true"] td { background: transparent; }
+  table.as-cards td.user-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+  table.as-cards td.user-actions::before { grid-column: 1 / -1; }
+  table.as-cards td.user-actions .ghost,
+  table.as-cards td.user-actions .danger { min-height: 44px; }
   .pitch { padding: 22px 6px 12px; overflow: hidden; }
   .pitch-row { gap: 4px; }
   .shirt {

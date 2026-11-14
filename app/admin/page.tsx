@@ -1,7 +1,5 @@
 import { AdminNav } from "@/components/admin/AdminNav";
-import { ChaosDesk } from "@/components/admin/ChaosDesk";
-import { MaintenanceSwitch } from "@/components/admin/MaintenanceSwitch";
-import { TestLab } from "@/components/admin/TestLab";
+import { MatchdayDesk } from "@/components/admin/MatchdayDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadTestLab } from "@/lib/server/test-lab";
 import { errorMessage, getSessionUser } from "@/lib/server/session";
@@ -17,8 +15,8 @@ export default async function AdminPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Admin di test</h1>
-          <p className="lede">Entra con il tuo account per impostare la giornata, schierare, calcolare e passare alla successiva.</p>
+          <h1 className="section-title">Admin</h1>
+          <p className="lede">Entra per gestire voti, classifica, rinvii e formazioni.</p>
         </header>
         <AdminNav />
         <Link className="primary" href="/accesso">Entra</Link>
@@ -31,23 +29,20 @@ export default async function AdminPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Admin di test</h1>
+          <h1 className="section-title">Admin</h1>
           <p className="lede">
-            Stagione {lab.seasonCode}. Importa il calendario, chiudi le partite e calcola.
-            Puoi annullare un calcolo e ricaricare i voti: finché non ricalcoli, quella giornata non porta punti.
+            Stagione {lab.seasonCode}. Quattro azioni: voti della giornata, ricalcolo della classifica, rinvii e formazioni consegnate.
           </p>
         </header>
         <AdminNav />
-        <MaintenanceSwitch />
-        <ChaosDesk />
-        <TestLab initial={lab} />
+        <MatchdayDesk initial={lab} />
       </section>
     );
   } catch (error) {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Admin di test</h1>
+          <h1 className="section-title">Admin</h1>
         </header>
         <p className="banner">{errorMessage(error)}</p>
       </section>

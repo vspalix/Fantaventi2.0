@@ -24,7 +24,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <section className="stack">
         <header>
           <h1 className="section-title">Vista giocatore</h1>
-          <p className="lede">Il Laboratorio resta chiuso finché non passi alla vista admin.</p>
+          <p className="lede">La vista admin resta chiusa finché non passi da Giocatore ad Admin.</p>
         </header>
         <ModeSwitch mode="player" />
       </section>

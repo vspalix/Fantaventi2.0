@@ -4,15 +4,16 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const LINKS = [
-  { href: "/admin", label: "Laboratorio" },
+  { href: "/admin", label: "Giornata" },
+  { href: "/admin/import-voti", label: "Voti" },
   { href: "/admin/utenti", label: "Utenti" },
   { href: "/admin/leghe", label: "Leghe" },
   { href: "/admin/notifiche", label: "Notifiche" },
   { href: "/admin/news", label: "News" },
   { href: "/admin/import-listone", label: "Listone" },
   { href: "/admin/listone-view", label: "Listone caricato" },
-  { href: "/admin/import-voti", label: "Voti" },
   { href: "/admin/rules-editor", label: "Regolamento" },
+  { href: "/admin/laboratorio", label: "Collaudo" },
 ];
 
 export function AdminNav() {

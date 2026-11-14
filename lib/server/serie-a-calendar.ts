@@ -249,6 +249,13 @@ export async function listGameweekMatches(userId: string, gameweekId: string) {
       for (const row of shorts.data ?? []) names.set(row.club_id as string, row.short_name as string);
     }
   }
+  const flags = await admin.from("real_matches").select("id, postponed").eq("gameweek_id", gameweekId);
+  const postponedIds = new Set<string>();
+  if (!flags.error) {
+    for (const row of flags.data ?? []) {
+      if (row.postponed) postponedIds.add(row.id as string);
+    }
+  }
   return {
     gameweekNumber: gameweek.number as number,
     gameweekStatus: gameweek.status as string,
@@ -259,6 +266,7 @@ export async function listGameweekMatches(userId: string, gameweekId: string) {
       away: names.get(row.away_club_id as string) ?? "trasferta",
       kickoffAt: row.kickoff_at as string,
       status: row.status as string,
+      postponed: postponedIds.has(row.id as string),
       kickoffLocked: Boolean((row as { kickoff_locked?: boolean }).kickoff_locked),
       homeGoals: goalOf((row as { home_goals?: number | null }).home_goals),
       awayGoals: goalOf((row as { away_goals?: number | null }).away_goals),

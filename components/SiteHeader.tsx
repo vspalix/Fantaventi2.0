@@ -89,7 +89,7 @@ export function SiteHeader({
                   {canSwitch ? <ModeSwitch mode={hostMode ? "host" : "player"} /> : null}
                   {hostMode && platformAdmin ? (
                     <Link href="/admin" data-active={pathname.startsWith("/admin")}>
-                      Laboratorio
+                      Admin
                     </Link>
                   ) : null}
                   <Link href="/account" data-active={pathname.startsWith("/account")}>Account</Link>
@@ -101,7 +101,7 @@ export function SiteHeader({
                   {canSwitch ? <ModeSwitch mode={hostMode ? "host" : "player"} /> : null}
                   {hostMode && platformAdmin ? (
                     <Link href="/admin" data-active={pathname.startsWith("/admin")}>
-                      Laboratorio
+                      Admin
                     </Link>
                   ) : null}
                   <button className="text-button" type="button" onClick={signOut}>

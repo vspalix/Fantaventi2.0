@@ -1,5 +1,5 @@
 import { Suspense, type ReactNode } from "react";
-import { IBM_Plex_Sans } from "next/font/google";
+import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
@@ -22,6 +22,13 @@ const sans = IBM_Plex_Sans({
   weight: ["400", "500", "600", "700"],
   display: "swap",
   variable: "--font-sans",
+});
+
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  display: "swap",
+  variable: "--font-mono",
 });
 
 export const metadata = {
@@ -83,7 +90,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   }
   return (
     <html lang="it">
-      <body className={sans.variable}>
+      <body className={`${sans.variable} ${mono.variable}`}>
         <Suspense fallback={<header className="site-header" />}>
           <SiteHeader
             email={user?.email ?? null}

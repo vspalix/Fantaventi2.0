@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
+import { pendingInvitePath } from "@/lib/invite";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
 
 export function NewPasswordForm() {
@@ -29,7 +30,7 @@ export function NewPasswordForm() {
         return;
       }
       await fetch("/api/account/password", { method: "POST" });
-      window.location.assign("/");
+      window.location.assign(pendingInvitePath());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Aggiornamento non riuscito.");
     } finally {

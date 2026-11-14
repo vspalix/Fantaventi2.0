@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { pendingInvitePath, safeJoinPath, writeInviteCookie } from "@/lib/invite";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
 
 function signInMessage(message: string) {
@@ -25,6 +26,13 @@ export function AuthForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
+  useEffect(() => {
+    const next = safeJoinPath(new URLSearchParams(window.location.search).get("next"));
+    if (!next) return;
+    const code = new URLSearchParams(next.slice(next.indexOf("?") + 1)).get("code");
+    if (code) writeInviteCookie(code);
+  }, []);
+
   function switchMode(next: "sign-in" | "sign-up" | "recover") {
     setMode(next);
     setError(null);
@@ -42,7 +50,7 @@ export function AuthForm() {
         setError(signInMessage(result.error.message));
         return;
       }
-      window.location.assign("/");
+      window.location.assign(pendingInvitePath());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Accesso non riuscito.");
     } finally {
@@ -80,7 +88,7 @@ export function AuthForm() {
         setError(signInMessage(result.error.message));
         return;
       }
-      window.location.assign("/");
+      window.location.assign(pendingInvitePath());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Registrazione non riuscita.");
     } finally {

@@ -10,6 +10,7 @@ import {
   type LeaguePhase,
   type LeagueRules,
 } from "@/lib/league-rules";
+import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import type { LeagueDetail } from "@/lib/types";
 
 export function LeagueAdminPanel({
@@ -83,6 +84,7 @@ export function LeagueAdminPanel({
         <h2>Inviti e partecipanti</h2>
         <div className="code">{league.joinCode}</div>
         <div className="row">
+          <CopyInviteLink code={league.joinCode} />
           <button className="ghost" type="button" onClick={() => void navigator.clipboard.writeText(league.joinCode)}>Copia codice</button>
           <button className="ghost" type="button" disabled={pending} onClick={() => void onSave({ name, startMatchday, endMatchday, regenerateCode: true, rules })}>
             Genera un nuovo codice

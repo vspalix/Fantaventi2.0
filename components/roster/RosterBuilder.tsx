@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { clearInviteCookie, joinHref, readInviteCookie } from "@/lib/invite";
 import { ClubGrid } from "@/components/roster/ClubGrid";
 import { ClubModal } from "@/components/roster/ClubModal";
 import { RosterSidebar } from "@/components/roster/RosterSidebar";
@@ -40,9 +41,14 @@ export function RosterBuilder({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(loadError);
   const [pending, setPending] = useState(false);
+  const [inviteCode, setInviteCode] = useState<string | null>(null);
   const market: RosterMarket = initialRoster?.market ?? { locked: false, gameweekNumber: null, message: null };
   const [appliesFrom, setAppliesFrom] = useState(initialRoster?.appliesFrom ?? 1);
   const locked = market.locked;
+
+  useEffect(() => {
+    setInviteCode(readInviteCookie());
+  }, []);
 
   const selected = useMemo(
     () => selectedIds
@@ -128,26 +134,47 @@ export function RosterBuilder({
     setPending(true);
     setError(null);
     setMessage(null);
-    const response = await fetch("/api/roster", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamName, playerIds: selected.map((player) => player.id) }),
-    });
-    const body = (await response.json()) as { error?: string; roster?: { appliesFrom?: number } };
-    setPending(false);
-    if (!response.ok) {
-      setError(body.error ?? "Salvataggio rifiutato.");
-      return;
+    try {
+      const response = await fetch("/api/roster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamName, playerIds: selected.map((player) => player.id) }),
+      });
+      const body = (await response.json()) as { error?: string; roster?: { appliesFrom?: number } };
+      if (!response.ok) {
+        setError(body.error ?? "Salvataggio rifiutato.");
+        return;
+      }
+      if (body.roster?.appliesFrom) setAppliesFrom(body.roster.appliesFrom);
+      const invite = readInviteCookie();
+      if (invite) {
+        const join = await fetch("/api/leagues/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: invite }),
+        });
+        const joined = (await join.json()) as { error?: string; league?: { id: string } };
+        if (join.ok && joined.league?.id) {
+          clearInviteCookie();
+          window.location.assign(`/leghe/${joined.league.id}`);
+          return;
+        }
+        setError(joined.error ?? "Rosa salvata, ma l'iscrizione alla lega non è riuscita.");
+        return;
+      }
+      setMessage(`Rosa salvata. I cambi valgono dalla giornata ${body.roster?.appliesFrom ?? appliesFrom}. Ruoli e club sono controllati.`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
+    } finally {
+      setPending(false);
     }
-    if (body.roster?.appliesFrom) setAppliesFrom(body.roster.appliesFrom);
-    setMessage(`Rosa salvata. I cambi valgono dalla giornata ${body.roster?.appliesFrom ?? appliesFrom}. Ruoli e club sono controllati.`);
   }
 
   if (!signedIn) {
     return (
       <section className="card">
         <h2>Entra per costruire la rosa</h2>
-        <Link className="primary" href="/accesso">Vai all&apos;accesso</Link>
+        <Link className="primary" href={inviteCode ? `/accesso?next=${encodeURIComponent(joinHref(inviteCode))}` : "/accesso"}>Vai all&apos;accesso</Link>
       </section>
     );
   }
@@ -169,6 +196,7 @@ export function RosterBuilder({
       {market.message ? <p className="banner">{market.message}</p> : (
         <p className="small muted">Nessun credito: un solo calciatore per club, dentro i limiti di ruolo. Fuori dalle partite i cambi valgono dalla giornata {appliesFrom}.</p>
       )}
+      {inviteCode ? <p className="banner ok">Hai un invito in sospeso. Salva la rosa e entri in lega senza digitare il codice.</p> : null}
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}
       <div className="roster-layout">

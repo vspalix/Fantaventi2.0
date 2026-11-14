@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { INVITE_COOKIE, normalizeInviteCode, safeJoinPath } from "@/lib/invite";
 
 export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
@@ -7,10 +8,16 @@ export async function middleware(request: NextRequest) {
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return response;
+  if (!url || !key) {
+    rememberInvite(request, response);
+    return response;
+  }
   // Le route API verificano la sessione da sole. Un secondo refresh sullo stesso
   // token la invalida e il laboratorio torna sulla schermata Entra.
-  if (request.nextUrl.pathname.startsWith("/api/")) return response;
+  if (request.nextUrl.pathname.startsWith("/api/")) {
+    rememberInvite(request, response);
+    return response;
+  }
 
   const supabase = createServerClient(url, key, {
     cookies: {
@@ -28,7 +35,17 @@ export async function middleware(request: NextRequest) {
   });
 
   await supabase.auth.getUser();
+  rememberInvite(request, response);
   return response;
+}
+
+function rememberInvite(request: NextRequest, response: NextResponse) {
+  const fromJoin = request.nextUrl.pathname === "/join" ? request.nextUrl.searchParams.get("code") : null;
+  const nextPath = safeJoinPath(request.nextUrl.searchParams.get("next"));
+  const fromNext = nextPath ? new URLSearchParams(nextPath.slice(nextPath.indexOf("?") + 1)).get("code") : null;
+  const code = normalizeInviteCode(fromJoin) ?? normalizeInviteCode(fromNext);
+  if (!code) return;
+  response.cookies.set(INVITE_COOKIE, code, { path: "/", maxAge: 60 * 60 * 24 * 14, sameSite: "lax" });
 }
 
 export const config = {

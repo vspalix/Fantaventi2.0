@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
@@ -1339,7 +1340,8 @@ function LeagueSettings({
         <h2>Codice invito</h2>
         <div className="code">{league.joinCode}</div>
         <div className="row">
-          <button className="ghost" type="button" onClick={() => void navigator.clipboard.writeText(league.joinCode)}>Copia</button>
+          <CopyInviteLink code={league.joinCode} />
+          <button className="ghost" type="button" onClick={() => void navigator.clipboard.writeText(league.joinCode)}>Copia codice</button>
           {league.isOwner ? (
             <button className="ghost" type="button" disabled={pending} onClick={() => void onSave(true)}>Genera un nuovo codice</button>
           ) : null}

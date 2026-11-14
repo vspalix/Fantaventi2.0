@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { SiteHeader, type HeaderSeason } from "@/components/SiteHeader";
+import { INVITE_COOKIE, joinHref, normalizeInviteCode } from "@/lib/invite";
 import { mustResetPassword } from "@/lib/server/account-password";
 import { readMaintenance } from "@/lib/server/maintenance";
 import { getCurrentSeason, listPlayableSeasons } from "@/lib/server/catalog";
@@ -27,7 +28,10 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const { platformAdmin, canSwitch, hostMode } = access;
   const path = (await headers()).get("x-pathname") ?? "";
   if (user && hasServiceSupabaseEnv() && !path.startsWith("/accesso/nuova-password")) {
-    if (await mustResetPassword(user.id).catch(() => false)) redirect("/accesso/nuova-password");
+    if (await mustResetPassword(user.id).catch(() => false)) {
+      const code = normalizeInviteCode((await cookies()).get(INVITE_COOKIE)?.value);
+      redirect(code ? `/accesso/nuova-password?next=${encodeURIComponent(joinHref(code))}` : "/accesso/nuova-password");
+    }
   }
   const maintenance = hasServiceSupabaseEnv()
     ? await readMaintenance().catch(() => ({ enabled: false, message: "", updatedAt: null }))

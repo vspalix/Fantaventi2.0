@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { LeagueHub } from "@/components/leagues/LeagueHub";
+import { isHubTab } from "@/lib/hub-tabs";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadLeagueHub } from "@/lib/server/league-hub";
 import { errorMessage, getSessionUser } from "@/lib/server/session";
@@ -7,7 +8,13 @@ import { readViewMode } from "@/lib/server/view-mode";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
-export default async function LeaguePage({ params }: { params: Promise<{ leagueId: string }> }) {
+export default async function LeaguePage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ leagueId: string }>;
+  searchParams: Promise<{ tab?: string }>;
+}) {
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
   const user = await getSessionUser();
   if (!user) {
@@ -20,12 +27,15 @@ export default async function LeaguePage({ params }: { params: Promise<{ leagueI
   }
 
   const { leagueId } = await params;
+  const requested = (await searchParams).tab;
   try {
     const hub = await loadLeagueHub(user.id, leagueId);
     const hostMode = await readViewMode() === "host";
     return (
       <LeagueHub
+        key={isHubTab(requested) ? requested : "home"}
         initial={hub}
+        initialTab={isHubTab(requested) ? requested : "home"}
         hostMode={hostMode && (hub.league.isManager || hub.league.platformOverride)}
         allowTestFill={hostMode && process.env.NODE_ENV === "development" && hub.league.isOwner}
       />

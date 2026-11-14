@@ -21,6 +21,7 @@ import {
   trimToFormation,
   type FormationId,
 } from "@/lib/formations";
+import type { HubTab } from "@/lib/hub-tabs";
 import type { LeagueRules } from "@/lib/league-rules";
 import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole } from "@/lib/types";
 import { RegulationPanel } from "@/components/rules/RegulationView";
@@ -373,13 +374,15 @@ export function LeagueHub({
   initial,
   allowTestFill = false,
   hostMode = false,
+  initialTab = "home",
 }: {
   initial: LeagueHubData;
   allowTestFill?: boolean;
   hostMode?: boolean;
+  initialTab?: HubTab;
 }) {
   const [hub, setHub] = useState(initial);
-  const [tab, setTab] = useState<"home" | "live" | "bacheca" | "squadre" | "formazione" | "formazioni" | "classifica" | "risultati" | "regolamento" | "lega" | "gestione">("home");
+  const [tab, setTab] = useState<HubTab>(initialTab);
   const shownTab = tab === "gestione" && !(hostMode && hub.league.isManager) ? "home" : tab;
   const [board, setBoard] = useState<"parziale" | "generale" | "live">("generale");
   const [playerIds, setPlayerIds] = useState(initial.lineup.playerIds);

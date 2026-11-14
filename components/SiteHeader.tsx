@@ -7,6 +7,7 @@ import { createBrowserSupabase, hasPublicSupabaseEnv } from "@/lib/supabase/brow
 
 const LINKS = [
   { href: "/leghe", label: "Leghe" },
+  { href: "/albo", label: "Albo" },
   { href: "/rosa", label: "Rosa" },
   { href: "/rules", label: "Regolamento" },
 ];
@@ -14,6 +15,7 @@ const LINKS = [
 const TABS = [
   { href: "/", label: "Home", match: (pathname: string) => pathname === "/" },
   { href: "/leghe", label: "Leghe", match: (pathname: string) => pathname.startsWith("/leghe") },
+  { href: "/albo", label: "Albo", match: (pathname: string) => pathname.startsWith("/albo") },
   { href: "/rosa", label: "Rosa", match: (pathname: string) => pathname.startsWith("/rosa") },
   { href: "/rules", label: "Regole", match: (pathname: string) => pathname.startsWith("/rules") },
   { href: "/account", label: "Account", match: (pathname: string) => pathname.startsWith("/account") },

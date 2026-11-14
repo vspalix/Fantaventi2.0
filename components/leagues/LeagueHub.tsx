@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
@@ -301,6 +302,7 @@ export function LeagueHub({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const flight = useRef(false);
   const [now, setNow] = useState(() => Date.now());
 
   const selected = hub.gameweeks.find((gameweek) => gameweek.id === hub.selectedGameweekId) ?? null;
@@ -469,6 +471,7 @@ export function LeagueHub({
   }
 
   async function saveLineup() {
+    if (flight.current || pending) return;
     if (!selected || !canEdit) return;
     if (saveBlocked) {
       pushToast("err", `Non posso salvare perché ${saveReason}.`);
@@ -478,6 +481,7 @@ export function LeagueHub({
       pushToast("err", shapeIssue);
       return;
     }
+    flight.current = true;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -495,6 +499,7 @@ export function LeagueHub({
       setError(text);
       pushToast("err", text);
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
@@ -506,6 +511,8 @@ export function LeagueHub({
     regenerateCode?: boolean;
     rules: LeagueRules;
   }) {
+    if (flight.current) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -524,11 +531,14 @@ export function LeagueHub({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
 
   async function saveLeague(regenerateCode = false) {
+    if (flight.current) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -544,6 +554,7 @@ export function LeagueHub({
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
@@ -766,9 +777,10 @@ export function LeagueHub({
                         className="primary"
                         type="button"
                         disabled={pending || saveBlocked}
+                        aria-busy={pending}
                         onClick={() => void saveLineup()}
                       >
-                        {pending ? "Salvataggio..." : "Salva formazione"}
+                        <BusyLabel pending={pending} idle="Salva formazione" busy="Salvataggio..." />
                       </button>
                     </span>
                   </span>
@@ -1457,7 +1469,9 @@ function LeagueSettings({
                   : "Il calendario di questa competizione non ha ancora giornate."}
               </p>
             )}
-            <button className="primary" type="submit" disabled={pending || name.trim().length < 2}>Salva impostazioni</button>
+            <button className="primary" type="submit" disabled={pending || name.trim().length < 2} aria-busy={pending}>
+              <BusyLabel pending={pending} idle="Salva impostazioni" busy="Salvataggio..." />
+            </button>
           </form>
         ) : <p>Range e impostazioni restano a chi ha creato la lega.</p>}
       </section>

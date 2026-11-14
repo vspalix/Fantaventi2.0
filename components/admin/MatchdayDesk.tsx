@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LoadedVotes } from "@/components/admin/LoadedVotes";
+import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
 import type { AdminFiledLineup, TestLabSnapshot } from "@/lib/admin-types";
 import { pushToast } from "@/lib/toast";
@@ -61,6 +62,7 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
   const [lineups, setLineups] = useState<AdminFiledLineup[]>([]);
   const [scores, setScores] = useState<ScoreRow[]>([]);
   const [pending, setPending] = useState<string | null>(null);
+  const flight = useRef(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [votesStamp, setVotesStamp] = useState(0);
@@ -132,6 +134,8 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
   }, [leagueId, gameweekId, votesStamp]);
 
   async function run(label: string, task: () => Promise<string>) {
+    if (flight.current) return;
+    flight.current = true;
     setPending(label);
     setError(null);
     setNotice(null);
@@ -144,6 +148,7 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
       setError(text);
       pushToast("err", text);
     } finally {
+      flight.current = false;
       setPending(null);
     }
   }
@@ -173,13 +178,20 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
   }
 
   async function recalculate() {
-    if (!gameweek) return;
+    if (flight.current || !gameweek) return;
+    flight.current = true;
+    setPending("Ricalcolo…");
     const confirmed = window.confirm(
       closed
         ? `Ricalcolare la giornata ${gameweek.number} già chiusa? Punteggi e classifica di questa giornata vengono riscritti.`
         : `Calcolare punteggi e classifica della giornata ${gameweek.number}?`,
     );
-    if (!confirmed) return;
+    if (!confirmed) {
+      flight.current = false;
+      setPending(null);
+      return;
+    }
+    flight.current = false;
     await run("Ricalcolo…", async () => {
       if (closed) {
         const response = await fetch("/api/admin/match-control", {
@@ -270,8 +282,8 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
           Recupera i voti ufficiali delle partite iniziate da almeno 130 minuti, oppure carica un file. Sotto controlli chi ha già un voto.
         </p>
         <div className="row">
-          <button className="primary" type="button" disabled={pending !== null || !leagueId} onClick={() => void importVotes()}>
-            {pending === "Recupero i voti…" ? "Recupero…" : "Recupera i voti"}
+          <button className="primary" type="button" disabled={pending !== null || !leagueId} aria-busy={pending !== null} onClick={() => void importVotes()}>
+            <BusyLabel pending={pending === "Recupero i voti…"} idle="Recupera i voti" busy="Recupero…" />
           </button>
           <Link className="ghost" href="/admin/import-voti">Carica un file di voti</Link>
         </div>
@@ -287,8 +299,8 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
             ? "Questa giornata è già chiusa. Il ricalcolo riscrive i punteggi e la classifica di questo turno."
             : "Il calcolo usa i voti caricati e scrive la classifica di questa giornata."}
         </p>
-        <button className="primary" type="button" disabled={pending !== null || !leagueId || !gameweekId} onClick={() => void recalculate()}>
-          {pending === "Ricalcolo…" ? "Ricalcolo…" : closed ? "Ricalcola punteggi e classifica" : "Calcola punteggi e classifica"}
+        <button className="primary" type="button" disabled={pending !== null || !leagueId || !gameweekId} aria-busy={pending !== null} onClick={() => void recalculate()}>
+          <BusyLabel pending={pending === "Ricalcolo…"} idle={closed ? "Ricalcola punteggi e classifica" : "Calcola punteggi e classifica"} busy="Ricalcolo…" />
         </button>
         {orderedScores.length === 0 ? (
           <EmptyState title="Classifica di giornata vuota">

@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/admin", label: "Giornata" },
   { href: "/admin/import-voti", label: "Voti" },
   { href: "/admin/utenti", label: "Utenti" },
+  { href: "/admin/registro", label: "Registro" },
   { href: "/admin/leghe", label: "Leghe" },
   { href: "/admin/notifiche", label: "Notifiche" },
   { href: "/admin/news", label: "News" },

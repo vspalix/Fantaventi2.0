@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { removeParticipant } from "@/lib/server/leagues";
 import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
@@ -15,6 +16,12 @@ export async function DELETE(request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Manca la squadra da rimuovere." }, { status: 400 });
     }
     const league = await removeParticipant(user.id, leagueId, body.fantasyTeamId);
+    await writeAdminAudit(user.id, {
+      action: "league.expel",
+      targetType: "league",
+      targetId: leagueId,
+      detail: { fantasyTeamId: body.fantasyTeamId },
+    });
     return NextResponse.json({ league });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });

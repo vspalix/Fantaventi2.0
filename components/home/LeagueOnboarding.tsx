@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { BusyLabel } from "@/components/BusyLabel";
 import { useRouter } from "next/navigation";
 import { DEFAULT_LEAGUE_RULES } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
@@ -20,8 +21,11 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
   const [created, setCreated] = useState<LeagueSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const flight = useRef(false);
 
   async function createLeague() {
+    if (flight.current) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -38,11 +42,14 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
       setError(text);
       pushToast("err", text);
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
 
   async function joinLeague() {
+    if (flight.current) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -55,6 +62,7 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+      flight.current = false;
       setPending(false);
     }
   }
@@ -79,7 +87,9 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Lega degli uffici" autoFocus />
           </label>
           <div className="landing-actions">
-            <button className="primary" type="submit" disabled={pending || name.trim().length < 2}>Crea una Lega</button>
+            <button className="primary" type="submit" disabled={pending || name.trim().length < 2} aria-busy={pending}>
+              <BusyLabel pending={pending} idle="Crea una Lega" busy="Creazione..." />
+            </button>
             <button className="ghost" type="button" onClick={() => { setError(null); setStep("choose"); }}>Indietro</button>
           </div>
         </form>
@@ -91,7 +101,9 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
             <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="H7K2M9QA" autoFocus />
           </label>
           <div className="landing-actions">
-            <button className="primary" type="submit" disabled={pending || code.trim().length < 4}>Unisciti con Codice</button>
+            <button className="primary" type="submit" disabled={pending || code.trim().length < 4} aria-busy={pending}>
+              <BusyLabel pending={pending} idle="Unisciti con Codice" busy="Iscrizione..." />
+            </button>
             <button className="ghost" type="button" onClick={() => { setError(null); setStep("choose"); }}>Indietro</button>
           </div>
         </form>

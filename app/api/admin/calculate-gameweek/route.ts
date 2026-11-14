@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { calculateImportedGameweek } from "@/lib/server/match-control";
 import { errorMessage, errorStatus } from "@/lib/server/session";
@@ -16,6 +17,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Servono lega e giornata." }, { status: 400 });
     }
     const result = await meter("gameweek-calc", () => calculateImportedGameweek(user.id, { leagueId, gameweekId }));
+    await writeAdminAudit(user.id, {
+      action: "gameweek.calculate",
+      targetType: "gameweek",
+      targetId: gameweekId,
+      detail: { leagueId },
+    });
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });

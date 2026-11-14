@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import type { LeagueRules } from "@/lib/league-rules";
 import { getLeagueDetail, updateLeague } from "@/lib/server/leagues";
@@ -33,6 +34,14 @@ export async function PATCH(request: Request, context: RouteContext) {
       revokeDelegateUserId?: string;
     };
     const league = await updateLeague(user.id, leagueId, body);
+    if (body.rules) {
+      await writeAdminAudit(user.id, {
+        action: "league.rules",
+        targetType: "league",
+        targetId: leagueId,
+        detail: { rules: body.rules },
+      });
+    }
     return NextResponse.json({ league });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });

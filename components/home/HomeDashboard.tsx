@@ -56,6 +56,11 @@ export function HomeDashboard({ board }: { board: HomeBoard }) {
       <div className="dash-grid">
         {board.leagues.map((card) => <LeagueSummary key={card.id} card={card} />)}
         <LeagueOnboarding variant="card" />
+        <Link className="card" href="/albo">
+          <p className="small muted">Stagioni chiuse</p>
+          <h2>Albo d&apos;oro</h2>
+          <p>Vincitori, podio e record delle stagioni archiviate.</p>
+        </Link>
       </div>
       <div className="dash-grid">
         <article className="card">

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { importEmergencyVotes } from "@/lib/server/emergency-votes";
 import { importVotes } from "@/lib/server/import-votes";
@@ -22,6 +23,12 @@ export async function POST(request: Request) {
         replace: body.replace === true,
         superAdmin: true,
       });
+      await writeAdminAudit(user.id, {
+        action: "votes.manual",
+        targetType: "gameweek",
+        targetId: body.gameweekId,
+        detail: { source: "json", replace: body.replace === true },
+      });
       return NextResponse.json(result);
     }
     const form = await request.formData();
@@ -35,6 +42,12 @@ export async function POST(request: Request) {
     const emergency = provider === "emergency-votes" || /\.(json|csv)$/i.test(file.name);
     if (emergency) {
       const result = await importEmergencyVotes(gameweekId, file.name, bytes.toString("utf8"));
+      await writeAdminAudit(user.id, {
+        action: "votes.manual",
+        targetType: "gameweek",
+        targetId: gameweekId,
+        detail: { source: "file", fileName: file.name },
+      });
       return NextResponse.json(result);
     }
     const result = await importVotes(user.id, {
@@ -43,6 +56,12 @@ export async function POST(request: Request) {
       replace: form.get("replace") === "1",
       superAdmin: true,
       source: { fileName: file.name, bytes },
+    });
+    await writeAdminAudit(user.id, {
+      action: "votes.manual",
+      targetType: "gameweek",
+      targetId: gameweekId,
+      detail: { source: "file", fileName: file.name, provider },
     });
     return NextResponse.json(result);
   } catch (error) {

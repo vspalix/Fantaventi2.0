@@ -10,6 +10,7 @@ export type PlatformUserRow = {
   displayName: string;
   createdAt: string | null;
   mustResetPassword: boolean;
+  platformRole: "member" | "super_admin" | "unknown";
 };
 
 function fail(message: string, status: number) {
@@ -40,6 +41,16 @@ export async function listPlatformUsers(): Promise<PlatformUserRow[]> {
   const profiles = await admin
     .from("profiles")
     .select("id, email, first_name, last_name, phone, display_name, created_at, must_reset_password");
+  const roleById = new Map<string, string>();
+  let roleKnown = true;
+  const roles = await admin.from("profiles").select("id, platform_role");
+  if (roles.error) {
+    if (missing(roles.error.message)) roleKnown = false;
+    else throw new Error(roles.error.message);
+  } else {
+    for (const row of roles.data ?? []) roleById.set(row.id as string, String(row.platform_role ?? "member"));
+  }
+
   const byId = new Map<string, {
     email?: string | null;
     first_name?: string | null;
@@ -58,6 +69,9 @@ export async function listPlatformUsers(): Promise<PlatformUserRow[]> {
   return authUsers
     .map((user) => {
       const profile = byId.get(user.id);
+      const platformRole = !roleKnown
+        ? "unknown" as const
+        : roleById.get(user.id) === "super_admin" ? "super_admin" as const : "member" as const;
       return {
         id: user.id,
         email: profile?.email || user.email || "",
@@ -67,9 +81,21 @@ export async function listPlatformUsers(): Promise<PlatformUserRow[]> {
         displayName: profile?.display_name ?? "",
         createdAt: profile?.created_at ?? user.created_at ?? null,
         mustResetPassword: profile?.must_reset_password === true,
+        platformRole,
       };
     })
     .sort((left, right) => left.email.localeCompare(right.email, "it"));
+}
+
+export async function setPlatformRole(actorId: string, userId: string, role: "member" | "super_admin") {
+  if (actorId === userId) throw fail("Non puoi cambiare il tuo ruolo da qui.", 409);
+  const admin = createAdminSupabase();
+  const updated = await admin.from("profiles").update({ platform_role: role }).eq("id", userId).select("id").maybeSingle();
+  if (updated.error) {
+    if (missing(updated.error.message)) throw fail("Per nominare un super admin esegui platform_access.sql.", 409);
+    throw new Error(updated.error.message);
+  }
+  if (!updated.data) throw fail("Profilo non trovato.", 404);
 }
 
 export async function requirePasswordReset(userId: string) {

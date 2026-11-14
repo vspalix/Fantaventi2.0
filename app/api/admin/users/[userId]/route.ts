@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { deletePlatformUser, requirePasswordReset } from "@/lib/server/platform-users";
+import { writeAdminAudit } from "@/lib/server/audit";
+import { deletePlatformUser, requirePasswordReset, setPlatformRole } from "@/lib/server/platform-users";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
 
@@ -16,6 +17,27 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 }
 
+export async function PATCH(request: Request, context: RouteContext) {
+  try {
+    const admin = await requireSuperAdmin();
+    const { userId } = await context.params;
+    const body = (await request.json()) as { platformRole?: string };
+    if (body.platformRole !== "super_admin" && body.platformRole !== "member") {
+      return NextResponse.json({ error: "Ruolo non riconosciuto." }, { status: 400 });
+    }
+    await setPlatformRole(admin.id, userId, body.platformRole);
+    await writeAdminAudit(admin.id, {
+      action: "user.role",
+      targetType: "user",
+      targetId: userId,
+      detail: { platformRole: body.platformRole },
+    });
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+  }
+}
+
 export async function DELETE(_request: Request, context: RouteContext) {
   try {
     const admin = await requireSuperAdmin();
@@ -24,6 +46,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
       return NextResponse.json({ error: "Il tuo account si elimina dalla pagina Account." }, { status: 409 });
     }
     await deletePlatformUser(userId);
+    await writeAdminAudit(admin.id, { action: "user.delete", targetType: "user", targetId: userId });
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });

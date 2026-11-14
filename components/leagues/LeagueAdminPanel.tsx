@@ -10,6 +10,7 @@ import {
   type LeaguePhase,
   type LeagueRules,
 } from "@/lib/league-rules";
+import { BusyLabel } from "@/components/BusyLabel";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import type { LeagueDetail } from "@/lib/types";
 
@@ -411,7 +412,9 @@ export function LeagueAdminPanel({
             Aggiungi checkpoint
           </button>
         </div>
-        <button className="primary" type="submit" disabled={pending || name.trim().length < 2}>Salva la lega</button>
+        <button className="primary" type="submit" disabled={pending || name.trim().length < 2} aria-busy={pending}>
+          <BusyLabel pending={pending} idle="Salva la lega" busy="Salvataggio..." />
+        </button>
       </form>
     </div>
   );

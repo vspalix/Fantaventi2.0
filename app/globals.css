@@ -66,6 +66,18 @@ button { cursor: pointer; }
 .primary { background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 700; }
 .danger { background: transparent; color: var(--danger); border: 1px solid #7a4036; font-weight: 700; }
 .primary:disabled, .ghost:disabled, .danger:disabled, .togli:disabled { opacity: 0.45; cursor: not-allowed; }
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 8px;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -2px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .save-lineup { display: inline-flex; }
 .save-lineup[data-blocked="true"] { cursor: not-allowed; }
 .save-lineup[data-blocked="true"] .primary:disabled { pointer-events: none; }
@@ -747,7 +759,7 @@ button.shirt-empty:disabled { cursor: default; }
   .mode-switch button { min-height: 44px; padding: 10px 14px; }
   .tabbar {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     position: fixed;
     left: 0;
     right: 0;
@@ -765,7 +777,7 @@ button.shirt-empty:disabled { cursor: default; }
     min-height: 48px;
     padding: 6px 2px;
     border-radius: 12px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 650;
     white-space: nowrap;
   }

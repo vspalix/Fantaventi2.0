@@ -13,10 +13,10 @@ export default async function AdminUsersPage() {
       <section className="stack">
         <header>
           <h1 className="section-title">Utenti</h1>
-          <p className="lede">Account registrati, email e telefono. La reimpostazione obbliga a scegliere una nuova password al prossimo accesso.</p>
+          <p className="lede">Account registrati. Da qui nomini un altro super admin: avrà laboratorio e registro, come te. Non puoi toglierti il ruolo da solo.</p>
         </header>
         <AdminNav />
-        <UserDesk initial={users} />
+        <UserDesk initial={users} currentUserId={user.id} />
       </section>
     );
   } catch (error) {

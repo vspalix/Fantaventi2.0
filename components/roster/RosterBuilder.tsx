@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearInviteCookie, joinHref, readInviteCookie } from "@/lib/invite";
 import { pushToast } from "@/lib/toast";
+import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
 import { ClubGrid } from "@/components/roster/ClubGrid";
 import { ClubModal } from "@/components/roster/ClubModal";
@@ -43,6 +44,7 @@ export function RosterBuilder({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(loadError);
   const [pending, setPending] = useState(false);
+  const flight = useRef(false);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const market: RosterMarket = initialRoster?.market ?? { locked: false, gameweekNumber: null, message: null };
   const [appliesFrom, setAppliesFrom] = useState(initialRoster?.appliesFrom ?? 1);
@@ -132,7 +134,8 @@ export function RosterBuilder({
   }
 
   async function save() {
-    if (locked || !report.ready) return;
+    if (flight.current || locked || !report.ready) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -177,6 +180,7 @@ export function RosterBuilder({
       setError(text);
       pushToast("err", text);
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
@@ -200,8 +204,8 @@ export function RosterBuilder({
         <button className="danger" type="button" disabled={pending || locked || selectedIds.length === 0} onClick={resetRoster}>
           Ricomincia da zero
         </button>
-        <button className="primary" type="button" disabled={pending || locked || !report.ready || !catalog} onClick={() => void save()}>
-          {pending ? "Validazione..." : "Salva rosa"}
+        <button className="primary" type="button" disabled={pending || locked || !report.ready || !catalog} aria-busy={pending} onClick={() => void save()}>
+          <BusyLabel pending={pending} idle="Salva rosa" busy="Salvataggio..." />
         </button>
       </div>
       {market.message ? <p className="banner">{market.message}</p> : (

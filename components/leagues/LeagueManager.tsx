@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BONUS_FIELDS, COMPETITION_FORMATS, DEFAULT_LEAGUE_RULES, defaultPhases, type CompetitionFormat, type LeagueRules } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary } from "@/lib/types";
@@ -25,6 +26,7 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
   const [created, setCreated] = useState<(LeagueSummary & { rulesStored?: boolean }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const flight = useRef(false);
 
   useEffect(() => {
     if (!signedIn) return;
@@ -46,6 +48,8 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
   }, [signedIn]);
 
   async function createLeague() {
+    if (flight.current) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -63,11 +67,14 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
       setError(text);
       pushToast("err", text);
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
 
   async function joinLeague() {
+    if (flight.current) return;
+    flight.current = true;
     setPending(true);
     setError(null);
     try {
@@ -79,6 +86,7 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
       router.push(`/leghe/${body.league.id}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+      flight.current = false;
       setPending(false);
     }
   }
@@ -238,8 +246,8 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
                 Avanti
               </button>
             ) : (
-              <button className="primary" type="submit" disabled={pending || name.trim().length < 2}>
-                Crea lega
+              <button className="primary" type="submit" disabled={pending || name.trim().length < 2} aria-busy={pending}>
+                <BusyLabel pending={pending} idle="Crea lega" busy="Creazione..." />
               </button>
             )}
           </div>
@@ -251,8 +259,8 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
             Codice invito
             <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="H7K2M9QA" />
           </label>
-          <button className="primary" type="submit" disabled={pending || code.trim().length < 4}>
-            Entra nella lega
+          <button className="primary" type="submit" disabled={pending || code.trim().length < 4} aria-busy={pending}>
+            <BusyLabel pending={pending} idle="Entra nella lega" busy="Iscrizione..." />
           </button>
         </form>
       </div>
@@ -270,7 +278,10 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
                   className="primary"
                   type="button"
                   disabled={pending}
+                  aria-busy={pending}
                   onClick={() => {
+                    if (flight.current) return;
+                    flight.current = true;
                     setPending(true);
                     setError(null);
                     void fetch("/api/leagues/join", {
@@ -282,11 +293,12 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
                       .then((body) => router.push(`/leghe/${body.league.id}`))
                       .catch((reason: unknown) => {
                         setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+                        flight.current = false;
                         setPending(false);
                       });
                   }}
                 >
-                  Entra
+                  <BusyLabel pending={pending} idle="Entra" busy="Iscrizione..." />
                 </button>
               </li>
             ))}

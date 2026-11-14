@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { IBM_Plex_Sans } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
@@ -13,6 +14,13 @@ import { hostAccess } from "@/lib/server/view-mode";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import "./globals.css";
+
+const sans = IBM_Plex_Sans({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
+  variable: "--font-sans",
+});
 
 export const metadata = {
   title: "Fantaventi",
@@ -55,7 +63,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   }
   return (
     <html lang="it">
-      <body>
+      <body className={sans.variable}>
         <SiteHeader
           email={user?.email ?? null}
           seasons={seasons}

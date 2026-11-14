@@ -1,3 +1,4 @@
+import type { MatchHold } from "@/lib/server/held-lineup";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { schemaHint, scoreOfficialGameweek } from "@/lib/server/live-score";
@@ -150,12 +151,11 @@ export async function calculateImportedGameweek(userId: string, input: { leagueI
     throw httpError("Carica prima i voti ufficiali di questa giornata.", 409);
   }
 
-  const matches = await admin.from("real_matches").select("status").eq("gameweek_id", gameweek.id);
-  if (matches.error) throw new Error(schemaHint(matches.error.message));
-  const rows = matches.data ?? [];
+  const matches = await loadMatchGate(admin, gameweek.id);
+  const rows = matches;
   if (rows.length === 0) throw httpError("Questa giornata non ha partite. Importa il calendario della competizione.", 409);
-  if (rows.some((match) => match.status !== "finished")) {
-    throw httpError("Segna prima tutte le partite come finite.", 409);
+  if (rows.some((match) => match.status !== "finished" && !match.held)) {
+    throw httpError("Segna prima tutte le partite come finite. Una rinviata o sospesa può restare fuori.", 409);
   }
 
   const scored = await scoreOfficialGameweek(gameweek.id);
@@ -184,29 +184,69 @@ export async function calculateImportedGameweek(userId: string, input: { leagueI
 }
 
 export async function setMatchPostponed(matchId: string, postponed: boolean) {
+  const result = await setMatchHold(matchId, postponed ? "postponed" : "none");
+  return {
+    matchId,
+    gameweekId: result.gameweekId,
+    postponed: result.hold !== "none",
+  };
+}
+
+export async function setMatchHold(matchId: string, hold: MatchHold) {
+  if (hold !== "none" && hold !== "postponed" && hold !== "suspended") {
+    throw httpError("Stato partita non riconosciuto.", 400);
+  }
   const admin = createAdminSupabase();
   const match = await admin
     .from("real_matches")
-    .select("id, status, gameweek_id")
+    .select("id, gameweek_id, home_club_id, away_club_id")
     .eq("id", matchId)
     .maybeSingle();
   if (match.error) throw new Error(match.error.message);
   if (!match.data) throw httpError("Partita non trovata.", 404);
-  if (postponed && match.data.status === "finished") {
-    throw httpError("Una partita già chiusa non si segna come rinviata. Correggi i voti con il ricalcolo straordinario.", 409);
+  const postponed = hold !== "none";
+  let updated = await admin.from("real_matches").update({ postponed, hold_status: hold }).eq("id", matchId);
+  if (updated.error && /hold_status|schema cache|could not find/i.test(updated.error.message)) {
+    if (hold === "suspended") {
+      throw httpError("Per segnare una partita sospesa esegui match_hold.sql.", 409);
+    }
+    updated = await admin.from("real_matches").update({ postponed }).eq("id", matchId);
   }
-  const updated = await admin.from("real_matches").update({ postponed }).eq("id", matchId);
   if (updated.error) {
     if (/postponed|schema cache|could not find/i.test(updated.error.message)) {
-      throw httpError("Manca la colonna postponed. Esegui match_postponed.sql.", 409);
+      throw httpError("Manca la colonna postponed. Esegui match_postponed.sql e match_hold.sql.", 409);
     }
     throw new Error(updated.error.message);
   }
   return {
     matchId,
     gameweekId: match.data.gameweek_id as string,
+    hold,
     postponed,
+    homeClubId: match.data.home_club_id as string,
+    awayClubId: match.data.away_club_id as string,
   };
+}
+
+async function loadMatchGate(admin: ReturnType<typeof createAdminSupabase>, gameweekId: string) {
+  const withHold = await admin
+    .from("real_matches")
+    .select("status, postponed, hold_status")
+    .eq("gameweek_id", gameweekId);
+  const withPostponed = withHold.error && /hold_status|schema cache|could not find/i.test(withHold.error.message)
+    ? await admin.from("real_matches").select("status, postponed").eq("gameweek_id", gameweekId)
+    : withHold;
+  const plain = withPostponed.error && /postponed|schema cache|could not find/i.test(withPostponed.error.message)
+    ? await admin.from("real_matches").select("status").eq("gameweek_id", gameweekId)
+    : withPostponed;
+  if (plain.error) throw new Error(schemaHint(plain.error.message));
+  return (plain.data ?? []).map((match) => {
+    const row = match as { status?: string; postponed?: boolean | null; hold_status?: string | null };
+    return {
+      status: String(row.status),
+      held: row.hold_status === "postponed" || row.hold_status === "suspended" || row.postponed === true,
+    };
+  });
 }
 
 export async function recalculateExtraordinary(gameweekId: string) {
@@ -233,5 +273,56 @@ export async function recalculateExtraordinary(gameweekId: string) {
     skipped: scored.skipped,
     reason: scored.reason,
     board,
+    partial: false,
+  };
+}
+
+export async function recalculatePartial(gameweekId: string, clubIds: string[]) {
+  const clubs = [...new Set(clubIds.filter(Boolean))];
+  if (clubs.length === 0) throw httpError("Servono i club del recupero.", 400);
+  const admin = createAdminSupabase();
+  const week = await admin.from("gameweeks").select("id, number, status, season_id").eq("id", gameweekId).maybeSingle();
+  if (week.error) throw new Error(week.error.message);
+  if (!week.data) throw httpError("Giornata non trovata.", 404);
+  if (week.data.status === "final") {
+    throw httpError(`La giornata ${week.data.number} è final e non si ricalcola.`, 409);
+  }
+  if (week.data.status !== "scored") {
+    throw httpError("Il ricalcolo parziale vale su una giornata già calcolata.", 409);
+  }
+  const registered = await admin
+    .from("player_registrations")
+    .select("player_id")
+    .eq("season_id", week.data.season_id as string)
+    .in("club_id", clubs);
+  if (registered.error) throw new Error(registered.error.message);
+  const playerIds = [...new Set((registered.data ?? []).map((row) => row.player_id as string))];
+  const lineups = playerIds.length === 0
+    ? { data: [], error: null }
+    : await admin.from("lineups").select("id, fantasy_team_id").eq("gameweek_id", gameweekId);
+  if (lineups.error) throw new Error(lineups.error.message);
+  const lineupIds = (lineups.data ?? []).map((row) => row.id as string);
+  const slots = lineupIds.length === 0 || playerIds.length === 0
+    ? { data: [], error: null }
+    : await admin.from("lineup_slots").select("lineup_id").in("lineup_id", lineupIds).in("player_id", playerIds);
+  if (slots.error) throw new Error(slots.error.message);
+  const hit = new Set((slots.data ?? []).map((row) => row.lineup_id as string));
+  const teamIds = [...new Set((lineups.data ?? []).flatMap((row) => hit.has(row.id as string) ? [row.fantasy_team_id as string] : []))];
+  if (teamIds.length === 0) {
+    return {
+      gameweekNumber: Number(week.data.number),
+      teams: 0,
+      skipped: false,
+      reason: null,
+      partial: true,
+    };
+  }
+  const scored = await scoreOfficialGameweek(gameweekId, { allowRewrite: true, teamIds });
+  return {
+    gameweekNumber: Number(week.data.number),
+    teams: scored.teams,
+    skipped: scored.skipped,
+    reason: scored.reason,
+    partial: true,
   };
 }

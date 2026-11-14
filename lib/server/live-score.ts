@@ -9,6 +9,7 @@ import {
   type TeamScore,
 } from "@/lib/engine/calculator";
 import { fileForgottenLineups } from "@/lib/server/forgotten-lineup";
+import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { isOfficialMatchClosed, isSettledGameweek } from "@/lib/server/match-window";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
@@ -357,10 +358,16 @@ export async function scoreOfficialGameweek(
     };
   }
 
-  const listed = await admin.from("real_matches").select("status, kickoff_at").eq("gameweek_id", gameweekId);
-  if (listed.error) {
-    if (!/real_matches|schema cache|could not find/i.test(listed.error.message)) throw new Error(listed.error.message);
-  } else if ((listed.data ?? []).some((match) => !isOfficialMatchClosed(String(match.status), String(match.kickoff_at ?? ""), new Date()))) {
+  const listed = await admin.from("real_matches").select("status, kickoff_at, postponed, hold_status").eq("gameweek_id", gameweekId);
+  const plainListed = listed.error && /postponed|hold_status|schema cache|could not find/i.test(listed.error.message)
+    ? await admin.from("real_matches").select("status, kickoff_at").eq("gameweek_id", gameweekId)
+    : listed;
+  if (plainListed.error) {
+    if (!/real_matches|schema cache|could not find/i.test(plainListed.error.message)) throw new Error(plainListed.error.message);
+  } else if ((plainListed.data ?? []).some((match) => {
+    const row = match as { status?: string; kickoff_at?: string; postponed?: boolean | null; hold_status?: string | null };
+    return !isHeldMatch(row) && !isOfficialMatchClosed(String(row.status), String(row.kickoff_at ?? ""), new Date());
+  })) {
     return {
       gameweekNumber,
       teams: 0,
@@ -373,10 +380,17 @@ export async function scoreOfficialGameweek(
   await fileForgottenLineups(gameweekId, options?.teamIds);
   const context = await loadContext(gameweekId);
   const limited = options?.teamIds ? new Set(options.teamIds) : null;
+  const lineupSize = context.definition.lineup_size ?? 11;
   const scores = context.lineups
     .filter((lineup) => !limited || limited.has(lineup.fantasyTeamId))
     .map((lineup) => (
-      scoreLineup(lineup.fantasyTeamId, lineup.slots, context.stats, context.definition)
+      scoreLineup(
+        lineup.fantasyTeamId,
+        lineup.slots,
+        context.stats,
+        context.definition,
+        holeIdsKeepingHeldPlayers(lineup.slots, context.stats, lineupSize),
+      )
     ));
   const teamIds = scores.map((score) => score.fantasyTeamId);
   if (scores.length > 0) {

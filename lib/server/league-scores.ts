@@ -1,4 +1,5 @@
 import { scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
+import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import type { PlayerRole } from "@/lib/types";
@@ -59,10 +60,11 @@ export async function fantasyPointsForLeague(
 
   const { data: registrations, error: registrationError } = await admin
     .from("player_registrations")
-    .select("player_id, role, effective_from_gameweek, effective_to_gameweek")
+    .select("player_id, club_id, role, effective_from_gameweek, effective_to_gameweek")
     .eq("season_id", seasonId);
   if (registrationError) throw new Error(registrationError.message);
 
+  const heldByWeek = await heldClubsByWeek(gameweekIds);
   const slotsByLineup = new Map<string, SlotRow[]>();
   for (const slot of (slotsQuery.data ?? []) as SlotRow[]) {
     const lineupId = slot.lineup_id ?? "";
@@ -77,11 +79,13 @@ export async function fantasyPointsForLeague(
     const number = numberById.get(gameweekId);
     if (number === undefined) continue;
     const roles = new Map<string, PlayerRole>();
+    const clubByPlayer = new Map<string, string>();
     for (const row of registrations ?? []) {
       const from = row.effective_from_gameweek as number;
       const until = row.effective_to_gameweek as number | null;
       if (from > number || (until !== null && until < number)) continue;
       roles.set(row.player_id as string, row.role as PlayerRole);
+      clubByPlayer.set(row.player_id as string, row.club_id as string);
     }
     const stats = new Map<string, PlayerStat>();
     for (const row of statRows ?? []) {
@@ -109,7 +113,36 @@ export async function fantasyPointsForLeague(
       role: roles.get(slot.player_id),
       benchOrder: slot.is_starter === false ? Number(slot.slot_order ?? 0) : undefined,
     }));
-    const score = scoreLineup(lineup.fantasy_team_id as string, slots, stats, definition);
+    const held = heldByWeek.get(gameweekId);
+    if (held && held.size > 0) {
+      for (const slot of slots) {
+        const clubId = clubByPlayer.get(slot.playerId);
+        if (!clubId || !held.has(clubId)) continue;
+        const current = stats.get(slot.playerId);
+        stats.set(slot.playerId, {
+          playerId: slot.playerId,
+          role: slot.role ?? current?.role ?? "MID",
+          voto: null,
+          goals: 0,
+          assists: 0,
+          yellowCards: 0,
+          redCards: 0,
+          penaltiesScored: 0,
+          penaltiesMissed: 0,
+          penaltiesSaved: 0,
+          ownGoals: 0,
+          goalsConceded: 0,
+          postponed: true,
+        });
+      }
+    }
+    const score = scoreLineup(
+      lineup.fantasy_team_id as string,
+      slots,
+      stats,
+      definition,
+      holeIdsKeepingHeldPlayers(slots, stats, definition.lineup_size ?? 11),
+    );
     const officePenalty = rules.missedLineup === "penalty" && (lineup as { origin?: string }).origin === "office";
     points.set(`${lineup.fantasy_team_id as string}:${gameweekId}`, officePenalty ? rules.missedLineupPenalty : score.total);
   }
@@ -122,4 +155,27 @@ export async function fantasyPointsForLeague(
     }
   }
   return points;
+}
+
+async function heldClubsByWeek(gameweekIds: string[]) {
+  const map = new Map<string, Set<string>>();
+  if (gameweekIds.length === 0) return map;
+  const admin = createAdminSupabase();
+  const withHold = await admin
+    .from("real_matches")
+    .select("gameweek_id, home_club_id, away_club_id, postponed, hold_status")
+    .in("gameweek_id", gameweekIds);
+  const plain = withHold.error && /hold_status|schema cache|could not find/i.test(withHold.error.message)
+    ? await admin.from("real_matches").select("gameweek_id, home_club_id, away_club_id, postponed").in("gameweek_id", gameweekIds)
+    : withHold;
+  if (plain.error) return map;
+  for (const row of plain.data ?? []) {
+    if (!isHeldMatch(row)) continue;
+    const weekId = row.gameweek_id as string;
+    const clubs = map.get(weekId) ?? new Set<string>();
+    clubs.add(row.home_club_id as string);
+    clubs.add(row.away_club_id as string);
+    map.set(weekId, clubs);
+  }
+  return map;
 }

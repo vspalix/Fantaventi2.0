@@ -33,8 +33,8 @@ export function buildOfficialRegulation(leagueName: string, rules: LeagueRules) 
     ? `L'imbattibilità del portiere vale **${signed(rules.cleanSheetPoints)}** se ha un voto e non subisce gol.`
     : "L'imbattibilità del portiere è **spenta**.";
   const postponed = rules.postponement === "political_six"
-    ? "In questa lega una partita rinviata assegna il **6 politico**."
-    : "In questa lega una partita rinviata resta in **attesa del recupero**: niente 6 politico.";
+    ? "Una partita rinviata o sospesa assegna il **6 politico**, senza bonus né malus, finché non arrivano i voti veri."
+    : "Una partita rinviata o sospesa resta **fuori dal calcolo** finché non viene disputata: niente 6 politico e niente riserva al suo posto.";
   const formatName = rules.format === "h2h"
     ? "Scontri diretti: i fantapunti diventano gol con le soglie della lega, poi 3 punti alla vittoria, 1 al pareggio e 0 alla sconfitta."
     : rules.format === "hybrid"

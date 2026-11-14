@@ -16,6 +16,8 @@ const ACTION_LABEL: Record<string, string> = {
   "votes.recover": "Recupero voti della giornata",
   "votes.manual": "Modifica manuale dei voti",
   "match.postponed": "Rinvio di una partita",
+  "match.hold": "Stato di una partita rinviata o sospesa",
+  "gameweek.recalculate_partial": "Ricalcolo parziale di una giornata",
   "league.rules": "Cambio regole della lega",
   "league.expel": "Espulsione di un utente",
   "user.delete": "Eliminazione di un account",

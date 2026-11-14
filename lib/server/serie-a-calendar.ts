@@ -249,11 +249,20 @@ export async function listGameweekMatches(userId: string, gameweekId: string) {
       for (const row of shorts.data ?? []) names.set(row.club_id as string, row.short_name as string);
     }
   }
-  const flags = await admin.from("real_matches").select("id, postponed").eq("gameweek_id", gameweekId);
+  const withHold = await admin.from("real_matches").select("id, postponed, hold_status").eq("gameweek_id", gameweekId);
+  const flags = withHold.error && /hold_status|schema cache|could not find/i.test(withHold.error.message)
+    ? await admin.from("real_matches").select("id, postponed").eq("gameweek_id", gameweekId)
+    : withHold;
   const postponedIds = new Set<string>();
+  const holdById = new Map<string, "none" | "postponed" | "suspended">();
   if (!flags.error) {
-    for (const row of flags.data ?? []) {
-      if (row.postponed) postponedIds.add(row.id as string);
+    for (const item of flags.data ?? []) {
+      const row = item as { id: string; postponed?: boolean | null; hold_status?: string | null };
+      const hold = row.hold_status === "postponed" || row.hold_status === "suspended"
+        ? row.hold_status
+        : row.postponed ? "postponed" as const : "none" as const;
+      holdById.set(row.id as string, hold);
+      if (hold !== "none") postponedIds.add(row.id as string);
     }
   }
   return {
@@ -267,6 +276,9 @@ export async function listGameweekMatches(userId: string, gameweekId: string) {
       kickoffAt: row.kickoff_at as string,
       status: row.status as string,
       postponed: postponedIds.has(row.id as string),
+      hold: holdById.get(row.id as string) ?? "none",
+      homeClubId: row.home_club_id as string,
+      awayClubId: row.away_club_id as string,
       kickoffLocked: Boolean((row as { kickoff_locked?: boolean }).kickoff_locked),
       homeGoals: goalOf((row as { home_goals?: number | null }).home_goals),
       awayGoals: goalOf((row as { away_goals?: number | null }).away_goals),

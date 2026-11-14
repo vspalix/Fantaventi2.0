@@ -8,6 +8,8 @@ import { EmptyState } from "@/components/EmptyState";
 import type { AdminFiledLineup, TestLabSnapshot } from "@/lib/admin-types";
 import { pushToast } from "@/lib/toast";
 
+type MatchHold = "none" | "postponed" | "suspended";
+
 type MatchRow = {
   id: string;
   home: string;
@@ -15,6 +17,9 @@ type MatchRow = {
   kickoffAt: string;
   status: string;
   postponed?: boolean;
+  hold?: MatchHold;
+  homeClubId?: string;
+  awayClubId?: string;
   homeGoals: number | null;
   awayGoals: number | null;
 };
@@ -51,6 +56,17 @@ async function readJson<T>(response: Response): Promise<T> {
 
 function points(value: number) {
   return value.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+}
+
+function holdOf(match: MatchRow): MatchHold {
+  if (match.hold === "postponed" || match.hold === "suspended") return match.hold;
+  return match.postponed ? "postponed" : "none";
+}
+
+function holdLabel(hold: MatchHold) {
+  if (hold === "postponed") return "rinviata";
+  if (hold === "suspended") return "sospesa";
+  return "in calendario";
 }
 
 export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
@@ -216,18 +232,58 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
     });
   }
 
-  async function setPostponed(match: MatchRow, postponed: boolean) {
-    await run(postponed ? "Segno il rinvio…" : "Tolgo il rinvio…", async () => {
+  async function setHold(match: MatchRow, hold: MatchHold) {
+    if (flight.current || hold === holdOf(match)) return;
+    flight.current = true;
+    setPending("Stato partita…");
+    const confirmed = window.confirm(`Segnare ${match.home} – ${match.away} come ${holdLabel(hold)}?`);
+    if (!confirmed) {
+      flight.current = false;
+      setPending(null);
+      return;
+    }
+    flight.current = false;
+    await run("Stato partita…", async () => {
       const response = await fetch("/api/admin/match-control", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "postponed", matchId: match.id, postponed }),
+        body: JSON.stringify({ action: "hold", matchId: match.id, hold }),
       });
-      await readJson(response);
-      setMatches((current) => current.map((item) => item.id === match.id ? { ...item, postponed } : item));
-      return postponed
-        ? `${match.home} – ${match.away} segnata come rinviata. I suoi voti restano fuori dal calcolo.`
-        : `${match.home} – ${match.away}: rinvio tolto. Ricalcola la giornata per applicare i voti del recupero.`;
+      const body = await readJson<{ hold: MatchHold }>(response);
+      setMatches((current) => current.map((item) => item.id === match.id ? { ...item, hold: body.hold, postponed: body.hold !== "none" } : item));
+      if (body.hold === "suspended") return `${match.home} – ${match.away} sospesa: i voti restano fuori finché non li confermi.`;
+      if (body.hold === "postponed") return `${match.home} – ${match.away} rinviata: quei club restano fuori dal calcolo finché non si gioca.`;
+      return `${match.home} – ${match.away} di nuovo in calendario. Se i voti del recupero sono già importati, lancia il ricalcolo parziale o totale.`;
+    });
+  }
+
+  async function recalculatePartial(match: MatchRow) {
+    if (flight.current || !gameweek || !closed) return;
+    flight.current = true;
+    setPending("Ricalcolo parziale…");
+    const confirmed = window.confirm(
+      `Ricalcolare solo le squadre che schierano un calciatore di ${match.home} o ${match.away}? Il resto della giornata ${gameweek.number} resta com'è.`,
+    );
+    if (!confirmed) {
+      flight.current = false;
+      setPending(null);
+      return;
+    }
+    flight.current = false;
+    await run("Ricalcolo parziale…", async () => {
+      const response = await fetch("/api/admin/match-control", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "recalculate-partial",
+          gameweekId,
+          clubIds: [match.homeClubId, match.awayClubId].filter(Boolean),
+        }),
+      });
+      const body = await readJson<{ gameweekNumber?: number; teams?: number; skipped?: boolean; reason?: string | null }>(response);
+      setVotesStamp((stamp) => stamp + 1);
+      if (body.skipped) return body.reason ?? "Ricalcolo parziale non eseguito: ci sono ancora partite aperte.";
+      return `Ricalcolo parziale giornata ${body.gameweekNumber ?? gameweek.number}: ${body.teams ?? 0} squadre aggiornate.`;
     });
   }
 
@@ -296,11 +352,11 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
         <h2>Punteggi e classifica</h2>
         <p className="small muted">
           {closed
-            ? "Questa giornata è già chiusa. Il ricalcolo riscrive i punteggi e la classifica di questo turno."
-            : "Il calcolo usa i voti caricati e scrive la classifica di questa giornata."}
+            ? "Questa giornata è già chiusa. Il ricalcolo totale riscrive tutte le squadre. Il ricalcolo parziale, più sotto, tocca solo chi schiera i club del recupero."
+            : "Il calcolo usa i voti caricati. Una partita rinviata o sospesa non blocca le altre: quei club restano fuori."}
         </p>
         <button className="primary" type="button" disabled={pending !== null || !leagueId || !gameweekId} aria-busy={pending !== null} onClick={() => void recalculate()}>
-          <BusyLabel pending={pending === "Ricalcolo…"} idle={closed ? "Ricalcola punteggi e classifica" : "Calcola punteggi e classifica"} busy="Ricalcolo…" />
+          <BusyLabel pending={pending === "Ricalcolo…"} idle={closed ? "Ricalcolo totale" : "Calcola punteggi e classifica"} busy="Ricalcolo…" />
         </button>
         {orderedScores.length === 0 ? (
           <EmptyState title="Classifica di giornata vuota">
@@ -329,9 +385,11 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
       </section>
 
       <section className="card stack" id="rinvii">
-        <h2>Rinvii e override</h2>
+        <h2>Rinviate e sospese</h2>
         <p className="small muted">
-          Una partita rinviata tiene fuori i voti di quei club. Quando il recupero è giocato, togli il rinvio e ricalcola la giornata.
+          Rinviata: la partita non si è giocata. Sospesa: i voti sono sub iudice. In entrambi i casi quei club non entrano nel calcolo.
+          Se il regolamento della lega prevede il 6 politico, lo prende chi li schiera; altrimenti restano fuori finché non rimetti la partita in calendario.
+          Quando i voti veri del recupero sono importati, un click ricalcola solo quelle squadre oppure tutta la giornata.
         </p>
         {matches.length === 0 ? (
           <EmptyState title="Nessuna partita">
@@ -346,17 +404,27 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
                   <span className="small muted">
                     {kickoffFormat.format(new Date(match.kickoffAt))}
                     {match.homeGoals != null && match.awayGoals != null ? ` · ${match.homeGoals}-${match.awayGoals}` : ""}
-                    {match.postponed ? " · rinviata" : ""}
+                    {holdOf(match) === "postponed" ? " · rinviata" : ""}
+                    {holdOf(match) === "suspended" ? " · sospesa" : ""}
                   </span>
                 </span>
-                <button
-                  className={match.postponed ? "ghost" : "primary"}
-                  type="button"
-                  disabled={pending !== null}
-                  onClick={() => void setPostponed(match, !match.postponed)}
-                >
-                  {match.postponed ? "Recupero concluso" : "Segna rinviata"}
-                </button>
+                <label className="small">
+                  Stato
+                  <select
+                    value={holdOf(match)}
+                    disabled={pending !== null}
+                    onChange={(event) => void setHold(match, event.target.value as MatchHold)}
+                  >
+                    <option value="none">In calendario</option>
+                    <option value="postponed">Rinviata</option>
+                    <option value="suspended">Sospesa</option>
+                  </select>
+                </label>
+                {closed && holdOf(match) === "none" ? (
+                  <button className="ghost" type="button" disabled={pending !== null} onClick={() => void recalculatePartial(match)}>
+                    <BusyLabel pending={pending === "Ricalcolo parziale…"} idle="Ricalcolo parziale" busy="Ricalcolo…" />
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>

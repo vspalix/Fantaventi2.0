@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { ClubGrid } from "@/components/roster/ClubGrid";
 import { ClubModal } from "@/components/roster/ClubModal";
 import { RosterSidebar } from "@/components/roster/RosterSidebar";
+import { useTapGuard } from "@/components/useTapGuard";
 import { evaluateRoster } from "@/lib/constraints";
 import type { CatalogPlayer, CatalogResponse, PlayerRole, RosterMarket, RosterState } from "@/lib/types";
 
@@ -45,6 +46,7 @@ export function RosterBuilder({
   const [error, setError] = useState<string | null>(loadError);
   const [pending, setPending] = useState(false);
   const flight = useRef(false);
+  const picks = useTapGuard();
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const market: RosterMarket = initialRoster?.market ?? { locked: false, gameweekNumber: null, message: null };
   const [appliesFrom, setAppliesFrom] = useState(initialRoster?.appliesFrom ?? 1);
@@ -96,45 +98,47 @@ export function RosterBuilder({
   const closeClub = useCallback(() => setOpenClubId(null), []);
 
   function removePlayer(playerId: string) {
-    if (locked) return;
-    setMessage(null);
-    setSelectedIds(selectedIds.filter((id) => id !== playerId));
+    if (locked || pending) return;
+    picks.occupy(playerId, () => {
+      setMessage(null);
+      setSelectedIds((current) => current.filter((id) => id !== playerId));
+    });
   }
 
   function resetRoster() {
-    if (locked || selectedIds.length === 0) return;
-    const confirmed = window.confirm(
-      "Svuotare tutta la rosa e ricominciare da zero? Il salvataggio resta chiuso finché ruoli e club non sono di nuovo validi.",
-    );
-    if (!confirmed) return;
-    setSelectedIds([]);
-    setOpenClubId(null);
-    setMessage(null);
-    setError(null);
+    if (locked || pending || selectedIds.length === 0) return;
+    picks.hold("reset", () => {
+      const confirmed = window.confirm(
+        "Svuotare tutta la rosa e ricominciare da zero? Il salvataggio resta chiuso finché ruoli e club non sono di nuovo validi.",
+      );
+      if (!confirmed) return;
+      setSelectedIds([]);
+      setOpenClubId(null);
+      setMessage(null);
+      setError(null);
+    });
   }
 
   function togglePlayer(player: CatalogPlayer) {
-    if (locked) return;
-    setMessage(null);
-
-    if (selectedIds.includes(player.id)) {
-      setSelectedIds(selectedIds.filter((id) => id !== player.id));
+    if (locked || pending) return;
+    picks.occupy(player.id, () => {
+      setMessage(null);
+      setSelectedIds((current) => {
+        if (current.includes(player.id)) return current.filter((id) => id !== player.id);
+        const currentPlayers = current
+          .map((id) => players.find((item) => item.id === id))
+          .filter((item): item is CatalogPlayer => Boolean(item));
+        const clubTaken = currentPlayers.some((item) => item.clubId === player.clubId);
+        const roleCount = currentPlayers.filter((item) => item.role === player.role).length;
+        if (clubTaken || roleCount >= roleMax(player.role, rules)) return current;
+        return [...current, player.id];
+      });
       setOpenClubId(null);
-      return;
-    }
-
-    const clubTaken = selected.some((item) => item.clubId === player.clubId);
-    const roleCount = selected.filter((item) => item.role === player.role).length;
-    if (clubTaken || roleCount >= roleMax(player.role, rules)) {
-      return;
-    }
-
-    setSelectedIds([...selectedIds, player.id]);
-    setOpenClubId(null);
+    });
   }
 
   async function save() {
-    if (flight.current || locked || !report.ready) return;
+    if (flight.current || picks.locked || locked || !report.ready) return;
     flight.current = true;
     setPending(true);
     setError(null);
@@ -199,12 +203,15 @@ export function RosterBuilder({
       <div className="row roster-toolbar">
         <label className="team-name-field">
           Nome squadra
-          <input value={teamName} onChange={(event) => setTeamName(event.target.value)} />
+          <input value={teamName} onChange={(event) => setTeamName(event.target.value)} disabled={pending} />
         </label>
-        <button className="danger" type="button" disabled={pending || locked || selectedIds.length === 0} onClick={resetRoster}>
+      </div>
+      <div className="thumb-bar">
+        <button className="danger" type="button" disabled={pending || picks.locked || locked || selectedIds.length === 0} aria-busy={picks.busyId === "reset"} onClick={resetRoster}>
+          {picks.busyId === "reset" ? <span className="spinner" aria-hidden="true" /> : null}
           Ricomincia da zero
         </button>
-        <button className="primary" type="button" disabled={pending || locked || !report.ready || !catalog} aria-busy={pending} onClick={() => void save()}>
+        <button className="primary" type="button" disabled={pending || picks.locked || locked || !report.ready || !catalog} aria-busy={pending} onClick={() => void save()}>
           <BusyLabel pending={pending} idle="Salva rosa" busy="Salvataggio..." />
         </button>
       </div>
@@ -220,7 +227,7 @@ export function RosterBuilder({
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}
       <div className="roster-layout">
-        <section className="panel roster-main">
+        <section className="panel roster-main" data-pending={pending || picks.locked}>
           <div className="roster-main-head">
             <h2>Per club</h2>
             <input
@@ -230,7 +237,16 @@ export function RosterBuilder({
               aria-label="Cerca un club o un calciatore"
             />
           </div>
-          <ClubGrid clubs={clubCards} locked={locked} onOpen={setOpenClubId} onRemove={removePlayer} />
+          <ClubGrid
+            clubs={clubCards}
+            locked={locked || pending}
+            busyId={picks.busyId}
+            onOpen={(clubId) => {
+              if (locked || pending) return;
+              picks.occupy(clubId, () => setOpenClubId(clubId));
+            }}
+            onRemove={removePlayer}
+          />
         </section>
         <RosterSidebar
           report={report}
@@ -238,7 +254,10 @@ export function RosterBuilder({
           selected={selected}
           roleFocus={roleFocus}
           onRoleFocus={setRoleFocus}
-          onOpenClub={setOpenClubId}
+          onOpenClub={(clubId) => {
+            if (locked || pending) return;
+            picks.occupy(clubId, () => setOpenClubId(clubId));
+          }}
         />
       </div>
       {openClub ? (
@@ -248,7 +267,8 @@ export function RosterBuilder({
           chosen={selected.find((player) => player.clubId === openClub.id) ?? null}
           roleCounts={report.roles}
           rules={rules}
-          locked={locked}
+          locked={locked || pending}
+          busyId={picks.busyId}
           onToggle={togglePlayer}
           onClose={closeClub}
         />

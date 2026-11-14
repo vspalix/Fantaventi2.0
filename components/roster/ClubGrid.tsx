@@ -9,11 +9,13 @@ export type ClubCard = {
 export function ClubGrid({
   clubs,
   locked,
+  busyId,
   onOpen,
   onRemove,
 }: {
   clubs: ClubCard[];
   locked: boolean;
+  busyId: string | null;
   onOpen: (clubId: string) => void;
   onRemove: (playerId: string) => void;
 }) {
@@ -28,9 +30,10 @@ export function ClubGrid({
           key={club.id}
           className="club-tile"
           data-covered={Boolean(chosen)}
+          data-busy={busyId === club.id}
         >
-          <button type="button" className="club-tile-open" onClick={() => onOpen(club.id)}>
-            <span className="club-tile-code">{club.shortName}</span>
+          <button type="button" className="club-tile-open" disabled={locked || busyId !== null} aria-busy={busyId === club.id} onClick={() => onOpen(club.id)}>
+            <span className="club-tile-code">{busyId === club.id ? <span className="spinner" aria-hidden="true" /> : null}{club.shortName}</span>
             <strong>{club.name}</strong>
             {chosen ? (
               <span className="club-tile-player">{chosen.fullName}</span>
@@ -40,7 +43,8 @@ export function ClubGrid({
             {matchNames.length > 0 ? <span className="club-tile-match">{matchNames[0]}</span> : null}
           </button>
           {chosen ? (
-            <button type="button" className="togli" disabled={locked} onClick={() => onRemove(chosen.id)}>
+            <button type="button" className="togli" disabled={locked || busyId !== null} aria-busy={busyId === chosen.id} onClick={() => onRemove(chosen.id)}>
+              {busyId === chosen.id ? <span className="spinner" aria-hidden="true" /> : null}
               Togli
             </button>
           ) : null}

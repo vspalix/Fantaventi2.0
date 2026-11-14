@@ -15,6 +15,7 @@ export function ClubModal({
   roleCounts,
   rules,
   locked,
+  busyId,
   onToggle,
   onClose,
 }: {
@@ -24,6 +25,7 @@ export function ClubModal({
   roleCounts: Record<PlayerRole, number>;
   rules: RosterRules;
   locked: boolean;
+  busyId: string | null;
   onToggle: (player: CatalogPlayer) => void;
   onClose: () => void;
 }) {
@@ -61,13 +63,14 @@ export function ClubModal({
         ) : (
           <p className="small muted">Un solo calciatore di questo club può entrare in rosa.</p>
         )}
-        <div className="catalog">
+        <div className="catalog" data-busy={busyId !== null}>
           {players.length === 0 ? <p className="muted">Nessun calciatore con questa ricerca.</p> : null}
           {players.map((player) => {
             const selected = chosen?.id === player.id;
             const blockedByClub = Boolean(chosen) && !selected;
             const blockedByRole = !selected && roleCounts[player.role] >= roleMax(player.role, rules);
-            const blocked = locked || blockedByClub || blockedByRole;
+            const busy = busyId === player.id;
+            const blocked = locked || blockedByClub || blockedByRole || (busyId !== null && !busy);
             const reason = locked
               ? "Giornata in corso"
               : blockedByClub
@@ -81,7 +84,9 @@ export function ClubModal({
                 type="button"
                 className="player player-choice"
                 data-blocked={blocked}
+                data-busy={busy}
                 disabled={blocked}
+                aria-busy={busy}
                 onClick={() => onToggle(player)}
               >
                 <span className="player-main">
@@ -91,8 +96,9 @@ export function ClubModal({
                   <span className="small muted">{reason ?? ROLE_LABEL[player.role]}</span>
                 </span>
                 <span className="row">
+                  {busy ? <span className="spinner" aria-hidden="true" /> : null}
                   <span className={`badge ${player.role}`}>{player.role}</span>
-                  <span className="small">{selected ? "Togli" : "Scegli"}</span>
+                  <span className="small">{busy ? "Scelgo..." : selected ? "Togli" : "Scegli"}</span>
                 </span>
               </button>
             );

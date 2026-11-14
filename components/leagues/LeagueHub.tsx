@@ -25,6 +25,7 @@ import type { LeagueRules } from "@/lib/league-rules";
 import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole } from "@/lib/types";
 import { RegulationPanel } from "@/components/rules/RegulationView";
 import { ROLE_LABEL } from "@/lib/types";
+import { useTapGuard } from "@/components/useTapGuard";
 import { pushToast } from "@/lib/toast";
 
 const BENCH_ROLES: PlayerRole[] = ["GK", "DEF", "MID", "FWD"];
@@ -181,7 +182,7 @@ function CheckpointHistoryCard({
   const floor = history.rows.reduce((min, row) => Math.min(min, row.points), 0);
   const span = Math.max(peak - Math.min(floor, 0), 1);
   return (
-    <article className="card home-span">
+    <article className="card home-span checkpoint-history">
       <h2>Storico checkpoint</h2>
       {history.rows.length > 0 ? (
         <>
@@ -196,7 +197,21 @@ function CheckpointHistoryCard({
               </div>
             ))}
           </div>
-          <table className="standings as-cards">
+          <div className="mobile-cards">
+            {history.rows.map((row, index) => (
+              <article className="person-card" key={row.afterMatchday}>
+                <strong>Checkpoint {index + 1}</strong>
+                <div className="person-card-meta">
+                  <span className="status-pill">Chiuso · dopo la {row.afterMatchday}</span>
+                  <span className="badge">{row.rank}° su {row.teams}</span>
+                </div>
+                <p className="small">
+                  Punti {formatPoints(row.points)} · Bonus {signedPoints(row.bonus)} · Malus {signedPoints(row.malus)}
+                </p>
+              </article>
+            ))}
+          </div>
+          <table className="standings as-cards hide-on-phone">
             <thead>
               <tr>
                 <th>Checkpoint</th>
@@ -383,6 +398,7 @@ export function LeagueHub({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const flight = useRef(false);
+  const picks = useTapGuard();
   const [now, setNow] = useState(() => Date.now());
 
   const selected = hub.gameweeks.find((gameweek) => gameweek.id === hub.selectedGameweekId) ?? null;
@@ -440,17 +456,20 @@ export function LeagueHub({
   }
 
   function chooseFormation(nextId: FormationId) {
-    if (!canEdit) return;
+    if (!canEdit || pending) return;
+    picks.hold(nextId, () => {
     const nextIds = trimToFormation(hub.roster, playerIds, formationById(nextId));
     setFormationId(nextId);
     setPlayerIds(nextIds);
     setBenchIds(benchIds.filter((id) => !nextIds.includes(id)));
     if (captainId && !nextIds.includes(captainId)) setCaptainId(null);
     if (viceId && !nextIds.includes(viceId)) setViceId(null);
+    });
   }
 
   function place(player: CatalogPlayer) {
-    if (!canEdit || playerIds.includes(player.id)) return;
+    if (!canEdit || pending || playerIds.includes(player.id)) return;
+    picks.occupy(player.id, () => {
     const formation = formationById(formationId);
     const used = hub.roster.filter((item) => playerIds.includes(item.id) && item.role === player.role).length;
     if (used >= roleCap(formation, player.role) || playerIds.length >= 11) return;
@@ -458,10 +477,12 @@ export function LeagueHub({
     setBenchIds(benchIds.filter((id) => id !== player.id));
     setPickerRole(null);
     setReplacingId(null);
+    });
   }
 
   function replaceStarter(incoming: CatalogPlayer) {
-    if (!canEdit || !replacingId || incoming.id === replacingId) return;
+    if (!canEdit || pending || !replacingId || incoming.id === replacingId) return;
+    picks.occupy(incoming.id, () => {
     const outgoing = hub.roster.find((player) => player.id === replacingId);
     if (!outgoing || incoming.role !== outgoing.role || !playerIds.includes(replacingId)) return;
     setPlayerIds(playerIds.map((id) => (id === replacingId ? incoming.id : id)));
@@ -469,20 +490,22 @@ export function LeagueHub({
     if (captainId === replacingId) setCaptainId(null);
     if (viceId === replacingId) setViceId(null);
     setReplacingId(null);
+    });
   }
 
   function addToBench(player: CatalogPlayer) {
-    if (!canEdit || playerIds.includes(player.id) || benchIds.includes(player.id)) return;
-    setBenchIds([...benchIds, player.id]);
+    if (!canEdit || pending || playerIds.includes(player.id) || benchIds.includes(player.id)) return;
+    picks.occupy(player.id, () => setBenchIds([...benchIds, player.id]));
   }
 
   function dropFromBench(playerId: string) {
-    if (!canEdit) return;
-    setBenchIds(benchIds.filter((id) => id !== playerId));
+    if (!canEdit || pending) return;
+    picks.occupy(playerId, () => setBenchIds(benchIds.filter((id) => id !== playerId)));
   }
 
   function clearPitch() {
     if (!canEdit || pending) return;
+    picks.hold("clear", () => {
     setPlayerIds([]);
     setBenchIds([]);
     setCaptainId(null);
@@ -491,10 +514,12 @@ export function LeagueHub({
     setReplacingId(null);
     setError(null);
     setMessage("Campo svuotato. L'ultima formazione salvata resta: la ritrovi nel tab Formazioni e riapre la giornata successiva.");
+    });
   }
 
   function mark(playerId: string, kind: "captain" | "vice") {
-    if (!canEdit || !playerIds.includes(playerId)) return;
+    if (!canEdit || pending || !playerIds.includes(playerId)) return;
+    picks.hold(`${kind}:${playerId}`, () => {
     if (kind === "captain") {
       setCaptainId(playerId);
       if (viceId === playerId) setViceId(null);
@@ -502,10 +527,11 @@ export function LeagueHub({
     }
     if (playerId === captainId) return;
     setViceId(playerId);
+    });
   }
 
   async function fileTestLineup() {
-    if (!selected || !canEdit || !allowTestFill) return;
+    if (!selected || !canEdit || !allowTestFill || flight.current || pending) return;
     const picked = autoLineup(hub.roster);
     if (!picked) {
       pushToast("err", "In rosa non c'è un modulo valido da schierare.");
@@ -523,6 +549,7 @@ export function LeagueHub({
     setViceId(picked.viceId);
     setPickerRole(null);
     setReplacingId(null);
+    flight.current = true;
     setPending(true);
     setError(null);
     setMessage(null);
@@ -546,6 +573,7 @@ export function LeagueHub({
       setError(text);
       pushToast("err", text);
     } finally {
+      flight.current = false;
       setPending(false);
     }
   }
@@ -822,50 +850,9 @@ export function LeagueHub({
 
           {hub.liveSheet ? <PlayedLineup sheet={hub.liveSheet} /> : null}
           {hub.liveSheet ? null : <div className="lineup-layout">
-            <section className="panel roster-main">
+            <section className="panel roster-main" data-pending={pending || picks.locked}>
               <div className="roster-main-head">
                 <h2>La tua formazione</h2>
-                {canEdit ? (
-                  <span className="lineup-actions">
-                    {allowTestFill ? (
-                      <button
-                        className="ghost"
-                        type="button"
-                        disabled={pending || hub.roster.length === 0}
-                        onClick={() => void fileTestLineup()}
-                      >
-                        Schiera di test
-                      </button>
-                    ) : null}
-                    <button
-                      className="ghost"
-                      type="button"
-                      disabled={pending || (playerIds.length === 0 && benchIds.length === 0)}
-                      onClick={clearPitch}
-                    >
-                      Svuota campo
-                    </button>
-                    <span
-                      className="save-lineup"
-                      data-blocked={saveBlocked}
-                      onClick={() => {
-                        if (!pending && saveBlocked) {
-                          pushToast("err", `Non posso salvare perché ${saveReason}.`);
-                        }
-                      }}
-                    >
-                      <button
-                        className="primary"
-                        type="button"
-                        disabled={pending || saveBlocked}
-                        aria-busy={pending}
-                        onClick={() => void saveLineup()}
-                      >
-                        <BusyLabel pending={pending} idle="Salva formazione" busy="Salvataggio..." />
-                      </button>
-                    </span>
-                  </span>
-                ) : null}
               </div>
               {hub.lineupOrigin === "saved" && showingStoredLineup && playerIds.length > 0 ? (
                 <p className="small muted">La formazione salvata per questa giornata è già in campo.</p>
@@ -890,7 +877,8 @@ export function LeagueHub({
                       className="tab"
                       type="button"
                       data-active={item.id === formationId}
-                      disabled={pending}
+                      disabled={pending || picks.locked}
+                      aria-busy={picks.busyId === item.id}
                       onClick={() => chooseFormation(item.id)}
                     >
                       {item.id}
@@ -915,7 +903,7 @@ export function LeagueHub({
                   playerIds={playerIds}
                   captainId={captainId}
                   viceId={viceId}
-                  editable={canEdit && !pending}
+                  editable={canEdit && !pending && !picks.locked}
                   onReplace={setReplacingId}
                   onMark={mark}
                   onPickRole={setPickerRole}
@@ -937,10 +925,12 @@ export function LeagueHub({
                           key={player.id}
                           type="button"
                           data-selected="true"
-                          disabled={pending}
+                          data-busy={picks.busyId === player.id}
+                          disabled={pending || (picks.locked && picks.busyId !== player.id)}
+                          aria-busy={picks.busyId === player.id}
                           onClick={() => dropFromBench(player.id)}
                         >
-                          <strong>{index + 1}. {player.fullName}</strong>
+                          <strong>{picks.busyId === player.id ? "Tolgo... " : `${index + 1}. `}{player.fullName}</strong>
                           <span className="small muted">{ROLE_LABEL[player.role]} · {player.clubShort}</span>
                         </button>
                       ))}
@@ -958,11 +948,15 @@ export function LeagueHub({
                               className="side-row"
                               key={player.id}
                               type="button"
-                              disabled={pending}
+                              data-busy={picks.busyId === player.id}
+                              disabled={pending || (picks.locked && picks.busyId !== player.id)}
+                              aria-busy={picks.busyId === player.id}
                               onClick={() => addToBench(player)}
                             >
                               <strong>{player.fullName}</strong>
-                              <span className="small muted">{ROLE_LABEL[player.role]} · {player.clubShort}</span>
+                              <span className="small muted">
+                                {picks.busyId === player.id ? "Aggiungo..." : `${ROLE_LABEL[player.role]} · ${player.clubShort}`}
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -987,6 +981,50 @@ export function LeagueHub({
               )}
             </aside>
           </div>}
+          {canEdit && !hub.liveSheet ? (
+            <div className="thumb-bar">
+              {allowTestFill ? (
+                <button
+                  className="ghost"
+                  type="button"
+                  disabled={pending || picks.locked || hub.roster.length === 0}
+                  aria-busy={pending}
+                  onClick={() => void fileTestLineup()}
+                >
+                  Schiera di test
+                </button>
+              ) : null}
+              <button
+                className="ghost"
+                type="button"
+                disabled={pending || picks.locked || (playerIds.length === 0 && benchIds.length === 0)}
+                aria-busy={picks.busyId === "clear"}
+                onClick={clearPitch}
+              >
+                {picks.busyId === "clear" ? <span className="spinner" aria-hidden="true" /> : null}
+                Svuota campo
+              </button>
+              <span
+                className="save-lineup"
+                data-blocked={saveBlocked}
+                onClick={() => {
+                  if (!pending && saveBlocked) {
+                    pushToast("err", `Non posso salvare perché ${saveReason}.`);
+                  }
+                }}
+              >
+                <button
+                  className="primary"
+                  type="button"
+                  disabled={pending || picks.locked || saveBlocked}
+                  aria-busy={pending}
+                  onClick={() => void saveLineup()}
+                >
+                  <BusyLabel pending={pending} idle="Salva formazione" busy="Salvataggio..." />
+                </button>
+              </span>
+            </div>
+          ) : null}
         </section>
       ) : null}
 
@@ -1144,9 +1182,20 @@ export function LeagueHub({
             {replacementPlayers.length === 0 ? <p>Nessun calciatore libero in questo ruolo.</p> : (
               <div className="stack">
                 {replacementPlayers.map((player) => (
-                  <button className="bench-player" key={player.id} type="button" onClick={() => replaceStarter(player)}>
+                  <button
+                    className="bench-player"
+                    key={player.id}
+                    type="button"
+                    data-busy={picks.busyId === player.id}
+                    disabled={pending || (picks.locked && picks.busyId !== player.id)}
+                    aria-busy={picks.busyId === player.id}
+                    onClick={() => replaceStarter(player)}
+                  >
                     <strong>{player.fullName}</strong>
-                    <span>{player.clubShort}{benchIds.includes(player.id) ? " · in panchina" : ""}</span>
+                    <span>
+                      {picks.busyId === player.id ? "Sostituisco..." : player.clubShort}
+                      {picks.busyId === player.id ? "" : benchIds.includes(player.id) ? " · in panchina" : ""}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1165,9 +1214,20 @@ export function LeagueHub({
             {pickerPlayers.length === 0 ? <p>Nessun calciatore libero in questo ruolo.</p> : (
               <div className="stack">
                 {pickerPlayers.map((player) => (
-                  <button className="bench-player" key={player.id} type="button" onClick={() => place(player)}>
+                  <button
+                    className="bench-player"
+                    key={player.id}
+                    type="button"
+                    data-busy={picks.busyId === player.id}
+                    disabled={pending || (picks.locked && picks.busyId !== player.id)}
+                    aria-busy={picks.busyId === player.id}
+                    onClick={() => place(player)}
+                  >
                     <strong>{player.fullName}</strong>
-                    <span>{player.clubShort}{benchIds.includes(player.id) ? " · in panchina" : ""}</span>
+                    <span>
+                      {picks.busyId === player.id ? "Schiero..." : player.clubShort}
+                      {picks.busyId === player.id ? "" : benchIds.includes(player.id) ? " · in panchina" : ""}
+                    </span>
                   </button>
                 ))}
               </div>
@@ -1354,12 +1414,15 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
                 : "Il proprietario non ha ancora salvato la rosa di questa giornata."}
             </EmptyState>
           ) : (
-            <div className="side-list">
+            <div className="squad-list">
               {squad.players.map((player) => (
-                <p key={player.id} className="side-row">
-                  <span>{player.fullName}</span>
-                  <span className="small">{ROLE_LABEL[player.role]} · {player.clubShort}</span>
-                </p>
+                <article className="person-card" key={player.id}>
+                  <strong>{player.fullName}</strong>
+                  <div className="person-card-meta">
+                    <span className={`badge ${player.role}`}>{ROLE_LABEL[player.role]}</span>
+                    <span className="small">{player.clubShort}</span>
+                  </div>
+                </article>
               ))}
             </div>
           )}

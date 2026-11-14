@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTapGuard } from "@/components/useTapGuard";
 import {
   BONUS_FIELDS,
   COMPETITION_FORMATS,
@@ -40,6 +41,7 @@ export function LeagueAdminPanel({
   const [endMatchday, setEndMatchday] = useState(league.endMatchday);
   const [rules, setRules] = useState<LeagueRules>(league.rules);
   const [delegateId, setDelegateId] = useState("");
+  const taps = useTapGuard();
   const format = COMPETITION_FORMATS.find((item) => item.id === rules.format) ?? COMPETITION_FORMATS[0];
   const candidates = league.participants.filter((participant) => (
     participant.userId !== ""
@@ -129,7 +131,7 @@ export function LeagueAdminPanel({
         ) : <p className="small muted">Sei admin delegato di questa lega. Non hai accesso al Laboratorio globale.</p>}
       </section>
 
-      <form className="card stack" onSubmit={(event) => { event.preventDefault(); void onSave({ name, startMatchday, endMatchday, rules }); }}>
+      <form id="league-rules-form" className="card stack" data-pending={pending} onSubmit={(event) => { event.preventDefault(); if (taps.locked) return; void onSave({ name, startMatchday, endMatchday, rules }); }}>
         <h2>Formato e calcolo</h2>
         <label>
           Nome della lega
@@ -350,17 +352,23 @@ export function LeagueAdminPanel({
             </button>
           </div>
         ) : null}
-        <div className="stack">
+        <div className="stack checkpoint-editor">
           <h3>Checkpoint di mercato</h3>
-          <p className="small muted">Ogni riga è una finestra dopo quella giornata. I cambi massimi valgono finché la giornata successiva non è calcolata. Resta il vincolo di un calciatore per club.</p>
+          <p className="small muted">Ogni scheda è una finestra dopo quella giornata. I cambi massimi valgono finché la giornata successiva non è calcolata. Resta il vincolo di un calciatore per club.</p>
           {rules.checkpoints.map((item, index) => (
-            <div className="row" key={`${item.afterMatchday}-${index}`}>
+            <article className="person-card" key={`${item.afterMatchday}-${index}`}>
+              <strong>Checkpoint {index + 1}</strong>
+              <div className="person-card-meta">
+                <span className="status-pill">Dopo la giornata {item.afterMatchday}</span>
+                <span className="small">{item.changes} cambi</span>
+              </div>
               <label>
                 Dopo la giornata
                 <input
                   type="number"
                   min={1}
                   value={item.afterMatchday}
+                  disabled={pending || taps.locked}
                   onChange={(event) => {
                     const afterMatchday = Number(event.target.value);
                     setRules((current) => ({
@@ -378,6 +386,7 @@ export function LeagueAdminPanel({
                   type="number"
                   min={1}
                   value={item.changes}
+                  disabled={pending || taps.locked}
                   onChange={(event) => {
                     const changes = Number(event.target.value);
                     setRules((current) => ({
@@ -392,30 +401,38 @@ export function LeagueAdminPanel({
               <button
                 className="ghost"
                 type="button"
-                onClick={() => setRules((current) => ({
+                disabled={pending || taps.locked}
+                aria-busy={taps.busyId === `drop-${index}`}
+                onClick={() => taps.hold(`drop-${index}`, () => setRules((current) => ({
                   ...current,
                   checkpoints: current.checkpoints.filter((_, checkpointIndex) => checkpointIndex !== index),
-                }))}
+                })))}
               >
+                {taps.busyId === `drop-${index}` ? <span className="spinner" aria-hidden="true" /> : null}
                 Togli
               </button>
-            </div>
+            </article>
           ))}
           <button
             className="ghost"
             type="button"
-            onClick={() => setRules((current) => ({
+            disabled={pending || taps.locked}
+            aria-busy={taps.busyId === "add-checkpoint"}
+            onClick={() => taps.hold("add-checkpoint", () => setRules((current) => ({
               ...current,
               checkpoints: [...current.checkpoints, { afterMatchday: 10, changes: 3 }],
-            }))}
+            })))}
           >
+            {taps.busyId === "add-checkpoint" ? <span className="spinner" aria-hidden="true" /> : null}
             Aggiungi checkpoint
           </button>
         </div>
-        <button className="primary" type="submit" disabled={pending || name.trim().length < 2} aria-busy={pending}>
+      </form>
+      <div className="thumb-bar">
+        <button className="primary" type="submit" form="league-rules-form" disabled={pending || taps.locked || name.trim().length < 2} aria-busy={pending}>
           <BusyLabel pending={pending} idle="Salva la lega" busy="Salvataggio..." />
         </button>
-      </form>
+      </div>
     </div>
   );
 }

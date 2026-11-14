@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { clearInviteCookie, joinHref, readInviteCookie } from "@/lib/invite";
+import { pushToast } from "@/lib/toast";
+import { EmptyState } from "@/components/EmptyState";
 import { ClubGrid } from "@/components/roster/ClubGrid";
 import { ClubModal } from "@/components/roster/ClubModal";
 import { RosterSidebar } from "@/components/roster/RosterSidebar";
@@ -142,7 +144,9 @@ export function RosterBuilder({
       });
       const body = (await response.json()) as { error?: string; roster?: { appliesFrom?: number } };
       if (!response.ok) {
-        setError(body.error ?? "Salvataggio rifiutato.");
+        const text = body.error ?? "Salvataggio rifiutato.";
+        setError(text);
+        pushToast("err", text);
         return;
       }
       if (body.roster?.appliesFrom) setAppliesFrom(body.roster.appliesFrom);
@@ -156,15 +160,22 @@ export function RosterBuilder({
         const joined = (await join.json()) as { error?: string; league?: { id: string } };
         if (join.ok && joined.league?.id) {
           clearInviteCookie();
+          pushToast("ok", "Rosa salvata. Ti sto iscrivendo alla lega.");
           window.location.assign(`/leghe/${joined.league.id}`);
           return;
         }
-        setError(joined.error ?? "Rosa salvata, ma l'iscrizione alla lega non è riuscita.");
+        const text = joined.error ?? "Rosa salvata, ma l'iscrizione alla lega non è riuscita.";
+        setError(text);
+        pushToast("err", text);
         return;
       }
-      setMessage(`Rosa salvata. I cambi valgono dalla giornata ${body.roster?.appliesFrom ?? appliesFrom}. Ruoli e club sono controllati.`);
+      const saved = `Rosa salvata. I cambi valgono dalla giornata ${body.roster?.appliesFrom ?? appliesFrom}.`;
+      setMessage(`${saved} Ruoli e club sono controllati.`);
+      pushToast("ok", saved);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
+      const text = reason instanceof Error ? reason.message : "Salvataggio non riuscito.";
+      setError(text);
+      pushToast("err", text);
     } finally {
       setPending(false);
     }
@@ -196,6 +207,11 @@ export function RosterBuilder({
       {market.message ? <p className="banner">{market.message}</p> : (
         <p className="small muted">Nessun credito: un solo calciatore per club, dentro i limiti di ruolo. Fuori dalle partite i cambi valgono dalla giornata {appliesFrom}.</p>
       )}
+      {selected.length === 0 ? (
+        <EmptyState title="Rosa ancora vuota">
+          Apri un club e scegli un calciatore. Vale un giocatore per club, dentro i limiti di ruolo. Quando la rosa è completa, premi Salva rosa.
+        </EmptyState>
+      ) : null}
       {inviteCode ? <p className="banner ok">Hai un invito in sospeso. Salva la rosa e entri in lega senza digitare il codice.</p> : null}
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}

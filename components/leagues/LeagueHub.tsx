@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
@@ -23,6 +24,7 @@ import type { LeagueRules } from "@/lib/league-rules";
 import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole } from "@/lib/types";
 import { RegulationPanel } from "@/components/rules/RegulationView";
 import { ROLE_LABEL } from "@/lib/types";
+import { pushToast } from "@/lib/toast";
 
 const BENCH_ROLES: PlayerRole[] = ["GK", "DEF", "MID", "FWD"];
 const ROLE_SHORT: Record<PlayerRole, string> = { GK: "P", DEF: "D", MID: "C", FWD: "A" };
@@ -79,6 +81,7 @@ function LeagueHomeView({
         ) : home.phase === "live" && home.gameweekNumber ? (
           <div className="stack">
             <h2>Giornata {home.gameweekNumber} in corso</h2>
+            <p className="lock-badge">Formazione bloccata - Giornata in corso</p>
             <p className="small muted">
               La formazione si apre per consultarla. Il countdown della prossima giornata parte quando questa è finita.
               {" "}
@@ -89,28 +92,46 @@ function LeagueHomeView({
         ) : (
           <>
             <h2>Nessuna giornata aperta</h2>
-            <p className="small muted">Il calendario di questa lega non ha una giornata ancora da preparare.</p>
+            <EmptyState title="Calendario fermo">
+              Questa lega non ha una giornata da preparare. Quando il turno successivo è in programma, qui compare il countdown e puoi schierare.
+            </EmptyState>
           </>
         )}
       </article>
       <article className="card">
         <h2>Ultima giornata{home.lastRoundNumber ? ` · ${home.lastRoundNumber}` : ""}</h2>
         {home.lastRoundNumber ? (
-          <MiniTable rows={home.lastRound} mineId={mineId} empty="Nessun punteggio pubblicato." />
+          <MiniTable rows={home.lastRound} mineId={mineId} empty="Nessun punteggio pubblicato per questa giornata." />
         ) : (
-          <p className="small muted">Nessuna giornata chiusa.</p>
+          <EmptyState title="Nessun risultato">
+            La prima giornata non è ancora stata calcolata. Voti, bonus e punti compariranno qui dopo la chiusura.
+          </EmptyState>
         )}
       </article>
       <article className="card">
         <h2>Classifica generale</h2>
-        <MiniTable rows={standings} mineId={mineId} empty="Nessuna squadra iscritta." />
+        {standings.length === 0 ? (
+          <EmptyState title="Classifica vuota">
+            Non c&apos;è ancora nessuna squadra. Invita con il codice dalla scheda Lega.
+          </EmptyState>
+        ) : !home.lastRoundNumber && standings.every((row) => row.played === 0 && row.points === 0) ? (
+          <EmptyState title="Classifica in attesa della giornata 1" action={<button className="primary" type="button" onClick={onLineup}>Apri la formazione</button>}>
+            I punti partono dopo la prima giornata calcolata. Schiera la formazione prima della deadline.
+          </EmptyState>
+        ) : (
+          <MiniTable rows={standings} mineId={mineId} empty="Nessuna squadra iscritta." />
+        )}
       </article>
       <article className="card home-span">
         <h2>
           Partite di {home.competitionName}
           {home.fixtureGameweekNumber ? ` · giornata ${home.fixtureGameweekNumber}` : ""}
         </h2>
-        {home.fixtures.length === 0 ? <p className="small muted">Nessuna partita in calendario per questa giornata.</p> : (
+        {home.fixtures.length === 0 ? (
+          <EmptyState title="Nessuna partita">
+            Il calendario di questa giornata non ha ancora incontri. Quando gli orari sono caricati, li trovi qui.
+          </EmptyState>
+        ) : (
           <div className="fixture-list">
             {home.fixtures.map((fixture) => {
               const scored = fixture.homeGoals != null && fixture.awayGoals != null;
@@ -168,7 +189,10 @@ function DeadlineClock({
     <div className="stack">
       <h2>{mounted && !open ? `Giornata ${gameweekNumber} in corso` : `Schiera prima della giornata ${gameweekNumber}`}</h2>
       {mounted && open ? <p className="countdown">{formatRemaining(remaining)}</p> : mounted ? (
-        <p className="small muted">Il countdown della prossima giornata parte quando questa è finita.</p>
+        <>
+          <p className="lock-badge">Formazione bloccata - Giornata in corso</p>
+          <p className="small muted">Il countdown della prossima giornata parte quando questa è finita.</p>
+        </>
       ) : (
         <p className="countdown">––g ––h ––m ––s</p>
       )}
@@ -284,7 +308,17 @@ export function LeagueHub({
   const countdownOpen = hub.home.phase === "countdown"
     && Boolean(hub.home.deadlineAt)
     && new Date(hub.home.deadlineAt ?? 0).getTime() > now;
-  const canEdit = hub.editable && countdownOpen;
+  const selectedStarted = Boolean(
+    selected
+    && selected.status !== "scored"
+    && selected.status !== "final"
+    && (
+      selected.locked
+      || new Date(selected.deadlineAt).getTime() <= now
+      || (hub.home.phase === "live" && hub.home.gameweekNumber === selected.number)
+    ),
+  );
+  const canEdit = hub.editable && countdownOpen && !selectedStarted;
 
   useEffect(() => {
     if (hub.home.phase !== "countdown") return;
@@ -392,12 +426,12 @@ export function LeagueHub({
     if (!selected || !canEdit || !allowTestFill) return;
     const picked = autoLineup(hub.roster);
     if (!picked) {
-      window.alert("In rosa non c'è un modulo valido da schierare.");
+      pushToast("err", "In rosa non c'è un modulo valido da schierare.");
       return;
     }
     const issue = formationIssue(hub.roster, picked.playerIds);
     if (issue) {
-      window.alert(issue);
+      pushToast("err", issue);
       return;
     }
     setFormationId(picked.formationId);
@@ -424,8 +458,11 @@ export function LeagueHub({
       }));
       applyHub(body.hub);
       setMessage("Formazione di test schierata e salvata.");
+      pushToast("ok", "Formazione di test schierata e salvata.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Schieramento di test non riuscito.");
+      const text = reason instanceof Error ? reason.message : "Schieramento di test non riuscito.";
+      setError(text);
+      pushToast("err", text);
     } finally {
       setPending(false);
     }
@@ -434,11 +471,11 @@ export function LeagueHub({
   async function saveLineup() {
     if (!selected || !canEdit) return;
     if (saveBlocked) {
-      window.alert(`Non posso salvare perché ${saveReason}.`);
+      pushToast("err", `Non posso salvare perché ${saveReason}.`);
       return;
     }
     if (shapeIssue) {
-      window.alert(shapeIssue);
+      pushToast("err", shapeIssue);
       return;
     }
     setPending(true);
@@ -452,8 +489,11 @@ export function LeagueHub({
       }));
       applyHub(body.hub);
       setMessage("Formazione salvata.");
+      pushToast("ok", "Formazione salvata.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
+      const text = reason instanceof Error ? reason.message : "Salvataggio non riuscito.";
+      setError(text);
+      pushToast("err", text);
     } finally {
       setPending(false);
     }
@@ -673,7 +713,10 @@ export function LeagueHub({
               {canEdit ? ` · deadline ${deadlineFormat.format(new Date(selected.deadlineAt))} · unica giornata modificabile` : " · consultazione"}
             </p>
           ) : null}
-          {selected && !canEdit ? (
+          {selected && selectedStarted ? (
+            <p className="lock-badge">Formazione bloccata - Giornata in corso</p>
+          ) : null}
+          {selected && !canEdit && !selectedStarted ? (
             <p className="banner">
               {hub.liveSheet
                 ? `Giornata ${selected.number} in corso. Il fantavoto è voto + bonus + malus, appena il voto è pubblicato.`
@@ -715,7 +758,7 @@ export function LeagueHub({
                       data-blocked={saveBlocked}
                       onClick={() => {
                         if (!pending && saveBlocked) {
-                          window.alert(`Non posso salvare perché ${saveReason}.`);
+                          pushToast("err", `Non posso salvare perché ${saveReason}.`);
                         }
                       }}
                     >
@@ -768,7 +811,11 @@ export function LeagueHub({
                   : `${playerIds.length}/11 in campo.`}
               </p>
               {shapeIssue ? <p className="small">{shapeIssue}</p> : null}
-              {hub.roster.length === 0 ? <p>Nessun calciatore in rosa per questa giornata. Componi la rosa prima di schierare.</p> : (
+              {hub.roster.length === 0 ? (
+                <EmptyState title="Rosa mancante" action={<Link className="primary" href="/rosa">Vai alla rosa</Link>}>
+                  Senza calciatori in rosa non puoi schierare. Scegli un giocatore per club, salva la rosa e torna qui.
+                </EmptyState>
+              ) : (
                 <Pitch
                   formation={formation}
                   players={hub.roster}
@@ -907,9 +954,28 @@ export function LeagueHub({
           {board === "live" && !hub.liveReady ? (
             <p className="banner">La classifica live chiede le colonne di production_architecture.sql.</p>
           ) : null}
-          {board === "parziale" ? <PartialTable rows={hub.partial} /> : null}
+          {board === "parziale" ? (
+            hub.partial.length === 0 ? (
+              <EmptyState title="Parziale vuoto">
+                Non c&apos;è ancora nessuna squadra. Invita con il codice dalla scheda Lega.
+              </EmptyState>
+            ) : hub.home.phase !== "live" && hub.partial.every((row) => !row.points) ? (
+              <EmptyState title="Parziale in attesa dei voti" action={<button className="primary" type="button" onClick={() => setTab("formazione")}>Apri la formazione</button>}>
+                I fantavoti compaiono qui quando la giornata è in corso e i voti vengono pubblicati. Prima schiera la formazione.
+              </EmptyState>
+            ) : <PartialTable rows={hub.partial} />
+          ) : null}
           {board === "live" ? <LiveTable rows={hub.liveStandings} /> : null}
           {board === "generale" ? (
+            hub.standings.length === 0 ? (
+              <EmptyState title="Classifica vuota">
+                Non c&apos;è ancora nessuna squadra. Invita con il codice dalla scheda Lega.
+              </EmptyState>
+            ) : !hub.home.lastRoundNumber && hub.standings.every((row) => row.played === 0 && row.points === 0) ? (
+              <EmptyState title="Classifica in attesa della giornata 1" action={<button className="primary" type="button" onClick={() => setTab("formazione")}>Apri la formazione</button>}>
+                I punti partono dopo la prima giornata calcolata. Schiera la formazione prima della deadline.
+              </EmptyState>
+            ) : (
           <table className="standings as-cards">
             <thead>
               <tr>
@@ -941,6 +1007,7 @@ export function LeagueHub({
               ))}
             </tbody>
           </table>
+            )
           ) : null}
         </section>
       ) : null}
@@ -1037,7 +1104,11 @@ function Formations({
           ? `Giornata ${gameweekNumber ?? "—"}: formazioni schierate, in campo e in panchina.`
           : "La tua formazione salvata è qui. Quelle degli altri si aprono all'inizio della giornata, quando la deadline è passata."}
       </p>
-      {opponents.length === 0 ? <p className="card">Nessuna squadra iscritta.</p> : (
+      {opponents.length === 0 ? (
+        <EmptyState title="Nessuna squadra">
+          Non c&apos;è ancora nessuno in questa lega. Invita con il codice dalla scheda Lega, poi le formazioni compaiono qui.
+        </EmptyState>
+      ) : (
         <div className="formation-board">
           {opponents.map((opponent) => (
             <FormationCard key={opponent.fantasyTeamId} opponent={opponent} carried={opponent.isMine ? carried : null} />
@@ -1164,7 +1235,13 @@ function GameweekBar({
 }
 
 function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
-  if (squads.length === 0) return <p className="card">Nessuna squadra iscritta.</p>;
+  if (squads.length === 0) {
+    return (
+      <EmptyState title="Nessuna squadra">
+        Non c&apos;è ancora nessuno in questa lega. Invita con il codice dalla scheda Lega.
+      </EmptyState>
+    );
+  }
   return (
     <div className="stack">
       {squads.map((squad) => (
@@ -1174,7 +1251,16 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
             {squad.isMine ? <Link className="ghost" href="/rosa">Cambia la mia rosa</Link> : null}
           </div>
           <p className="small muted">{squad.displayName} · {squad.players.length} calciatori</p>
-          {squad.players.length === 0 ? <p className="small muted">Rosa non ancora composta.</p> : (
+          {squad.players.length === 0 ? (
+            <EmptyState
+              title="Rosa ancora vuota"
+              action={squad.isMine ? <Link className="primary" href="/rosa">Componi la rosa</Link> : undefined}
+            >
+              {squad.isMine
+                ? "Apri un club e scegli un calciatore. Vale un giocatore per club, poi salva."
+                : "Il proprietario non ha ancora salvato la rosa di questa giornata."}
+            </EmptyState>
+          ) : (
             <div className="side-list">
               {squad.players.map((player) => (
                 <p key={player.id} className="side-row">

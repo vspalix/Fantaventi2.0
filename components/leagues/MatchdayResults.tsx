@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { MatchdayBreakdown } from "@/components/scores/MatchdayBreakdown";
 import type { ScoreAudit } from "@/lib/engine/score-audit";
 import type { HubGameweek, LeagueParticipant } from "@/lib/types";
@@ -65,7 +66,9 @@ export function MatchdayResults({
     return (
       <section className="card stack">
         <h2>Risultati</h2>
-        <p>Nessuna giornata è ancora calcolata. Qui compariranno voti, bonus, malus e modificatori quando una giornata viene chiusa.</p>
+        <EmptyState title="Nessuna giornata calcolata">
+          Qui trovi voti, bonus, malus e modificatori dopo la chiusura della giornata. Prima schiera la formazione: i punti arrivano quando la giornata viene calcolata.
+        </EmptyState>
       </section>
     );
   }

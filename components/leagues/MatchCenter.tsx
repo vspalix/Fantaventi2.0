@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
 import { PushOptIn } from "@/components/PushOptIn";
 import type { LiveCenter } from "@/lib/server/live-center";
 
@@ -69,7 +70,11 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
             ))}
             <p className="small">Parziale {live.mine.total.toLocaleString("it-IT")} · {live.mine.teamName}</p>
           </div>
-        ) : <p>Nessuna formazione da seguire in questa giornata.</p>}
+        ) : (
+          <EmptyState title="Niente da seguire">
+            Salva la formazione prima della deadline. Quando la giornata inizia, voti e bonus compaiono qui e la formazione resta bloccata.
+          </EmptyState>
+        )}
         {live?.mine && live.mine.bench.length > 0 ? (
           <div className="stack">
             <h3>Panchina</h3>

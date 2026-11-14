@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
+import { ToastHost } from "@/components/ToastHost";
 import { SiteHeader, type HeaderSeason } from "@/components/SiteHeader";
 import { INVITE_COOKIE, joinHref, normalizeInviteCode } from "@/lib/invite";
 import { mustResetPassword } from "@/lib/server/account-password";
@@ -65,6 +66,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         />
         {maintenance.enabled ? <MaintenanceBanner message={maintenance.message} admin={platformAdmin} /> : null}
         <main className="shell page">{children}</main>
+        <ToastHost />
       </body>
     </html>
   );

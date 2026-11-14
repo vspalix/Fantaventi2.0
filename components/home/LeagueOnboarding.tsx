@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { DEFAULT_LEAGUE_RULES } from "@/lib/league-rules";
+import { pushToast } from "@/lib/toast";
 import type { LeagueSummary } from "@/lib/types";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -30,9 +31,12 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
         body: JSON.stringify({ name, rules: DEFAULT_LEAGUE_RULES }),
       }));
       setCreated(body.league);
+      pushToast("ok", "Lega creata. Condividi il codice invito.");
       router.refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Creazione non riuscita.");
+      const text = reason instanceof Error ? reason.message : "Creazione non riuscita.";
+      setError(text);
+      pushToast("err", text);
     } finally {
       setPending(false);
     }

@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { EmptyState } from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BONUS_FIELDS, COMPETITION_FORMATS, DEFAULT_LEAGUE_RULES, defaultPhases, type CompetitionFormat, type LeagueRules } from "@/lib/league-rules";
+import { pushToast } from "@/lib/toast";
 import type { LeagueSummary } from "@/lib/types";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -55,8 +57,11 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
       setCreated(body.league);
       setLeagues((current) => [body.league, ...current.filter((league) => league.id !== body.league.id)]);
       setName("");
+      pushToast("ok", "Lega creata. Condividi il codice invito.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Creazione non riuscita.");
+      const text = reason instanceof Error ? reason.message : "Creazione non riuscita.";
+      setError(text);
+      pushToast("err", text);
     } finally {
       setPending(false);
     }
@@ -290,7 +295,11 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
       ) : null}
       <section className="card">
         <h2>Le tue leghe</h2>
-        {leagues.length === 0 ? <p>Non sei ancora in una lega di questa stagione.</p> : (
+        {leagues.length === 0 ? (
+          <EmptyState title="Nessuna lega">
+            Crea una lega nuova oppure entra con un codice invito. Chi apre il link di invito entra dopo l&apos;accesso, senza ridigitare il codice.
+          </EmptyState>
+        ) : (
           <ul className="list">
             {leagues.map((league) => (
               <li key={league.id}>

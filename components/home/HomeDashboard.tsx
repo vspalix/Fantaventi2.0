@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
+import { EmptyState } from "@/components/EmptyState";
 import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
 import type { HomeBoard, HomeLeagueCard } from "@/lib/server/home-board";
 
@@ -62,12 +63,18 @@ export function HomeDashboard({ board }: { board: HomeBoard }) {
           {board.deadlineAt && board.deadlineLabel ? (
             <DeadlineCountdown deadlineAt={board.deadlineAt} label={board.deadlineLabel} />
           ) : (
-            <p>Nessuna deadline aperta in questa stagione.</p>
+            <EmptyState title="Nessuna deadline aperta">
+              Quando una giornata è in preparazione, il countdown compare qui. Fino ad allora la formazione della giornata in corso resta bloccata.
+            </EmptyState>
           )}
         </article>
         <article className="card">
           <h2>Prossime di {board.competitionName}</h2>
-          {board.fixtures.length === 0 ? <p>Nessuna partita in programma.</p> : (
+          {board.fixtures.length === 0 ? (
+            <EmptyState title="Nessuna partita in programma">
+              Gli incontri della prossima giornata compaiono qui appena il calendario ha un orario.
+            </EmptyState>
+          ) : (
             <ul className="fixture-list">
               {board.fixtures.map((fixture) => (
                 <li key={fixture.id}>

@@ -1018,7 +1018,17 @@ export async function saveLeagueLineup(
     throw httpError("Questa giornata non è nel range della lega.", 400);
   }
   if (!hub.editable) {
-    throw httpError("La formazione si modifica nel countdown, a giornata precedente finita e prima della deadline.", 409);
+    const week = hub.gameweeks.find((gameweek) => gameweek.id === input.gameweekId);
+    const underway = Boolean(week)
+      && week?.status !== "scored"
+      && week?.status !== "final"
+      && (week?.locked || new Date(week?.deadlineAt ?? 0).getTime() <= Date.now());
+    throw httpError(
+      underway
+        ? "Formazione bloccata. La giornata è in corso."
+        : "La formazione si modifica solo prima della deadline, sulla giornata aperta.",
+      409,
+    );
   }
   const { assertWritesOpen } = await import("@/lib/server/maintenance");
   await assertWritesOpen();

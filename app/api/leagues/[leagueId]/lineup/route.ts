@@ -35,6 +35,11 @@ export async function POST(request: Request, context: RouteContext) {
     }));
     return NextResponse.json({ hub });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    const message = errorMessage(error);
+    const locked = /scaduta|è chiusa|in corso/i.test(message);
+    return NextResponse.json(
+      { error: locked ? "Formazione bloccata. La giornata è in corso." : message },
+      { status: errorStatus(error) },
+    );
   }
 }

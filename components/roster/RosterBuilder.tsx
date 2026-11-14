@@ -154,8 +154,8 @@ export function RosterBuilder({
 
   return (
     <div>
-      <div className="row" style={{ justifyContent: "space-between" }}>
-        <label style={{ minWidth: 260, flex: 1 }}>
+      <div className="row roster-toolbar">
+        <label className="team-name-field">
           Nome squadra
           <input value={teamName} onChange={(event) => setTeamName(event.target.value)} />
         </label>

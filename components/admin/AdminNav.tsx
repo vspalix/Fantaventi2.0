@@ -18,7 +18,7 @@ const LINKS = [
 export function AdminNav() {
   const pathname = usePathname();
   return (
-    <nav className="tabs" aria-label="Amministrazione">
+    <nav className="tabs scroll-tabs" aria-label="Amministrazione">
       {LINKS.map((link) => (
         <Link
           key={link.href}

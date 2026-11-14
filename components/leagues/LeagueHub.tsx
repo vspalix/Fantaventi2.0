@@ -224,7 +224,7 @@ function MiniTable({
 }) {
   if (rows.length === 0) return <p className="small muted">{empty}</p>;
   return (
-    <table className="standings">
+    <table className="standings as-cards">
       <thead>
         <tr>
           <th>Pos</th>
@@ -235,12 +235,12 @@ function MiniTable({
       <tbody>
         {rows.map((row) => (
           <tr key={row.fantasyTeamId} data-mine={row.fantasyTeamId === mineId}>
-            <td>{row.rank || "—"}</td>
-            <td>
+            <td data-label="Pos">{row.rank || "—"}</td>
+            <td data-label="Squadra">
               <strong>{row.teamName}</strong>
               <span className="small muted"> · {row.displayName}</span>
             </td>
-            <td>{formatPoints(row.points)}</td>
+            <td data-label="Punti">{formatPoints(row.points)}</td>
           </tr>
         ))}
       </tbody>
@@ -602,7 +602,7 @@ export function LeagueHub({
           {hub.league.rules.defenseEnabled ? "Modificatore difesa" : "Senza modificatore difesa"}
           {hostMode ? ` · ${hub.league.isOwner ? "Admin di lega" : hub.league.isManager ? "Admin delegato" : "Partecipante"}` : ""}
         </p>
-        <div className="row" style={{ justifyContent: "space-between" }}>
+        <div className="row page-head">
           <h1 className="section-title">{hub.league.name}</h1>
           <Link className="primary" href="/rosa">Cambia la mia rosa</Link>
         </div>
@@ -612,7 +612,7 @@ export function LeagueHub({
       ) : null}
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}
-      <div className="tabs" role="tablist">
+      <div className="tabs scroll-tabs" role="tablist" aria-label="Sezioni della lega">
         <button className="tab" type="button" data-active={shownTab === "home"} onClick={() => setTab("home")}>Home</button>
         <button className="tab" type="button" data-active={shownTab === "live"} onClick={() => setTab("live")}>Live</button>
         <button className="tab" type="button" data-active={shownTab === "bacheca"} onClick={() => setTab("bacheca")}>Bacheca</button>
@@ -909,7 +909,7 @@ export function LeagueHub({
           {board === "parziale" ? <PartialTable rows={hub.partial} /> : null}
           {board === "live" ? <LiveTable rows={hub.liveStandings} /> : null}
           {board === "generale" ? (
-          <table className="standings">
+          <table className="standings as-cards">
             <thead>
               <tr>
                 <th>Pos</th>
@@ -926,16 +926,16 @@ export function LeagueHub({
                 <tr><td colSpan={7}>Nessuna squadra iscritta.</td></tr>
               ) : hub.standings.map((row) => (
                 <tr key={row.fantasyTeamId}>
-                  <td>{row.rank}</td>
-                  <td>
+                  <td data-label="Pos">{row.rank}</td>
+                  <td data-label="Squadra">
                     <strong>{row.teamName}</strong>
                     <span className="small muted"> · {row.displayName}</span>
                   </td>
-                  <td>{formatPoints(row.points)}</td>
-                  <td>{formatPoints(row.realPoints)}</td>
-                  <td>{formatPoints(row.entryPoints)}</td>
-                  <td>{row.played}</td>
-                  <td>{row.skipped}</td>
+                  <td data-label="Punti">{formatPoints(row.points)}</td>
+                  <td data-label="Reali">{formatPoints(row.realPoints)}</td>
+                  <td data-label="Ingresso">{formatPoints(row.entryPoints)}</td>
+                  <td data-label="Disputate">{row.played}</td>
+                  <td data-label="Saltate">{row.skipped}</td>
                 </tr>
               ))}
             </tbody>
@@ -1211,7 +1211,7 @@ function PlayedLineup({ sheet }: { sheet: LiveLineupSheet }) {
 
 function PlayerScoreTable({ rows }: { rows: LiveLineupSheet["starters"] }) {
   return (
-    <table className="standings">
+    <table className="standings as-cards">
       <thead>
         <tr>
           <th>Ruolo</th>
@@ -1227,17 +1227,17 @@ function PlayerScoreTable({ rows }: { rows: LiveLineupSheet["starters"] }) {
           <tr><td colSpan={6}>Nessun calciatore.</td></tr>
         ) : rows.map((row) => (
           <tr key={row.playerId}>
-            <td>{ROLE_SHORT[row.role]}</td>
-            <td>
+            <td data-label="Ruolo">{ROLE_SHORT[row.role]}</td>
+            <td data-label="Calciatore">
               <strong>{row.fullName}</strong>
               <span className="small muted"> · {row.clubShort}</span>
               {row.isCaptain ? <span className="live-badge">C</span> : null}
               {row.isVice ? <span className="live-badge">V</span> : null}
             </td>
-            <td>{formatPoints(row.voto)}</td>
-            <td>{formatPoints(row.bonus)}</td>
-            <td>{formatPoints(row.malus)}</td>
-            <td>
+            <td data-label="Voto">{formatPoints(row.voto)}</td>
+            <td data-label="Bonus">{formatPoints(row.bonus)}</td>
+            <td data-label="Malus">{formatPoints(row.malus)}</td>
+            <td data-label="Fantavoto">
               {formatPoints(row.fantavoto)}
               {row.formula ? <span className="small muted"> · {row.formula}</span> : null}
             </td>
@@ -1250,7 +1250,7 @@ function PlayerScoreTable({ rows }: { rows: LiveLineupSheet["starters"] }) {
 
 function LiveTable({ rows }: { rows: LeagueHubData["liveStandings"] }) {
   return (
-    <table className="standings">
+    <table className="standings as-cards">
       <thead>
         <tr>
           <th>Pos</th>
@@ -1263,15 +1263,15 @@ function LiveTable({ rows }: { rows: LeagueHubData["liveStandings"] }) {
           <tr><td colSpan={3}>Nessuna squadra iscritta.</td></tr>
         ) : rows.map((row) => (
           <tr key={row.fantasyTeamId}>
-            <td>{row.rank}</td>
-            <td>
+            <td data-label="Pos">{row.rank}</td>
+            <td data-label="Squadra">
               <strong>{row.teamName}</strong>
               <span className="small muted"> · {row.displayName}</span>
               {row.ratedPlayers !== null ? (
                 <span className="live-badge">{row.ratedPlayers}/11 con voto</span>
               ) : null}
             </td>
-            <td>{formatPoints(row.points)}</td>
+            <td data-label="Punti">{formatPoints(row.points)}</td>
           </tr>
         ))}
       </tbody>
@@ -1281,7 +1281,7 @@ function LiveTable({ rows }: { rows: LeagueHubData["liveStandings"] }) {
 
 function PartialTable({ rows }: { rows: LeagueHubData["partial"] }) {
   return (
-    <table className="standings">
+    <table className="standings as-cards">
       <thead>
         <tr>
           <th>Pos</th>
@@ -1295,14 +1295,14 @@ function PartialTable({ rows }: { rows: LeagueHubData["partial"] }) {
           <tr><td colSpan={4}>Nessuna squadra iscritta.</td></tr>
         ) : rows.map((row) => (
           <tr key={row.fantasyTeamId}>
-            <td>{row.rank || "—"}</td>
-            <td>
+            <td data-label="Pos">{row.rank || "—"}</td>
+            <td data-label="Squadra">
               <strong>{row.teamName}</strong>
               <span className="small muted"> · {row.displayName}</span>
               {row.live ? <span className="live-badge">live</span> : null}
             </td>
-            <td>{row.points === null ? "—" : formatPoints(row.points)}</td>
-            <td>{row.filed ? "Schierata" : "Non schierata"}</td>
+            <td data-label="Punti giornata">{row.points === null ? "—" : formatPoints(row.points)}</td>
+            <td data-label="Formazione">{row.filed ? "Schierata" : "Non schierata"}</td>
           </tr>
         ))}
       </tbody>

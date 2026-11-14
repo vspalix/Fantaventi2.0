@@ -26,7 +26,7 @@ export function MatchdayBreakdown({ audit, onDownload }: { audit: ScoreAudit; on
       <section className="stack">
         <h3>Giocatori in campo</h3>
         <div className="sheet-scroll">
-          <table className="standings">
+          <table className="standings as-cards">
             <thead>
               <tr>
                 <th>Giocatore</th>
@@ -39,15 +39,15 @@ export function MatchdayBreakdown({ audit, onDownload }: { audit: ScoreAudit; on
             <tbody>
               {audit.players.map((player) => (
                 <tr key={player.playerId}>
-                  <td>
+                  <td data-label="Giocatore">
                     <strong>{player.name}</strong>
                     {player.captain ? <span className="small muted"> · capitano</span> : null}
                     {player.source === "substitute" ? <span className="small muted"> · entra per {player.replacedName}</span> : null}
                     {player.source === "bench" ? <span className="small muted"> · in panchina</span> : null}
                   </td>
-                  <td>{ROLE[player.role]}</td>
-                  <td>{points(player.baseVote)}</td>
-                  <td>
+                  <td data-label="Ruolo">{ROLE[player.role]}</td>
+                  <td data-label="Voto base">{points(player.baseVote)}</td>
+                  <td data-label="Bonus e malus">
                     {player.lines.length === 0 ? <span className="muted">Nessuno</span> : (
                       <ul className="audit-lines">
                         {player.lines.map((line) => (
@@ -58,7 +58,7 @@ export function MatchdayBreakdown({ audit, onDownload }: { audit: ScoreAudit; on
                       </ul>
                     )}
                   </td>
-                  <td>{points(player.fantavoto)}</td>
+                  <td data-label="FantaVoto">{points(player.fantavoto)}</td>
                 </tr>
               ))}
             </tbody>

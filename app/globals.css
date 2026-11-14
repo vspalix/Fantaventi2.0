@@ -132,6 +132,11 @@ input, select, textarea {
 .lab-report .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .lab-podium { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
 .lab-podium li { display: flex; justify-content: space-between; gap: 12px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 16px; font-size: 17px; }
+.lab-manual { display: grid; gap: 10px; }
+.lab-manual h3 { margin: 0; font-size: 16px; }
+.lab-manual .row { align-items: end; }
+.lab-manual label { flex: 0 1 140px; }
+.lab-manual button { min-height: 48px; }
 .lab-reset-wrap { margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); }
 .lab-reset { width: 100%; min-height: 52px; }
 .listone-scroll { max-height: 68vh; overflow: auto; }

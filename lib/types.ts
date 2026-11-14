@@ -1,5 +1,20 @@
 import type { LeagueRules } from "@/lib/league-rules";
 
+export type CheckpointSnapshot = {
+  afterMatchday: number;
+  points: number;
+  bonus: number;
+  malus: number;
+  rank: number;
+  teams: number;
+};
+
+export type CheckpointHistory = {
+  rows: CheckpointSnapshot[];
+  nextAfter: number | null;
+  configured: boolean;
+};
+
 export type PlayerRole = "GK" | "DEF" | "MID" | "FWD";
 
 export type RosterRules = {
@@ -213,6 +228,7 @@ export type LeagueHubData = {
   standings: StandingRow[];
   liveStandings: StandingRow[];
   liveReady: boolean;
+  checkpointHistory: CheckpointHistory;
   home: LeagueHome;
 };
 

@@ -60,11 +60,13 @@ const MATCH_STATUS: Record<string, string> = {
 function LeagueHomeView({
   home,
   standings,
+  history,
   mineId,
   onLineup,
 }: {
   home: LeagueHubData["home"];
   standings: LeagueHubData["standings"];
+  history: LeagueHubData["checkpointHistory"];
   mineId: string | null;
   onLineup: () => void;
 }) {
@@ -158,7 +160,85 @@ function LeagueHomeView({
           </div>
         )}
       </article>
+      <CheckpointHistoryCard history={history} hasTeam={mineId !== null} />
     </section>
+  );
+}
+
+function signedPoints(value: number) {
+  const text = formatPoints(value);
+  return value > 0 ? `+${text}` : text;
+}
+
+function CheckpointHistoryCard({
+  history,
+  hasTeam,
+}: {
+  history: LeagueHubData["checkpointHistory"];
+  hasTeam: boolean;
+}) {
+  const peak = history.rows.reduce((max, row) => Math.max(max, row.points), 0);
+  const floor = history.rows.reduce((min, row) => Math.min(min, row.points), 0);
+  const span = Math.max(peak - Math.min(floor, 0), 1);
+  return (
+    <article className="card home-span">
+      <h2>Storico checkpoint</h2>
+      {history.rows.length > 0 ? (
+        <>
+          <p className="small muted">
+            Punti, bonus, malus e posizione della squadra alla chiusura di ogni finestra di mercato.
+          </p>
+          <div className="checkpoint-bars" aria-hidden="true">
+            {history.rows.map((row) => (
+              <div key={row.afterMatchday}>
+                <span style={{ height: `${Math.max(8, ((row.points - Math.min(floor, 0)) / span) * 100)}%` }} />
+                <small>{row.afterMatchday}</small>
+              </div>
+            ))}
+          </div>
+          <table className="standings as-cards">
+            <thead>
+              <tr>
+                <th>Checkpoint</th>
+                <th>Giornata</th>
+                <th>Punti</th>
+                <th>Bonus</th>
+                <th>Malus</th>
+                <th>Posizione</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.rows.map((row, index) => (
+                <tr key={row.afterMatchday}>
+                  <td data-label="Checkpoint">{index + 1}°</td>
+                  <td data-label="Giornata">Dopo la {row.afterMatchday}</td>
+                  <td data-label="Punti">{formatPoints(row.points)}</td>
+                  <td data-label="Bonus">{signedPoints(row.bonus)}</td>
+                  <td data-label="Malus">{signedPoints(row.malus)}</td>
+                  <td data-label="Posizione">{row.rank}° su {row.teams}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      ) : !history.configured ? (
+        <EmptyState title="Nessun checkpoint">
+          Questa lega non ha finestre di mercato. Si aggiungono in Gestione, indicando dopo quale giornata si possono fare i cambi.
+        </EmptyState>
+      ) : !hasTeam ? (
+        <EmptyState title="Rosa mancante">
+          Crea la rosa di questa stagione per vedere i punti della squadra a ogni checkpoint.
+        </EmptyState>
+      ) : history.nextAfter ? (
+        <EmptyState title="Nessun checkpoint chiuso">
+          Il primo si completa quando la giornata {history.nextAfter} è calcolata. Fino a quel momento la classifica non ha ancora uno storico da fissare.
+        </EmptyState>
+      ) : (
+        <EmptyState title="Storico non disponibile">
+          I checkpoint di questa lega non cadono su una giornata già calcolata.
+        </EmptyState>
+      )}
+    </article>
   );
 }
 
@@ -695,6 +775,7 @@ export function LeagueHub({
         <LeagueHomeView
           home={hub.home}
           standings={hub.standings}
+          history={hub.checkpointHistory}
           mineId={hub.opponents.find((opponent) => opponent.isMine)?.fantasyTeamId ?? null}
           onLineup={() => {
             const target = hub.home.focusGameweekId;

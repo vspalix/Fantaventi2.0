@@ -1,6 +1,6 @@
 import { getFantasyTeam, getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { getLeagueDetail } from "@/lib/server/leagues";
-import { createAdminSupabase } from "@/lib/supabase/admin";
+import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
 import { filedPlayerScore, liveFormula, projectLiveScore } from "@/lib/engine/calculator";
 import { overlayPublishedVotes } from "@/lib/server/live-projection";
 import { formationIssue } from "@/lib/formations";
@@ -9,6 +9,7 @@ import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { loadWeekMatchState, type WeekMatchState } from "@/lib/server/roster";
+import { createAdminSupabase } from "@/lib/supabase/admin";
 import type {
   CatalogPlayer,
   HubFixture,
@@ -257,6 +258,19 @@ export async function loadLeagueHub(
 
   const standings = await standingsFor(admin, league, league.participants, rows, now, inPlay);
   const live = await liveStandingsFor(league.id, standings, livePreview);
+  const checkpointHistory = await loadCheckpointHistory({
+    leagueId: league.id,
+    seasonId: league.seasonId,
+    teamId: team?.id ?? null,
+    startMatchday: league.startMatchday,
+    checkpoints: league.rules.checkpoints,
+    participants: league.participants.map((person) => ({
+      fantasyTeamId: person.fantasyTeamId,
+      teamName: person.teamName,
+    })),
+    gameweeks: rows.map((gameweek) => ({ id: gameweek.id, number: gameweek.number, status: gameweek.status })),
+    rules: league.rules,
+  });
   const season = await getCurrentSeason(admin, league.seasonId);
   const lastClosed = [...rows].reverse().find((gameweek) => isLocked(gameweek, now, inPlay)) ?? null;
   const liveRound = [...rows].reverse().find((gameweek) =>
@@ -319,6 +333,7 @@ export async function loadLeagueHub(
     standings,
     liveStandings: live.rows,
     liveReady: live.ready,
+    checkpointHistory,
     home: {
       competitionName: season.competitionName,
       phase: liveWeek ? "live" : next ? "countdown" : "none",

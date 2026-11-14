@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
+import { missingSandboxColumn, SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
 import { DEFAULT_RULES, type CatalogPlayer, type CatalogResponse, type ClubRef, type PlayerRole, type RosterRules } from "@/lib/types";
 
 export const SEASON_COOKIE = "fv-season";
@@ -118,7 +119,7 @@ export async function listPlayableSeasons(admin: SupabaseClient) {
     .in("status", ["running", "open"])
     .order("starts_on", { ascending: false });
   if (error) throw new Error(error.message);
-  return ((data ?? []) as SeasonRow[]).map(mapSeason);
+  return ((data ?? []) as SeasonRow[]).map(mapSeason).filter((season) => season.code !== SANDBOX_SEASON_CODE);
 }
 
 export async function getCurrentSeason(admin: SupabaseClient, seasonId?: string | null) {
@@ -132,7 +133,7 @@ export async function getCurrentSeason(admin: SupabaseClient, seasonId?: string 
     if (error) throw new Error(error.message);
     if (data) {
       const season = mapSeason(data as SeasonRow);
-      if (seasonId || season.status === "running" || season.status === "open") return season;
+      if (season.code !== SANDBOX_SEASON_CODE && (seasonId || season.status === "running" || season.status === "open")) return season;
     } else if (seasonId) {
       const missing = new Error("Stagione non trovata.");
       (missing as Error & { status: number }).status = 404;
@@ -207,14 +208,18 @@ export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
 }
 
 export async function getFantasyTeam(admin: SupabaseClient, userId: string, seasonId: string) {
-  const { data, error } = await admin
+  const scoped = await admin
     .from("fantasy_teams")
     .select("id, name")
     .eq("user_id", userId)
     .eq("season_id", seasonId)
+    .eq("is_sandbox", false)
     .maybeSingle();
-  if (error) throw new Error(error.message);
-  return data as { id: string; name: string } | null;
+  const plain = scoped.error && missingSandboxColumn(scoped.error.message)
+    ? await admin.from("fantasy_teams").select("id, name").eq("user_id", userId).eq("season_id", seasonId).maybeSingle()
+    : scoped;
+  if (plain.error) throw new Error(plain.error.message);
+  return plain.data as { id: string; name: string } | null;
 }
 
 export async function ensureFantasyTeam(

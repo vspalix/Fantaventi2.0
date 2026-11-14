@@ -14,7 +14,7 @@ const LINKS = [
   { href: "/admin/import-listone", label: "Listone" },
   { href: "/admin/listone-view", label: "Listone caricato" },
   { href: "/admin/rules-editor", label: "Regolamento" },
-  { href: "/admin/laboratorio", label: "Collaudo" },
+  { href: "/admin/laboratorio", label: "Sandbox" },
 ];
 
 export function AdminNav() {

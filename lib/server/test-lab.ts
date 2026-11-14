@@ -16,6 +16,7 @@ import { activateSeasonGameweek } from "@/lib/server/gameweek-cycle";
 import { loadLeagueHub } from "@/lib/server/league-hub";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { simulateLeagueGameweek } from "@/lib/server/simulate-gameweek";
+import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { CatalogPlayer, ClubRef, PlayerRole } from "@/lib/types";
 
@@ -47,7 +48,23 @@ async function ownedLeagues(
     .select("id, name, start_matchday, end_matchday")
     .eq("owner_user_id", userId)
     .eq("season_id", seasonId)
+    .eq("is_sandbox", false)
     .order("name");
+  if (withRange.error && missingSandboxColumn(withRange.error.message)) {
+    const legacy = await admin
+      .from("private_leagues")
+      .select("id, name, start_matchday, end_matchday")
+      .eq("owner_user_id", userId)
+      .eq("season_id", seasonId)
+      .order("name");
+    if (legacy.error) throw new Error(legacy.error.message);
+    return (legacy.data ?? []).map((row) => ({
+      id: row.id as string,
+      name: row.name as string,
+      startMatchday: matchday(row.start_matchday, 1),
+      endMatchday: matchday(row.end_matchday, 38),
+    }));
+  }
 
   if (!withRange.error) {
     return (withRange.data ?? []).map((row) => ({

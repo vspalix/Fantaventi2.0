@@ -1,4 +1,5 @@
 import { schemaHint, scoreOfficialGameweek } from "@/lib/server/live-score";
+import { SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -11,6 +12,7 @@ type GameweekRow = {
   status: string;
   deadline_at: string;
   scored_at: string | null;
+  season_id?: string;
 };
 
 export async function processGameweekLifecycle(now = new Date(), options?: { finalize?: boolean; scoreReadyWeeks?: boolean }) {
@@ -18,11 +20,13 @@ export async function processGameweekLifecycle(now = new Date(), options?: { fin
   const stamp = now.toISOString();
   const { data, error } = await admin
     .from("gameweeks")
-    .select("id, number, status, deadline_at, scored_at")
+    .select("id, number, status, deadline_at, scored_at, season_id")
     .order("number");
   if (error) throw new Error(schemaHint(error.message));
 
-  const gameweeks = (data ?? []) as GameweekRow[];
+  const sandboxSeasons = await admin.from("seasons").select("id").eq("code", SANDBOX_SEASON_CODE);
+  const sandboxIds = new Set((sandboxSeasons.data ?? []).map((row) => row.id as string));
+  const gameweeks = ((data ?? []) as GameweekRow[]).filter((gameweek) => !gameweek.season_id || !sandboxIds.has(gameweek.season_id));
   const locked: number[] = [];
   const scored: number[] = [];
   const finalized: number[] = [];

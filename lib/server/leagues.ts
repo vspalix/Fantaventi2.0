@@ -5,6 +5,7 @@ import { createAdminSupabase } from "@/lib/supabase/admin";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import type { LeagueDetail, LeagueSummary } from "@/lib/types";
 import { ensureProfile, getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
+import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 
 type LeagueRow = {
   id: string;
@@ -117,12 +118,17 @@ export async function listLeaguesForUser(userId: string): Promise<LeagueSummary[
   const season = await getCurrentSeason(admin);
   const team = await getFantasyTeam(admin, userId, season.id);
 
-  const { data: owned, error: ownedError } = await admin
+  const ownedQuery = await admin
     .from("private_leagues")
     .select("id, name, join_code, season_id")
     .eq("owner_user_id", userId)
-    .eq("season_id", season.id);
-  if (ownedError) throw new Error(ownedError.message);
+    .eq("season_id", season.id)
+    .eq("is_sandbox", false);
+  const ownedResult = ownedQuery.error && missingSandboxColumn(ownedQuery.error.message)
+    ? await admin.from("private_leagues").select("id, name, join_code, season_id").eq("owner_user_id", userId).eq("season_id", season.id)
+    : ownedQuery;
+  if (ownedResult.error) throw new Error(ownedResult.error.message);
+  const owned = ownedResult.data;
 
   let joined: { id: string; name: string; join_code: string }[] = [];
   if (team) {
@@ -258,13 +264,18 @@ export async function joinLeague(userId: string, email: string | undefined, code
   const admin = createAdminSupabase();
   await ensureProfile(admin, userId, email);
 
-  const { data: league, error } = await admin
+  const flagged = await admin
     .from("private_leagues")
-    .select("id, name, join_code, season_id")
+    .select("id, name, join_code, season_id, is_sandbox")
     .eq("join_code", joinCode)
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  const plainLeague = flagged.error && missingSandboxColumn(flagged.error.message)
+    ? await admin.from("private_leagues").select("id, name, join_code, season_id").eq("join_code", joinCode).maybeSingle()
+    : flagged;
+  if (plainLeague.error) throw new Error(plainLeague.error.message);
+  const league = plainLeague.data as { id: string; name: string; join_code: string; season_id: string; is_sandbox?: boolean } | null;
   if (!league) throw new Error("Nessuna lega trovata con questo codice.");
+  if (league.is_sandbox) throw new Error("Questo codice appartiene al laboratorio sandbox e non iscrive a una lega reale.");
 
   const team = await getFantasyTeam(admin, userId, league.season_id as string);
   if (!team) {
@@ -295,6 +306,10 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
   const loaded = await readLeagueRow(admin, leagueId);
   if (!loaded) throw httpError("Lega non trovata.", 404);
   const { row: league, startMatchday, endMatchday, rangeReady } = loaded;
+  const sandboxFlag = await admin.from("private_leagues").select("is_sandbox").eq("id", leagueId).maybeSingle();
+  if (!sandboxFlag.error && (sandboxFlag.data as { is_sandbox?: boolean } | null)?.is_sandbox) {
+    throw httpError("Questa lega è il laboratorio sandbox e resta fuori dal gioco.", 404);
+  }
 
   const team = await getFantasyTeam(admin, userId, league.season_id as string);
   const roundCount = await seasonRoundCount(admin, league.season_id as string);

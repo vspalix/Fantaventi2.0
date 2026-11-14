@@ -5,6 +5,7 @@ import { createAdminSupabase } from "@/lib/supabase/admin";
 import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { ensureFantasyTeam, ensureProfile, getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
+import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 import type { RosterMarket } from "@/lib/types";
 
 const MATCH_WINDOW_MS = MATCH_CLOSE_MS;
@@ -247,12 +248,17 @@ export async function saveRoster(userId: string, email: string | undefined, team
   }
   if (changed) await clearOpenLineups(admin, season.id, teamId, gameweek);
 
-  const { data: ownedLeagues, error: ownedError } = await admin
+  const ownedFiltered = await admin
     .from("private_leagues")
     .select("id")
     .eq("owner_user_id", userId)
-    .eq("season_id", season.id);
-  if (ownedError) throw new Error(ownedError.message);
+    .eq("season_id", season.id)
+    .eq("is_sandbox", false);
+  const ownedResult = ownedFiltered.error && missingSandboxColumn(ownedFiltered.error.message)
+    ? await admin.from("private_leagues").select("id").eq("owner_user_id", userId).eq("season_id", season.id)
+    : ownedFiltered;
+  if (ownedResult.error) throw new Error(ownedResult.error.message);
+  const ownedLeagues = ownedResult.data;
 
   if ((ownedLeagues ?? []).length > 0) {
     const { error: memberError } = await admin.from("private_league_members").upsert(

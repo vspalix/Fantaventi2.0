@@ -1,4 +1,5 @@
 import { AdminNav } from "@/components/admin/AdminNav";
+import { SandboxDesk } from "@/components/admin/SandboxDesk";
 import { ChaosDesk } from "@/components/admin/ChaosDesk";
 import { MaintenanceSwitch } from "@/components/admin/MaintenanceSwitch";
 import { TestLab } from "@/components/admin/TestLab";
@@ -36,6 +37,7 @@ export default async function LabPage() {
           </p>
         </header>
         <AdminNav />
+        <SandboxDesk />
         <MaintenanceSwitch />
         <ChaosDesk />
         <TestLab initial={lab} />

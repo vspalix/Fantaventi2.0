@@ -1,4 +1,5 @@
 import { AdminNav } from "@/components/admin/AdminNav";
+import { LiveSyncDesk } from "@/components/admin/LiveSyncDesk";
 import { MatchdayDesk } from "@/components/admin/MatchdayDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadTestLab } from "@/lib/server/test-lab";
@@ -31,10 +32,11 @@ export default async function AdminPage() {
         <header>
           <h1 className="section-title">Admin</h1>
           <p className="lede">
-            Stagione {lab.seasonCode}. Quattro azioni: voti della giornata, ricalcolo della classifica, rinvii e formazioni consegnate.
+            Stagione {lab.seasonCode}. Stato del sync live, voti della giornata, ricalcolo della classifica, rinvii e formazioni consegnate.
           </p>
         </header>
         <AdminNav />
+        <LiveSyncDesk />
         <MatchdayDesk initial={lab} />
       </section>
     );

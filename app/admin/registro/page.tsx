@@ -22,6 +22,10 @@ const ACTION_LABEL: Record<string, string> = {
   "league.expel": "Espulsione di un utente",
   "user.delete": "Eliminazione di un account",
   "user.role": "Cambio ruolo di piattaforma",
+  "live.force": "Sync e ricalcolo forzati della giornata corrente",
+  "sandbox.seed": "Generazione lega sandbox",
+  "sandbox.simulate": "Simulazione giornate sandbox",
+  "sandbox.reset": "Svuotamento sandbox",
 };
 
 export default async function AdminAuditPage() {

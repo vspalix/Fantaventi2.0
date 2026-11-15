@@ -457,3 +457,38 @@ async function clearOpenLineups(
     .in("gameweek_id", ids);
   if (lineupError) throw new Error(lineupError.message);
 }
+
+export async function describeCheckpoint(userId: string) {
+  const admin = createAdminSupabase();
+  const season = await getCurrentSeason(admin);
+  const team = await getFantasyTeam(admin, userId, season.id);
+  if (!team) return "La prima rosa si compone da Checkpoint. Poi i cambi seguono le finestre della lega.";
+  const memberships = await admin.from("private_league_members").select("private_league_id").eq("fantasy_team_id", team.id);
+  if (memberships.error) return "Il checkpoint della lega non è disponibile in questo momento.";
+  const leagueIds = (memberships.data ?? []).map((row) => row.private_league_id as string);
+  const gated: { afterMatchday: number; changes: number }[] = [];
+  for (const leagueId of leagueIds) {
+    const settings = await readLeagueSettings(admin, leagueId);
+    if (settings.ready && settings.rules.checkpoints.length > 0) gated.push(...settings.rules.checkpoints);
+  }
+  if (gated.length === 0) return "Questa lega non ha checkpoint: la rosa si aggiorna quando le partite sono ferme.";
+  const closedWeeks = await admin.from("gameweeks").select("number").eq("season_id", season.id).in("status", ["scored", "final"]);
+  if (closedWeeks.error) return "Il checkpoint della lega non è disponibile in questo momento.";
+  const closed = (closedWeeks.data ?? []).map((row) => row.number as number);
+  const window = openCheckpoint(gated, closed);
+  if (!window) {
+    const next = [...gated].sort((left, right) => left.afterMatchday - right.afterMatchday).find((item) => !closed.includes(item.afterMatchday));
+    return next
+      ? `Checkpoint chiuso. Il prossimo è dopo la giornata ${next.afterMatchday}, con ${next.changes} cambi.`
+      : "Checkpoint chiuso. Non ne restano altri in questa stagione.";
+  }
+  const used = await admin
+    .from("roster_checkpoint_uses")
+    .select("changes_used")
+    .eq("fantasy_team_id", team.id)
+    .eq("after_matchday", window.afterMatchday)
+    .maybeSingle();
+  const already = used.error ? 0 : Number(used.data?.changes_used ?? 0);
+  const left = Math.max(0, window.changes - already);
+  return `Checkpoint aperto dopo la giornata ${window.afterMatchday}. Cambi rimasti: ${left}.`;
+}

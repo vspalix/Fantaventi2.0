@@ -85,6 +85,31 @@ export function SiteHeader({
   return (
     <header className="site-header" ref={bar}>
       <div className="shell dash-shell">
+        {email ? (
+          <div className="dash-menu-wrap header-menu">
+            <button className="menu-pill" type="button" aria-label="Menu" aria-expanded={open === "menu"} onClick={() => setOpen(open === "menu" ? null : "menu")}>
+              <MenuIcon />
+            </button>
+            {open === "menu" ? (
+              <ul className="dash-menu">
+                <li><Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link></li>
+                <li><Link href="/albo" onClick={() => setOpen(null)}>Albo</Link></li>
+                <li><Link href="/rules" onClick={() => setOpen(null)}>Regolamento</Link></li>
+                {seasons.length > 1 ? (
+                  <li>
+                    <label>
+                      Stagione
+                      <select aria-label="Competizione e stagione" value={activeSeasonId ?? seasons[0].id} onChange={(event) => void chooseSeason(event.target.value)}>
+                        {seasons.map((season) => <option key={season.id} value={season.id}>{season.label}</option>)}
+                      </select>
+                    </label>
+                  </li>
+                ) : null}
+              </ul>
+            ) : null}
+          </div>
+        ) : <span className="header-menu" />}
+
         {email && current ? (
           <div className="squad-switch">
             <button className="squad-pill" type="button" aria-expanded={open === "squad"} aria-haspopup="listbox" onClick={() => setOpen(open === "squad" ? null : "squad")}>
@@ -124,33 +149,11 @@ export function SiteHeader({
         {email ? (
           <nav className="dash-tabs" aria-label="Sezioni">
             <Link href="/" data-active={pathname === "/"}><HomeIcon />Dashboard</Link>
-            <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Rose</Link>
+            <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Rosa</Link>
             <Link href={leagueHref("risultati")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "risultati")}><CalendarIcon />Calendario</Link>
             <Link href={leagueHref("classifica")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "classifica")}><TrophyIcon />Classifica</Link>
-            <div className="dash-menu-wrap">
-              <button type="button" data-active={open === "menu"} aria-expanded={open === "menu"} onClick={() => setOpen(open === "menu" ? null : "menu")}>
-                <MenuIcon />Menu
-              </button>
-              {open === "menu" ? (
-                <ul className="dash-menu dash-menu-right">
-                  <li><Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link></li>
-                  <li><Link href="/albo" onClick={() => setOpen(null)}>Albo</Link></li>
-                  <li><Link href="/rules" onClick={() => setOpen(null)}>Regolamento</Link></li>
-                  {seasons.length > 1 ? (
-                    <li>
-                      <label>
-                        Stagione
-                        <select aria-label="Competizione e stagione" value={activeSeasonId ?? seasons[0].id} onChange={(event) => void chooseSeason(event.target.value)}>
-                          {seasons.map((season) => <option key={season.id} value={season.id}>{season.label}</option>)}
-                        </select>
-                      </label>
-                    </li>
-                  ) : null}
-                </ul>
-              ) : null}
-            </div>
           </nav>
-        ) : <span />}
+        ) : <span className="tabs-slot" />}
 
         {email ? (
           <div className="profile-switch">

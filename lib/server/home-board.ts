@@ -67,16 +67,17 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   if (weekIds.length > 0) {
     const matches = await admin
       .from("real_matches")
-      .select("id, kickoff_at, status, home_club_id, away_club_id")
+      .select("id, kickoff_at, status, home_club_id, away_club_id, gameweek_id")
       .in("gameweek_id", weekIds)
       .gte("kickoff_at", new Date(now).toISOString())
-      .order("kickoff_at", { ascending: true })
-      .limit(6);
-    if (!matches.error && (matches.data ?? []).length > 0) {
-      const clubIds = [...new Set((matches.data ?? []).flatMap((match) => [match.home_club_id as string, match.away_club_id as string]))];
+      .order("kickoff_at", { ascending: true });
+    const nextWeekId = matches.data?.[0]?.gameweek_id;
+    const round = (matches.data ?? []).filter((match) => match.gameweek_id === nextWeekId);
+    if (!matches.error && round.length > 0) {
+      const clubIds = [...new Set(round.flatMap((match) => [match.home_club_id as string, match.away_club_id as string]))];
       const clubs = await admin.from("clubs").select("id, code, club_translations(locale, short_name, name)").in("id", clubIds);
       const names = new Map((clubs.data ?? []).map((club) => [club.id as string, clubLabel(club as { code?: string; club_translations?: { locale: string; short_name: string; name: string }[] })]));
-      fixtures = (matches.data ?? []).map((match) => ({
+      fixtures = round.map((match) => ({
         id: match.id as string,
         kickoffAt: match.kickoff_at as string,
         home: names.get(match.home_club_id as string) ?? "Casa",

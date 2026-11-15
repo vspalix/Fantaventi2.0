@@ -391,6 +391,20 @@ async function fixturesFor(
   });
 }
 
+export async function loadLeagueRosters(
+  userId: string,
+  leagueId: string,
+  gameweekNumber: number,
+  players: CatalogPlayer[],
+) {
+  const admin = createAdminSupabase();
+  const league = await getLeagueDetail(userId, leagueId);
+  const team = await getFantasyTeam(admin, userId, league.seasonId);
+  const byId = new Map(players.map((player) => [player.id, player]));
+  const squads = await squadsFor(admin, league.participants, team?.id ?? null, gameweekNumber, byId);
+  return { leagueName: league.name, squads: squads.filter((squad) => !squad.isMine) };
+}
+
 async function squadsFor(
   admin: ReturnType<typeof createAdminSupabase>,
   participants: LeagueHubData["league"]["participants"],

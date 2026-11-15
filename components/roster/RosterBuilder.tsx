@@ -11,10 +11,9 @@ import { ClubModal } from "@/components/roster/ClubModal";
 import { RosterSidebar } from "@/components/roster/RosterSidebar";
 import { useTapGuard } from "@/components/useTapGuard";
 import { evaluateRoster } from "@/lib/constraints";
-import type { CatalogPlayer, CatalogResponse, PlayerRole, RosterMarket, RosterState } from "@/lib/types";
+import { DEFAULT_RULES, ROLE_LABEL, type CatalogPlayer, type CatalogResponse, type LeagueSquad, type PlayerRole, type RosterMarket, type RosterState } from "@/lib/types";
 
 const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
-import { DEFAULT_RULES } from "@/lib/types";
 
 function roleMax(role: PlayerRole, rules: { gkMax: number; outfieldMax: number }) {
   return role === "GK" ? rules.gkMax : rules.outfieldMax;
@@ -25,11 +24,15 @@ export function RosterBuilder({
   catalog,
   initialRoster,
   loadError,
+  others = null,
+  checkpointNote = null,
 }: {
   signedIn: boolean;
   catalog: CatalogResponse | null;
   initialRoster: RosterState | null;
   loadError: string | null;
+  others?: { leagueName: string; squads: LeagueSquad[] } | null;
+  checkpointNote?: string | null;
 }) {
   const rules = catalog?.rules ?? DEFAULT_RULES;
   const players = catalog?.players ?? [];
@@ -48,6 +51,8 @@ export function RosterBuilder({
   const flight = useRef(false);
   const picks = useTapGuard();
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [mode, setMode] = useState<"rosa" | "checkpoint" | "others">("rosa");
+  const [info, setInfo] = useState(false);
   const market: RosterMarket = initialRoster?.market ?? { locked: false, gameweekNumber: null, message: null };
   const [appliesFrom, setAppliesFrom] = useState(initialRoster?.appliesFrom ?? 1);
   const locked = market.locked;
@@ -198,9 +203,98 @@ export function RosterBuilder({
     );
   }
 
+  const head = (
+    <header className="rosa-head">
+      <div>
+        <h1 className="section-title">{mode === "others" ? "Rose degli altri" : teamName || "Rosa"}</h1>
+        {mode === "rosa" ? <p className="small muted">{selected.length} / {rules.squadSize} calciatori{others ? ` · ${others.leagueName}` : ""}</p> : null}
+        {mode === "others" && others ? <p className="small muted">{others.leagueName}</p> : null}
+      </div>
+      <button className="info-button" type="button" aria-expanded={info} aria-label="Come funziona la rosa" onClick={() => setInfo((current) => !current)}>i</button>
+    </header>
+  );
+  const infoCard = info ? (
+    <p className="card rosa-info">
+      Dal checkpoint apri un club e scegli un calciatore: la lista si chiude da sola. Togli sta a destra sulla tessera del club.
+      Durante le partite della giornata la rosa resta ferma. Al salvataggio restano un club ciascuno e i limiti di ruolo.
+      I cambi valgono dalla giornata {appliesFrom}.
+    </p>
+  ) : null;
+
+  if (mode === "others") {
+    return (
+      <div className="stack">
+        {head}
+        {infoCard}
+        <button className="ghost" type="button" onClick={() => setMode("rosa")}>Torna alla tua rosa</button>
+        {!others || others.squads.length === 0 ? (
+          <EmptyState title="Nessun'altra rosa">
+            Quando gli altri della lega salvano la rosa, la vedi da qui.
+          </EmptyState>
+        ) : others.squads.map((squad) => (
+          <article className="card" key={squad.fantasyTeamId}>
+            <h2>{squad.teamName}</h2>
+            <p className="small muted">{squad.displayName} · {squad.players.length} calciatori</p>
+            {squad.players.length === 0 ? <p className="small muted">Rosa non ancora salvata.</p> : (
+              <div>
+                {(["GK", "DEF", "MID", "FWD"] as PlayerRole[]).map((role) => {
+                  const rows = squad.players.filter((player) => player.role === role);
+                  if (rows.length === 0) return null;
+                  return (
+                    <section className="rosa-role" key={role}>
+                      <h2>{ROLE_LABEL[role]}</h2>
+                      {rows.map((player) => (
+                        <p className="rosa-line" key={player.id}><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
+                      ))}
+                    </section>
+                  );
+                })}
+              </div>
+            )}
+          </article>
+        ))}
+      </div>
+    );
+  }
+
+  if (mode === "rosa") {
+    return (
+      <div className="stack">
+        {head}
+        {infoCard}
+        <div className="rosa-actions">
+          <button className="primary" type="button" onClick={() => setMode("checkpoint")}>Checkpoint</button>
+          <button className="ghost" type="button" onClick={() => setMode("others")}>Rose degli altri</button>
+        </div>
+        {checkpointNote ? <p className="small muted">{checkpointNote}</p> : null}
+        {error ? <p className="banner">{error}</p> : null}
+        {market.message ? <p className="banner">{market.message}</p> : null}
+        {selected.length === 0 ? (
+          <EmptyState title="Rosa ancora vuota">
+            Apri Checkpoint e scegli un calciatore per club.
+          </EmptyState>
+        ) : (["GK", "DEF", "MID", "FWD"] as PlayerRole[]).map((role) => {
+          const rows = selected.filter((player) => player.role === role).sort((left, right) => left.fullName.localeCompare(right.fullName, "it"));
+          if (rows.length === 0) return null;
+          return (
+            <section className="rosa-role" key={role}>
+              <h2>{ROLE_LABEL[role]}</h2>
+              {rows.map((player) => (
+                <p className="rosa-line" key={player.id}><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
+              ))}
+            </section>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div>
+      {head}
+      {infoCard}
       <div className="row roster-toolbar">
+        <button className="ghost" type="button" onClick={() => setMode("rosa")}>Torna alla rosa</button>
         <label className="team-name-field">
           Nome squadra
           <input value={teamName} onChange={(event) => setTeamName(event.target.value)} disabled={pending} />
@@ -216,13 +310,8 @@ export function RosterBuilder({
         </button>
       </div>
       {market.message ? <p className="banner">{market.message}</p> : (
-        <p className="small muted">Nessun credito: un solo calciatore per club, dentro i limiti di ruolo. Fuori dalle partite i cambi valgono dalla giornata {appliesFrom}.</p>
+        <p className="small muted">{checkpointNote ?? `I cambi valgono dalla giornata ${appliesFrom}.`}</p>
       )}
-      {selected.length === 0 ? (
-        <EmptyState title="Rosa ancora vuota">
-          Apri un club e scegli un calciatore. Vale un giocatore per club, dentro i limiti di ruolo. Quando la rosa è completa, premi Salva rosa.
-        </EmptyState>
-      ) : null}
       {inviteCode ? <p className="banner ok">Hai un invito in sospeso. Salva la rosa e entri in lega senza digitare il codice.</p> : null}
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}

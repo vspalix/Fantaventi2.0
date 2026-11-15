@@ -1,7 +1,11 @@
+import { cookies } from "next/headers";
 import { RosterBuilder } from "@/components/roster/RosterBuilder";
 import { SetupNotice } from "@/components/SetupNotice";
+import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { loadCatalog } from "@/lib/server/catalog";
-import { loadRoster } from "@/lib/server/roster";
+import { loadLeagueRosters } from "@/lib/server/league-hub";
+import { listLeaguesForUser } from "@/lib/server/leagues";
+import { describeCheckpoint, loadRoster } from "@/lib/server/roster";
 import { errorMessage, getSessionUser } from "@/lib/server/session";
 import { meter } from "@/lib/server/telemetry";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -19,24 +23,31 @@ export default async function RosterPage() {
 
   try {
     const [catalog, roster] = await Promise.all([loadCatalog(), meter("roster", () => loadRoster(user.id))]);
+    const checkpointNote = await describeCheckpoint(user.id).catch(() => null);
+    let others: Awaited<ReturnType<typeof loadLeagueRosters>> | null = null;
+    try {
+      const leagues = await listLeaguesForUser(user.id);
+      const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value;
+      const league = leagues.find((item) => item.id === saved) ?? leagues[0];
+      if (league) others = await loadLeagueRosters(user.id, league.id, roster.appliesFrom, catalog.players);
+    } catch {
+      others = null;
+    }
     return (
       <section className="roster-screen">
-        <header>
-          <h1 className="section-title">Rosa per club</h1>
-          <p className="lede">
-            Apri una squadra e scegli un calciatore: la lista si chiude da sola. Togli sta a destra sulla tessera del club.
-            Durante le partite della giornata la rosa resta ferma. Al salvataggio valgono ancora un club ciascuno e i limiti di ruolo.
-          </p>
-        </header>
-        <RosterBuilder signedIn catalog={catalog} initialRoster={roster} loadError={null} />
+        <RosterBuilder
+          signedIn
+          catalog={catalog}
+          initialRoster={roster}
+          loadError={null}
+          others={others}
+          checkpointNote={checkpointNote}
+        />
       </section>
     );
   } catch (error) {
     return (
       <section className="roster-screen">
-        <header>
-          <h1 className="section-title">Rosa per club</h1>
-        </header>
         <RosterBuilder signedIn catalog={null} initialRoster={null} loadError={errorMessage(error)} />
       </section>
     );

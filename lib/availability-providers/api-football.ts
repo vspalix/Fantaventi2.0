@@ -9,15 +9,14 @@ type InjuryRow = {
 export const apiFootballProvider: AvailabilityProvider = {
   id: "api-football",
   async load(context) {
-    const key = process.env.RAPIDAPI_KEY;
-    if (!key) throw new Error("Manca RAPIDAPI_KEY sul server.");
-    const url = new URL("https://api-football-v1.p.rapidapi.com/v3/injuries");
+    const key = process.env.API_FOOTBALL_KEY;
+    if (!key) throw new Error("Manca API_FOOTBALL_KEY sul server.");
+    const url = new URL("https://v3.football.api-sports.io/injuries");
     url.searchParams.set("league", String(context.leagueId || 135));
     url.searchParams.set("season", String(context.season || 2026));
     const response = await fetch(url, {
       headers: {
-        "X-RapidAPI-Key": key,
-        "X-RapidAPI-Host": "api-football-v1.p.rapidapi.com",
+        "x-apisports-key": key,
         "User-Agent": "Fantaventi/1.0",
       },
       signal: AbortSignal.timeout(20000),

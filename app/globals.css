@@ -73,7 +73,73 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   gap: 14px;
   min-height: 72px;
 }
-.header-balance { width: 48px; grid-area: profile; }
+.header-balance, .inbox { grid-area: profile; justify-self: end; position: relative; }
+.inbox .menu-pill { position: relative; }
+.inbox .menu-pill svg { width: 20px; height: 20px; }
+.inbox-count {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 99px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.inbox-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 45;
+  width: min(320px, 80vw);
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+}
+.inbox-panel button { display: grid; gap: 2px; text-align: left; background: transparent; border: 0; color: var(--text); padding: 8px; }
+.inbox-panel button[data-read="true"] { color: var(--muted); }
+.inbox-panel span { font-size: 13px; }
+.announce-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.72);
+}
+.announce-modal {
+  position: relative;
+  width: min(420px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 28px 20px 20px;
+  border-radius: 22px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.announce-modal img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 14px; }
+.announce-modal h2 { margin: 0; }
+.announce-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(9, 9, 11, 0.72);
+  color: var(--text);
+  font-size: 28px;
+  line-height: 1;
+}
 .header-menu { grid-area: menu; }
 .squad-switch, .dash-shell > .squad-pill { grid-area: squad; }
 .dash-tabs, .tabs-slot { grid-area: tabs; }

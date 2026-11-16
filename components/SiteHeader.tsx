@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { InboxBell } from "@/components/InboxBell";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -52,7 +53,7 @@ export function SiteHeader({
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (bar.current?.contains(target)) return;
-      if (target instanceof Element && target.closest(".tabbar, .drawer")) return;
+      if (target instanceof Element && target.closest(".tabbar, .drawer, .inbox")) return;
       setOpen(null);
     }
     document.addEventListener("pointerdown", close);
@@ -109,12 +110,12 @@ export function SiteHeader({
                   <p className="drawer-kicker">Menu</p>
                   <Link href={current ? `/leghe/${current.id}?tab=formazione` : "/rosa"} onClick={() => setOpen(null)}>Formazione</Link>
                   <Link href="/rosa" onClick={() => setOpen(null)}>Mercato</Link>
-                  <Link href={current ? `/leghe/${current.id}?tab=regolamento` : "/rules"} onClick={() => setOpen(null)}>Regolamento</Link>
+                  <Link href="/regolamento" onClick={() => setOpen(null)}>Regolamento</Link>
+                  {current ? <Link href={`/leghe/${current.id}?tab=regolamento`} onClick={() => setOpen(null)}>Regolamento lega</Link> : null}
                   <Link href={current ? `/leghe/${current.id}?tab=lega` : "/leghe"} onClick={() => setOpen(null)}>Impostazioni lega</Link>
                   {hostMode && canSwitch ? <Link href={current ? `/leghe/${current.id}?tab=gestione` : "/leghe"} onClick={() => setOpen(null)}>Gestione lega</Link> : null}
                   <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
                   <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
-                  <Link href="/rules" onClick={() => setOpen(null)}>Regolamento generale</Link>
                   {hostMode && platformAdmin ? <Link href="/admin" onClick={() => setOpen(null)}>Pannello admin</Link> : null}
                   {seasons.length > 1 ? (
                     <label>
@@ -171,7 +172,7 @@ export function SiteHeader({
           </Link>
         )}
 
-        {email ? <span className="header-balance" aria-hidden="true" /> : pathname.startsWith("/accesso") ? <span /> : (
+        {email ? <InboxBell /> : pathname.startsWith("/accesso") ? <span /> : (
           <Link className="primary dash-login" href="/accesso">Accedi</Link>
         )}
       </div>

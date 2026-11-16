@@ -11,6 +11,8 @@ const LINKS = [
   { href: "/admin/leghe", label: "Leghe" },
   { href: "/admin/notifiche", label: "Notifiche" },
   { href: "/admin/news", label: "News" },
+  { href: "/admin/annunci", label: "Annunci" },
+  { href: "/admin/comunicazioni", label: "Comunicazioni" },
   { href: "/admin/promo", label: "Banner" },
   { href: "/admin/import-listone", label: "Listone" },
   { href: "/admin/listone-view", label: "Listone caricato" },

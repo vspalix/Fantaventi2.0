@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export function DeadlineCountdown({ deadlineAt, label }: { deadlineAt: string; label: string }) {
+export function DeadlineCountdown({ deadlineAt, label, compact = false }: { deadlineAt: string; label: string; compact?: boolean }) {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -24,6 +24,8 @@ export function DeadlineCountdown({ deadlineAt, label }: { deadlineAt: string; l
       : hours > 0
         ? `${hours}h ${String(minutes).padStart(2, "0")}`
         : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+
+  if (compact) return <p className="clock-pill">{clock}</p>;
 
   return (
     <div>

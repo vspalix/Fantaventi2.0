@@ -19,7 +19,9 @@ export type HomeFixture = {
 export type HomeRoundDot = {
   number: number;
   points: number;
+  average: number;
   above: boolean;
+  otherPoints: number | null;
 };
 
 export type HomeLeagueCard = {
@@ -30,8 +32,9 @@ export type HomeLeagueCard = {
   total: number | null;
   played: number;
   nextLabel: string | null;
+  nextRival: string | null;
   average: number | null;
-  lastRound: { number: number; points: number; average: number } | null;
+  lastRound: { number: number; points: number; average: number; otherName: string | null; otherPoints: number | null } | null;
   recent: HomeRoundDot[];
   insights: string[];
 };
@@ -138,6 +141,7 @@ async function leagueCard(
     total: null,
     played: 0,
     nextLabel: null,
+    nextRival: null,
     average: null,
     lastRound: null,
     recent: [],
@@ -168,7 +172,7 @@ async function leagueCard(
     );
     const totals = new Map<string, number>();
     for (const teamId of teamIds) totals.set(teamId, 0);
-    const trail: { number: number; points: number; average: number; place: number }[] = [];
+    const trail: { number: number; points: number; average: number; place: number; otherName: string | null; otherPoints: number | null }[] = [];
     for (const week of counted) {
       const mode = weekScoreMode(settings.rules, Number(week.number));
       const weekPoints = new Map(teamIds.map((teamId) => [teamId, fantasy.get(`${teamId}:${week.id}`) ?? 0]));
@@ -196,11 +200,25 @@ async function leagueCard(
         const weekAverage = teamIds.length ? sum / teamIds.length : 0;
         const ordered = [...totals.entries()].sort((left, right) => right[1] - left[1]);
         const spot = ordered.findIndex(([teamId]) => teamId === myTeamId);
+        let otherName: string | null = null;
+        let otherPoints: number | null = null;
+        if (mode === "head_to_head") {
+          const { pairs, bye } = headToHeadPairings(teamIds, Number(week.number));
+          if (bye === myTeamId) otherName = "Riposo";
+          const pair = pairs.find((item) => item.home === myTeamId || item.away === myTeamId);
+          if (pair) {
+            const otherId = pair.home === myTeamId ? pair.away : pair.home;
+            otherName = teams.find((item) => item.id === otherId)?.name ?? "Avversario";
+            otherPoints = Math.round((weekPoints.get(otherId) ?? 0) * 100) / 100;
+          }
+        }
         trail.push({
           number: Number(week.number),
           points: Math.round(mine * 100) / 100,
           average: Math.round(weekAverage * 100) / 100,
           place: spot + 1,
+          otherName,
+          otherPoints,
         });
       }
     }
@@ -212,13 +230,18 @@ async function leagueCard(
       && new Date(week.deadline_at).getTime() > Date.now()
     ));
     let nextLabel: string | null = upcoming ? `Prossima: giornata ${upcoming.number}` : null;
+    let nextRival: string | null = null;
     if (upcoming && myTeamId && weekScoreMode(settings.rules, Number(upcoming.number)) === "head_to_head") {
       const { pairs, bye } = headToHeadPairings(teamIds, Number(upcoming.number));
-      if (bye === myTeamId) nextLabel = `Giornata ${upcoming.number}: riposo`;
+      if (bye === myTeamId) {
+        nextRival = "Riposo";
+        nextLabel = `Giornata ${upcoming.number}: riposo`;
+      }
       const pair = pairs.find((item) => item.home === myTeamId || item.away === myTeamId);
       if (pair) {
         const opponentId = pair.home === myTeamId ? pair.away : pair.home;
-        const opponent = teams.find((item) => item.id === opponentId)?.name ?? "avversario";
+        const opponent = teams.find((item) => item.id === opponentId)?.name ?? "Avversario";
+        nextRival = opponent;
         nextLabel = `Giornata ${upcoming.number} contro ${opponent}`;
       }
     }
@@ -235,9 +258,16 @@ async function leagueCard(
       total,
       played: counted.length,
       nextLabel,
+      nextRival,
       average: total != null && counted.length > 0 ? Math.round((total / counted.length) * 100) / 100 : null,
-      lastRound: last ? { number: last.number, points: last.points, average: last.average } : null,
-      recent: trail.slice(-5).map((row) => ({ number: row.number, points: row.points, above: row.points >= row.average })),
+      lastRound: last ? { number: last.number, points: last.points, average: last.average, otherName: last.otherName, otherPoints: last.otherPoints } : null,
+      recent: trail.slice(-5).map((row) => ({
+        number: row.number,
+        points: row.points,
+        average: row.average,
+        above: row.points >= row.average,
+        otherPoints: row.otherPoints,
+      })),
       insights,
     };
   } catch {

@@ -1,3 +1,4 @@
+import { CompactLineup, compactFromAudit } from "@/components/lineups/CompactLineup";
 import type { ScoreAudit } from "@/lib/engine/score-audit";
 import type { PlayerRole } from "@/lib/types";
 
@@ -13,7 +14,8 @@ function signed(value: number) {
   return value > 0 ? `+${text}` : text;
 }
 
-export function MatchdayBreakdown({ audit, onDownload }: { audit: ScoreAudit; onDownload?: () => void }) {
+export function MatchdayBreakdown({ audit }: { audit: ScoreAudit }) {
+  const rows = compactFromAudit(audit.players);
   const sumRows = [
     ["Fantavoti", audit.sum.playersPoints],
     ["Capitano", audit.sum.captain],
@@ -25,45 +27,7 @@ export function MatchdayBreakdown({ audit, onDownload }: { audit: ScoreAudit; on
     <div className="stack">
       <section className="stack">
         <h3>Giocatori in campo</h3>
-        <div className="sheet-scroll">
-          <table className="standings as-cards">
-            <thead>
-              <tr>
-                <th>Giocatore</th>
-                <th>Ruolo</th>
-                <th>Voto base</th>
-                <th>Bonus e malus</th>
-                <th>FantaVoto</th>
-              </tr>
-            </thead>
-            <tbody>
-              {audit.players.map((player) => (
-                <tr key={player.playerId}>
-                  <td data-label="Giocatore">
-                    <strong>{player.name}</strong>
-                    {player.captain ? <span className="small muted"> · capitano</span> : null}
-                    {player.source === "substitute" ? <span className="small muted"> · entra per {player.replacedName}</span> : null}
-                    {player.source === "bench" ? <span className="small muted"> · in panchina</span> : null}
-                  </td>
-                  <td data-label="Ruolo">{ROLE[player.role]}</td>
-                  <td data-label="Voto base">{points(player.baseVote)}</td>
-                  <td data-label="Bonus e malus">
-                    {player.lines.length === 0 ? <span className="muted">Nessuno</span> : (
-                      <ul className="audit-lines">
-                        {player.lines.map((line) => (
-                          <li key={line.label} className={line.points < 0 ? "bonus-minus" : line.points > 0 ? "bonus-plus" : undefined}>
-                            {line.label}{line.count > 1 ? ` × ${line.count}` : ""} {signed(line.points)}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </td>
-                  <td data-label="FantaVoto">{points(player.fantavoto)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <CompactLineup starters={rows.starters} bench={rows.bench} />
       </section>
 
       <section className="stack">
@@ -123,7 +87,6 @@ export function MatchdayBreakdown({ audit, onDownload }: { audit: ScoreAudit; on
         )}
         <p>{audit.result.fixture.note}</p>
         <p className="small muted">{audit.result.goalConversion.note}</p>
-        {onDownload ? <button className="primary" type="button" onClick={onDownload}>Scarica log JSON</button> : null}
       </section>
     </div>
   );

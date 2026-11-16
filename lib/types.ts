@@ -194,6 +194,8 @@ export type LeagueHome = {
   lastRound: PartialStanding[];
   fixtureGameweekNumber: number | null;
   fixtures: HubFixture[];
+  selectedFixtureNumber: number | null;
+  selectedFixtures: HubFixture[];
 };
 
 export type StandingRow = {

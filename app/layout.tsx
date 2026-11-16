@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { ToastHost } from "@/components/ToastHost";
 import { SiteHeader, type HeaderSeason, type HeaderSquad } from "@/components/SiteHeader";
+import { ClubBadgeProvider } from "@/components/TeamBadge";
+import { loadClubBadgeOverrides } from "@/lib/server/club-badges";
 import { INVITE_COOKIE, joinHref, normalizeInviteCode } from "@/lib/invite";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { listLeaguesForUser } from "@/lib/server/leagues";
@@ -88,9 +90,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       activeLeagueId = null;
     }
   }
+  const badges = await loadClubBadgeOverrides();
   return (
     <html lang="it">
       <body className={`${sans.variable} ${mono.variable}`}>
+        <ClubBadgeProvider badges={badges}>
         <Suspense fallback={<header className="site-header" />}>
           <SiteHeader
             email={user?.email ?? null}
@@ -107,6 +111,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {maintenance.enabled ? <MaintenanceBanner message={maintenance.message} admin={platformAdmin} /> : null}
         <main className="shell page">{children}</main>
         <ToastHost />
+        </ClubBadgeProvider>
       </body>
     </html>
   );

@@ -79,6 +79,7 @@ export function ScoreAuditDialog({
                 : "Ricalcolo ufficiale della giornata chiusa."}
             </p>
           </div>
+          {audit ? <button className="ghost" type="button" onClick={download}>Scarica JSON</button> : null}
           <button className="ghost" type="button" onClick={onClose}>Chiudi</button>
         </header>
         <label>
@@ -91,7 +92,7 @@ export function ScoreAuditDialog({
         </label>
         {loading ? <p>Leggo formazione, voti e modificatori…</p> : null}
         {error ? <p className="notice">{error}</p> : null}
-        {audit && !loading ? <MatchdayBreakdown audit={audit} onDownload={download} /> : null}
+        {audit && !loading ? <MatchdayBreakdown audit={audit} /> : null}
       </div>
     </div>
   );

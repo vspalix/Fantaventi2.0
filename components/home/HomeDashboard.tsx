@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ClubPair } from "@/components/TeamBadge";
 import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
 import { EmptyState } from "@/components/EmptyState";
 import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
@@ -83,7 +84,7 @@ export function HomeDashboard({ board }: { board: HomeBoard }) {
             <ul className="fixture-list">
               {board.fixtures.map((fixture) => (
                 <li key={fixture.id}>
-                  <strong>{fixture.home} – {fixture.away}</strong>
+                  <strong><ClubPair home={fixture.home} away={fixture.away} /></strong>
                   <span>{kickoff.format(new Date(fixture.kickoffAt))}</span>
                 </li>
               ))}

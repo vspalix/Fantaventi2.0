@@ -1,3 +1,4 @@
+import { TeamBadge } from "@/components/TeamBadge";
 import type { Formation } from "@/lib/formations";
 import { roleCap } from "@/lib/formations";
 import type { PlayerRole } from "@/lib/types";
@@ -72,7 +73,7 @@ export function Pitch({
                     onClick={() => onReplace?.(player.id)}
                   >
                     <strong>{shirtName(player.fullName)}</strong>
-                    <span>{player.clubShort}</span>
+                    <span><TeamBadge teamName={player.clubShort} size={12} /> {player.clubShort}</span>
                   </button>
                   {editable && onMark ? (
                     <span className="shirt-actions">

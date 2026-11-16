@@ -1,3 +1,4 @@
+import { TeamBadge } from "@/components/TeamBadge";
 import type { CatalogPlayer, PlayerRole, RosterRules } from "@/lib/types";
 import { ROLE_LABEL } from "@/lib/types";
 import type { ConstraintReport } from "@/lib/constraints";
@@ -77,7 +78,7 @@ export function RosterSidebar({
                 onClick={() => onOpenClub(club.id)}
               >
                 <span className="player-main">
-                  <strong>{club.shortName}</strong>
+                  <strong><TeamBadge teamName={club.shortName} /> {club.shortName}</strong>
                   <span className="small muted">{chosen ? chosen.fullName : club.name}</span>
                 </span>
                 <span className="small">{chosen ? "✓" : "Apri"}</span>

@@ -23,6 +23,7 @@ export type AuditPlayer = {
   playerId: string;
   name: string;
   role: PlayerRole;
+  club?: string;
   baseVote: number | null;
   lines: AuditLine[];
   malusFactor: number;
@@ -168,6 +169,7 @@ export function explainScore(input: {
   stats: Map<string, PlayerStat>;
   definition: RulesetDefinition;
   names: Map<string, string>;
+  clubs?: Map<string, string>;
   mode: "official" | "provisional";
   matchFinished: ReadonlySet<string>;
   ranking: LeagueRules["ranking"];
@@ -208,6 +210,7 @@ export function explainScore(input: {
     return {
       playerId: slot.playerId,
       name: nameOf(input.names, slot.playerId),
+      club: input.clubs?.get(slot.playerId) ?? "",
       role,
       baseVote: scored?.voto ?? null,
       lines,
@@ -227,6 +230,7 @@ export function explainScore(input: {
     players.push({
       playerId: slot.playerId,
       name: nameOf(input.names, slot.playerId),
+      club: input.clubs?.get(slot.playerId) ?? "",
       role,
       baseVote: stat?.voto ?? null,
       lines: [{ label: "In panchina, fuori dal totale", count: 1, unit: 0, points: 0 }, ...eventLines(stat, role, definition, false)],

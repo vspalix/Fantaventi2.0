@@ -453,12 +453,13 @@ input, select, textarea {
 .rosa-line {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  align-items: baseline;
+  gap: 8px;
+  align-items: center;
   padding: 9px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
 }
-.rosa-line span { color: var(--muted); font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; letter-spacing: 0.04em; }
+.rosa-line strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rosa-line span { color: var(--muted); font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; letter-spacing: 0.04em; flex: none; }
 .roster-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -1216,4 +1217,113 @@ button.shirt-empty:disabled { cursor: default; }
   .modal { width: 100%; }
   .score-row { min-width: 0; }
   .score-time { white-space: normal; }
+  .badge-row { grid-template-columns: 20px minmax(0, 1fr); }
+  .badge-logo, .badge-file { grid-column: 1 / -1; }
+}
+
+.team-badge {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  vertical-align: -3px;
+  border-radius: 4px;
+  object-fit: cover;
+}
+.club-pair { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.club-pair-score { font-family: var(--font-mono), ui-monospace, monospace; font-weight: 700; }
+
+.gw-stepper { display: flex; align-items: center; gap: 8px; }
+.gw-stepper select { flex: 1; min-width: 0; }
+.gw-stepper .ghost { width: 44px; padding: 0; font-size: 22px; }
+
+.cal-matches, .cal-teams { display: grid; }
+.cal-match, .cal-team {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  width: 100%;
+  text-align: left;
+}
+.cal-team[data-open="true"] { box-shadow: inset 3px 0 0 var(--accent); }
+.cal-rank { width: 22px; color: var(--muted); font-family: var(--font-mono), ui-monospace, monospace; }
+.cal-name { display: grid; min-width: 0; flex: 1; }
+.cal-name strong, .cal-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cal-name span { color: var(--muted); font-size: 12px; }
+.cal-points { font-family: var(--font-mono), ui-monospace, monospace; font-weight: 700; color: var(--accent); }
+.cal-note, .cal-lineup { padding: 8px 0 12px 32px; }
+
+.xi-sheet { display: grid; }
+.xi-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 46px 48px;
+  gap: 8px;
+  align-items: center;
+  min-height: 34px;
+}
+.xi-labels { min-height: 18px; color: var(--muted); font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; }
+.xi-labels span:nth-child(n + 3), .xi-vote, .xi-fanta { text-align: right; }
+.xi-head { margin: 12px 0 2px; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+.xi-who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.xi-who strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.xi-cap { font-style: normal; color: var(--accent); font-size: 11px; font-weight: 700; }
+.xi-events { display: inline-flex; gap: 3px; flex: none; }
+.xi-vote, .xi-fanta { font-family: var(--font-mono), ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+.xi-vote { color: var(--muted); }
+.xi-fanta { font-weight: 700; color: var(--text); }
+.role-pip {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: #09090b;
+}
+.role-pip.GK { background: var(--gk); }
+.role-pip.DEF { background: var(--def); }
+.role-pip.MID { background: var(--mid); }
+.role-pip.FWD { background: var(--fwd); }
+.xi-mark {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  display: inline-grid;
+  place-items: center;
+  font-size: 9px;
+  font-weight: 700;
+  color: #09090b;
+}
+.xi-mark.goal { background: var(--accent); }
+.xi-mark.assist { background: var(--mid); }
+.xi-mark.yellow { background: var(--gold); }
+.xi-mark.red { background: var(--danger); color: #fff; }
+.xi-mark.sub { background: transparent; color: var(--text); box-shadow: inset 0 0 0 1px var(--muted); }
+.xi-mark.own, .xi-mark.miss, .xi-mark.conceded { background: var(--danger); color: #fff; }
+.xi-mark.save { background: var(--ok); }
+
+.badge-desk { display: grid; gap: 8px; }
+.badge-row {
+  display: grid;
+  grid-template-columns: 20px minmax(88px, 1fr) auto auto minmax(120px, 1.4fr) auto auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.badge-row label { display: grid; gap: 2px; min-width: 0; }
+.badge-row input[type="color"] { width: 42px; height: 32px; padding: 0; border: 0; background: transparent; }
+.badge-row input[type="url"], .badge-row input[type="file"] { width: 100%; min-width: 0; }
+@media (max-width: 720px) {
+  .badge-row { grid-template-columns: 20px minmax(0, 1fr) auto auto; }
+  .badge-logo, .badge-file { grid-column: 1 / -1; }
+  .cal-lineup, .cal-note { padding-left: 0; }
 }

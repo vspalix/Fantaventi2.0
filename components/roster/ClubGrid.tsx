@@ -1,3 +1,4 @@
+import { TeamBadge } from "@/components/TeamBadge";
 import type { CatalogPlayer, ClubRef } from "@/lib/types";
 
 export type ClubCard = {
@@ -33,7 +34,7 @@ export function ClubGrid({
           data-busy={busyId === club.id}
         >
           <button type="button" className="club-tile-open" disabled={locked || busyId !== null} aria-busy={busyId === club.id} onClick={() => onOpen(club.id)}>
-            <span className="club-tile-code">{busyId === club.id ? <span className="spinner" aria-hidden="true" /> : null}{club.shortName}</span>
+            <span className="club-tile-code">{busyId === club.id ? <span className="spinner" aria-hidden="true" /> : null}<TeamBadge teamName={club.shortName} /> {club.shortName}</span>
             <strong>{club.name}</strong>
             {chosen ? (
               <span className="club-tile-player">{chosen.fullName}</span>

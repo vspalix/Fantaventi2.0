@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { TeamBadge } from "@/components/TeamBadge";
 import type { CatalogPlayer, ClubRef, PlayerRole, RosterRules } from "@/lib/types";
 import { ROLE_LABEL } from "@/lib/types";
 
@@ -51,7 +52,7 @@ export function ClubModal({
       >
         <header className="modal-head">
           <div>
-            <p className="small muted">{club.shortName}</p>
+            <p className="small muted"><TeamBadge teamName={club.shortName} /> {club.shortName}</p>
             <h2 id="club-modal-title">{club.name}</h2>
           </div>
           <button ref={closeRef} className="ghost" type="button" onClick={onClose}>

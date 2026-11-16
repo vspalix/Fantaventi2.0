@@ -10,6 +10,8 @@ import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
 import { MatchdayResults } from "@/components/leagues/MatchdayResults";
 import { Pitch } from "@/components/leagues/Pitch";
+import { ClubPair, TeamBadge } from "@/components/TeamBadge";
+import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
 import {
   FORMATIONS,
   autoLineup,
@@ -30,7 +32,6 @@ import { useTapGuard } from "@/components/useTapGuard";
 import { pushToast } from "@/lib/toast";
 
 const BENCH_ROLES: PlayerRole[] = ["GK", "DEF", "MID", "FWD"];
-const ROLE_SHORT: Record<PlayerRole, string> = { GK: "P", DEF: "D", MID: "C", FWD: "A" };
 const deadlineFormat = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -143,9 +144,11 @@ function LeagueHomeView({
               return (
                 <p className="fixture-row" key={fixture.id}>
                   <strong>
-                    {scored
-                      ? `${fixture.home} ${fixture.homeGoals} – ${fixture.awayGoals} ${fixture.away}`
-                      : `${fixture.home} – ${fixture.away}`}
+                    <ClubPair
+                      home={fixture.home}
+                      away={fixture.away}
+                      score={scored ? `${fixture.homeGoals}–${fixture.awayGoals}` : null}
+                    />
                   </strong>
                   <span className="small muted">
                     {scored ? null : (
@@ -441,7 +444,7 @@ export function LeagueHub({
     setEndMatchday(nextHub.league.endMatchday);
   }
 
-  async function openGameweek(gameweekId: string) {
+  async function openGameweek(gameweekId: string, stay?: HubTab) {
     setPending(true);
     setError(null);
     setMessage(null);
@@ -450,7 +453,7 @@ export function LeagueHub({
         await fetch(`/api/leagues/${hub.league.id}/hub?gameweek=${gameweekId}`),
       );
       applyHub(body.hub);
-      setTab((current) => current === "formazioni" ? current : "formazione");
+      setTab((current) => stay ?? (current === "formazioni" || current === "risultati" ? current : "formazione"));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Giornata non disponibile.");
     } finally {
@@ -754,6 +757,11 @@ export function LeagueHub({
 
   return (
     <div className="stack">
+      {shownTab === "risultati" ? (
+        <header>
+          <h1 className="section-title">Calendario</h1>
+        </header>
+      ) : (
       <header>
         <p className="small muted">
           {hub.league.seasonCode} · Giornate {hub.league.startMatchday}–{hub.league.endMatchday}
@@ -770,12 +778,13 @@ export function LeagueHub({
           <Link className="primary" href="/rosa">Cambia la mia rosa</Link>
         </div>
       </header>
+      )}
       {hostMode && hub.league.platformOverride ? (
         <p className="banner">Stai dentro questa lega come super admin. Puoi cambiare regole e admin. Il laboratorio voti resta la correzione dei tabellini di stagione.</p>
       ) : null}
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}
-      <div className="tabs scroll-tabs" role="tablist" aria-label="Sezioni della lega">
+      {shownTab === "risultati" ? null : <div className="tabs scroll-tabs" role="tablist" aria-label="Sezioni della lega">
         <button className="tab" type="button" data-active={shownTab === "home"} onClick={() => setTab("home")}>Home</button>
         <button className="tab" type="button" data-active={shownTab === "live"} onClick={() => setTab("live")}>Live</button>
         <button className="tab" type="button" data-active={shownTab === "bacheca"} onClick={() => setTab("bacheca")}>Bacheca</button>
@@ -783,13 +792,13 @@ export function LeagueHub({
         <button className="tab" type="button" data-active={shownTab === "formazione"} onClick={() => setTab("formazione")}>Formazione</button>
         <button className="tab" type="button" data-active={shownTab === "formazioni"} onClick={() => setTab("formazioni")}>Formazioni</button>
         <button className="tab" type="button" data-active={shownTab === "classifica"} onClick={() => setTab("classifica")}>Classifica</button>
-        <button className="tab" type="button" data-active={shownTab === "risultati"} onClick={() => setTab("risultati")}>Risultati</button>
+        <button className="tab" type="button" onClick={() => setTab("risultati")}>Risultati</button>
         <button className="tab" type="button" data-active={shownTab === "regolamento"} onClick={() => setTab("regolamento")}>Regolamento</button>
         <button className="tab" type="button" data-active={shownTab === "lega"} onClick={() => setTab("lega")}>Lega</button>
         {hostMode && hub.league.isManager ? (
           <button className="tab" type="button" data-active={shownTab === "gestione"} onClick={() => setTab("gestione")}>Gestione</button>
         ) : null}
-      </div>
+      </div>}
 
       {tab !== "lega" && tab !== "home" && tab !== "regolamento" && tab !== "risultati" && tab !== "gestione" ? (
         <GameweekBar
@@ -934,7 +943,7 @@ export function LeagueHub({
                           onClick={() => dropFromBench(player.id)}
                         >
                           <strong>{picks.busyId === player.id ? "Tolgo... " : `${index + 1}. `}{player.fullName}</strong>
-                          <span className="small muted">{ROLE_LABEL[player.role]} · {player.clubShort}</span>
+                          <span className="small muted"><TeamBadge teamName={player.clubShort} /> {ROLE_LABEL[player.role]} · {player.clubShort}</span>
                         </button>
                       ))}
                     </div>
@@ -958,7 +967,7 @@ export function LeagueHub({
                             >
                               <strong>{player.fullName}</strong>
                               <span className="small muted">
-                                {picks.busyId === player.id ? "Aggiungo..." : `${ROLE_LABEL[player.role]} · ${player.clubShort}`}
+                                {picks.busyId === player.id ? "Aggiungo..." : <><TeamBadge teamName={player.clubShort} /> {ROLE_LABEL[player.role]} · {player.clubShort}</>}
                               </span>
                             </button>
                           ))}
@@ -974,7 +983,7 @@ export function LeagueHub({
                     <ol className="bench-order">
                       {bench.map((player, index) => (
                         <li key={player.id}>
-                          {index + 1}. {player.fullName}
+                          {index + 1}. <TeamBadge teamName={player.clubShort} /> {player.fullName}
                           <span className="small muted"> · {ROLE_LABEL[player.role]} · {player.clubShort}</span>
                         </li>
                       ))}
@@ -1046,11 +1055,9 @@ export function LeagueHub({
 
       {shownTab === "risultati" ? (
         <MatchdayResults
-          leagueId={hub.league.id}
-          gameweeks={hub.gameweeks}
-          teams={hub.league.participants}
-          myTeamId={hub.opponents.find((team) => team.isMine)?.fantasyTeamId ?? hub.squads.find((team) => team.isMine)?.fantasyTeamId ?? null}
-          canExport={hub.league.isManager}
+          hub={hub}
+          pending={pending}
+          onSelect={(gameweekId) => void openGameweek(gameweekId, "risultati")}
         />
       ) : null}
 
@@ -1196,7 +1203,7 @@ export function LeagueHub({
                   >
                     <strong>{player.fullName}</strong>
                     <span>
-                      {picks.busyId === player.id ? "Sostituisco..." : player.clubShort}
+                      {picks.busyId === player.id ? "Sostituisco..." : <><TeamBadge teamName={player.clubShort} /> {player.clubShort}</>}
                       {picks.busyId === player.id ? "" : benchIds.includes(player.id) ? " · in panchina" : ""}
                     </span>
                   </button>
@@ -1228,7 +1235,7 @@ export function LeagueHub({
                   >
                     <strong>{player.fullName}</strong>
                     <span>
-                      {picks.busyId === player.id ? "Schiero..." : player.clubShort}
+                      {picks.busyId === player.id ? "Schiero..." : <><TeamBadge teamName={player.clubShort} /> {player.clubShort}</>}
                       {picks.busyId === player.id ? "" : benchIds.includes(player.id) ? " · in panchina" : ""}
                     </span>
                   </button>
@@ -1344,7 +1351,7 @@ function FormationCard({
             <ol className="bench-order">
               {bench.map((player, index) => (
                 <li key={player.id}>
-                  {index + 1}. {player.fullName}
+                  {index + 1}. <TeamBadge teamName={player.clubShort} /> {player.fullName}
                   <span className="small muted"> · {ROLE_LABEL[player.role]} · {player.clubShort}</span>
                 </li>
               ))}
@@ -1423,7 +1430,7 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
                   <strong>{player.fullName}</strong>
                   <div className="person-card-meta">
                     <span className={`badge ${player.role}`}>{ROLE_LABEL[player.role]}</span>
-                    <span className="small">{player.clubShort}</span>
+                    <span className="small"><TeamBadge teamName={player.clubShort} /> {player.clubShort}</span>
                   </div>
                 </article>
               ))}
@@ -1435,62 +1442,30 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
   );
 }
 
+function liveRows(rows: LiveLineupSheet["starters"]): CompactPlayer[] {
+  return rows.map((row) => ({
+    id: row.playerId,
+    name: row.fullName,
+    role: row.role,
+    club: row.clubShort,
+    vote: row.voto,
+    fanta: row.fantavoto,
+    captain: row.isCaptain,
+    events: [],
+  }));
+}
+
 function PlayedLineup({ sheet }: { sheet: LiveLineupSheet }) {
-  const captainRated = sheet.starters.some((row) => row.isCaptain && row.voto !== null);
   return (
     <div className="stack">
       <section className="panel">
-        <h2>Formazione schierata</h2>
-        <PlayerScoreTable rows={sheet.starters} />
-        {captainRated ? <p className="small muted">Il capitano è segnato. Nella proiezione il suo malus non è raddoppiato e la fascia non si somma.</p> : null}
-      </section>
-      <section className="panel">
-        <h2>Panchina</h2>
-        {sheet.bench.length === 0 ? <p className="small muted">Panchina vuota.</p> : <PlayerScoreTable rows={sheet.bench} />}
+        <h2>Giocatori in campo</h2>
+        <CompactLineup starters={liveRows(sheet.starters)} bench={liveRows(sheet.bench)} empty="—" />
       </section>
       <p className="small muted">
-        Proiezione: {formatPoints(sheet.partialTotal)}. È la somma dei fantavoti già pubblicati, per esempio 7 + 3 = 10, un'ammonizione −0,50, un gol subito dal portiere −1. La panchina entra solo se il titolare è ufficialmente senza voto. Difesa, bonus capitano e classifica ufficiale restano al calcolo dei 130 minuti.
+        Proiezione: {formatPoints(sheet.partialTotal)}. È la somma dei fantavoti già pubblicati. La panchina entra solo se il titolare è ufficialmente senza voto. Difesa, bonus capitano e classifica ufficiale restano al calcolo dei 130 minuti.
       </p>
     </div>
-  );
-}
-
-function PlayerScoreTable({ rows }: { rows: LiveLineupSheet["starters"] }) {
-  return (
-    <table className="standings as-cards">
-      <thead>
-        <tr>
-          <th>Ruolo</th>
-          <th>Calciatore</th>
-          <th>Voto</th>
-          <th>Bonus</th>
-          <th>Malus</th>
-          <th>Fantavoto</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.length === 0 ? (
-          <tr><td colSpan={6}>Nessun calciatore.</td></tr>
-        ) : rows.map((row) => (
-          <tr key={row.playerId}>
-            <td data-label="Ruolo">{ROLE_SHORT[row.role]}</td>
-            <td data-label="Calciatore">
-              <strong>{row.fullName}</strong>
-              <span className="small muted"> · {row.clubShort}</span>
-              {row.isCaptain ? <span className="live-badge">C</span> : null}
-              {row.isVice ? <span className="live-badge">V</span> : null}
-            </td>
-            <td data-label="Voto">{formatPoints(row.voto)}</td>
-            <td data-label="Bonus">{formatPoints(row.bonus)}</td>
-            <td data-label="Malus">{formatPoints(row.malus)}</td>
-            <td data-label="Fantavoto">
-              {formatPoints(row.fantavoto)}
-              {row.formula ? <span className="small muted"> · {row.formula}</span> : null}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
   );
 }
 

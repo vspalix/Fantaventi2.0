@@ -308,6 +308,11 @@ export async function loadLeagueHub(
       ? partialFromPreview(league.participants, livePreview.scores, [])
       : await partialStandings(admin, league.participants, lastClosed.id, []);
   const fixtures = fixtureWeek ? await fixturesFor(admin, fixtureWeek.id, catalog.clubs) : [];
+  const selectedFixtures = selected && fixtureWeek && selected.id === fixtureWeek.id
+    ? fixtures
+    : selected
+      ? await fixturesFor(admin, selected.id, catalog.clubs)
+      : [];
 
   return {
     league,
@@ -346,6 +351,8 @@ export async function loadLeagueHub(
       lastRound,
       fixtureGameweekNumber: fixtureWeek?.number ?? null,
       fixtures,
+      selectedFixtureNumber: selected?.number ?? null,
+      selectedFixtures,
     },
   };
 }

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearInviteCookie, joinHref, readInviteCookie } from "@/lib/invite";
 import { pushToast } from "@/lib/toast";
 import { BusyLabel } from "@/components/BusyLabel";
+import { TeamBadge } from "@/components/TeamBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { ClubGrid } from "@/components/roster/ClubGrid";
 import { ClubModal } from "@/components/roster/ClubModal";
@@ -244,7 +245,7 @@ export function RosterBuilder({
                     <section className="rosa-role" key={role}>
                       <h2>{ROLE_LABEL[role]}</h2>
                       {rows.map((player) => (
-                        <p className="rosa-line" key={player.id}><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
+                        <p className="rosa-line" key={player.id}><TeamBadge teamName={player.clubShort} /><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
                       ))}
                     </section>
                   );
@@ -280,7 +281,7 @@ export function RosterBuilder({
             <section className="rosa-role" key={role}>
               <h2>{ROLE_LABEL[role]}</h2>
               {rows.map((player) => (
-                <p className="rosa-line" key={player.id}><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
+                <p className="rosa-line" key={player.id}><TeamBadge teamName={player.clubShort} /><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
               ))}
             </section>
           );

@@ -215,6 +215,18 @@ export async function loadScoreAudit(
     : { data: [], error: null };
   if (listed.error) throw new Error(listed.error.message);
   const names = new Map((listed.data ?? []).map((row) => [row.id as string, row.full_name as string]));
+  const clubIds = [...new Set(playerIds.map((playerId) => clubs.get(playerId)).filter((id): id is string => Boolean(id)))];
+  const clubCodes = new Map<string, string>();
+  if (clubIds.length) {
+    const listedClubs = await admin.from("clubs").select("id, code").in("id", clubIds);
+    if (!listedClubs.error) {
+      const codeById = new Map((listedClubs.data ?? []).map((row) => [row.id as string, row.code as string]));
+      for (const playerId of playerIds) {
+        const code = codeById.get(clubs.get(playerId) ?? "");
+        if (code) clubCodes.set(playerId, code);
+      }
+    }
+  }
 
   return explainScore({
     fantasyTeamId,
@@ -224,6 +236,7 @@ export async function loadScoreAudit(
     stats: mode === "provisional" ? auditStats : stats,
     definition,
     names,
+    clubs: clubCodes,
     mode,
     matchFinished,
     ranking: weekScoreMode(rules, gameweekNumber) === "sum" ? "sum" : "head_to_head",

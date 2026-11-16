@@ -1,9 +1,11 @@
+import { cookies } from "next/headers";
 import { headToHeadPairings, weekScoreMode, fantapuntiToGoals } from "@/lib/league-rules";
+import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { listLeaguesForUser } from "@/lib/server/leagues";
-import { listPublishedNews, type PlatformNews } from "@/lib/server/news";
+import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type HomeFixture = {
@@ -14,6 +16,12 @@ export type HomeFixture = {
   status: string;
 };
 
+export type HomeRoundDot = {
+  number: number;
+  points: number;
+  above: boolean;
+};
+
 export type HomeLeagueCard = {
   id: string;
   name: string;
@@ -22,15 +30,22 @@ export type HomeLeagueCard = {
   total: number | null;
   played: number;
   nextLabel: string | null;
+  average: number | null;
+  lastRound: { number: number; points: number; average: number } | null;
+  recent: HomeRoundDot[];
+  insights: string[];
 };
 
 export type HomeBoard = {
   competitionName: string;
+  teamName: string;
   deadlineAt: string | null;
   deadlineLabel: string | null;
   fixtures: HomeFixture[];
   leagues: HomeLeagueCard[];
-  news: PlatformNews[];
+  focus: HomeLeagueCard | null;
+  promo: HomePromo | null;
+  probabiliHref: string;
 };
 
 function clubLabel(row: { code?: string; club_translations?: { locale: string; short_name: string; name: string }[] | null }) {
@@ -44,7 +59,8 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   const season = await getCurrentSeason(admin);
   const team = await getFantasyTeam(admin, userId, season.id);
   const leagues = await listLeaguesForUser(userId);
-  const news = await listPublishedNews();
+  const promo = await loadHomePromo();
+  const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
 
   const weeks = await admin
     .from("gameweeks")
@@ -92,13 +108,17 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
     cards.push(await leagueCard(admin, season.id, league.id, league.name, team?.id ?? null, calendar));
   }
 
+  const focus = cards.find((card) => card.id === saved) ?? cards[0] ?? null;
   return {
     competitionName: season.competitionName,
+    teamName: team?.name ?? "La tua squadra",
     deadlineAt: nextWeek ? nextWeek.deadline_at as string : null,
     deadlineLabel: nextWeek ? `Giornata ${nextWeek.number}` : null,
     fixtures,
     leagues: cards,
-    news,
+    focus,
+    promo: promo.banner,
+    probabiliHref: promo.probabiliHref,
   };
 }
 
@@ -118,6 +138,10 @@ async function leagueCard(
     total: null,
     played: 0,
     nextLabel: null,
+    average: null,
+    lastRound: null,
+    recent: [],
+    insights: [],
   };
   try {
     const settings = await readLeagueSettings(admin, leagueId);
@@ -144,6 +168,7 @@ async function leagueCard(
     );
     const totals = new Map<string, number>();
     for (const teamId of teamIds) totals.set(teamId, 0);
+    const trail: { number: number; points: number; average: number; place: number }[] = [];
     for (const week of counted) {
       const mode = weekScoreMode(settings.rules, Number(week.number));
       const weekPoints = new Map(teamIds.map((teamId) => [teamId, fantasy.get(`${teamId}:${week.id}`) ?? 0]));
@@ -165,6 +190,19 @@ async function leagueCard(
       } else {
         for (const [teamId, points] of weekPoints) totals.set(teamId, (totals.get(teamId) ?? 0) + points);
       }
+      if (myTeamId) {
+        const mine = weekPoints.get(myTeamId) ?? 0;
+        const sum = [...weekPoints.values()].reduce((acc, value) => acc + value, 0);
+        const weekAverage = teamIds.length ? sum / teamIds.length : 0;
+        const ordered = [...totals.entries()].sort((left, right) => right[1] - left[1]);
+        const spot = ordered.findIndex(([teamId]) => teamId === myTeamId);
+        trail.push({
+          number: Number(week.number),
+          points: Math.round(mine * 100) / 100,
+          average: Math.round(weekAverage * 100) / 100,
+          place: spot + 1,
+        });
+      }
     }
     const ranking = [...totals.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
     const place = myTeamId ? ranking.findIndex(([teamId]) => teamId === myTeamId) : -1;
@@ -184,16 +222,57 @@ async function leagueCard(
         nextLabel = `Giornata ${upcoming.number} contro ${opponent}`;
       }
     }
+    const total = place >= 0 ? Math.round((totals.get(myTeamId as string) ?? 0) * 100) / 100 : null;
+    const rank = place >= 0 ? place + 1 : null;
+    const last = trail.at(-1) ?? null;
+    const before = trail.at(-2) ?? null;
+    const insights = storyOf(rank, total, trail, last, before);
     return {
       id: leagueId,
       name: leagueName,
       format: settings.rules.format,
-      rank: place >= 0 ? place + 1 : null,
-      total: place >= 0 ? Math.round((totals.get(myTeamId as string) ?? 0) * 100) / 100 : null,
+      rank,
+      total,
       played: counted.length,
       nextLabel,
+      average: total != null && counted.length > 0 ? Math.round((total / counted.length) * 100) / 100 : null,
+      lastRound: last ? { number: last.number, points: last.points, average: last.average } : null,
+      recent: trail.slice(-5).map((row) => ({ number: row.number, points: row.points, above: row.points >= row.average })),
+      insights,
     };
   } catch {
     return empty;
   }
+}
+
+function pointsText(value: number) {
+  return value.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+}
+
+function storyOf(
+  rank: number | null,
+  total: number | null,
+  trail: { number: number; points: number; average: number; place: number }[],
+  last: { number: number; points: number; average: number; place: number } | null,
+  before: { place: number } | null,
+) {
+  const lines: string[] = [];
+  if (rank != null && total != null) lines.push(`Sei ${rank}° con ${pointsText(total)} punti.`);
+  if (last && before && last.place < before.place) {
+    const gained = before.place - last.place;
+    lines.push(`Nell'ultima giornata hai guadagnato ${gained} posizion${gained === 1 ? "e" : "i"}.`);
+  } else if (last && before && last.place > before.place) {
+    const lost = last.place - before.place;
+    lines.push(`Nell'ultima giornata hai perso ${lost} posizion${lost === 1 ? "e" : "i"}.`);
+  }
+  if (last && last.points > last.average) {
+    lines.push(`Giornata ${last.number}: ${pointsText(last.points)} punti, sopra la media di giornata (${pointsText(last.average)}).`);
+  } else if (last && last.points < last.average) {
+    lines.push(`Giornata ${last.number}: ${pointsText(last.points)} punti, sotto la media di giornata (${pointsText(last.average)}).`);
+  }
+  if (trail.length >= 2) {
+    const peak = trail.reduce((best, row) => row.points > best.points ? row : best, trail[0]);
+    lines.push(`Il picco recente è ${pointsText(peak.points)} punti, giornata ${peak.number}.`);
+  }
+  return lines.slice(0, 4);
 }

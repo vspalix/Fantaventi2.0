@@ -19,9 +19,11 @@ export function DeadlineCountdown({ deadlineAt, label }: { deadlineAt: string; l
   const seconds = Math.floor((total % 60000) / 1000);
   const clock = ended
     ? "Chiusa"
-    : [days > 0 ? `${days}g` : "", `${hours}h`, String(minutes).padStart(2, "0"), String(seconds).padStart(2, "0")]
-      .filter(Boolean)
-      .join(" ");
+    : days > 0
+      ? `${days}g ${hours}h`
+      : hours > 0
+        ? `${hours}h ${String(minutes).padStart(2, "0")}`
+        : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 
   return (
     <div>

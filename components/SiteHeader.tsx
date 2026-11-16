@@ -49,7 +49,11 @@ export function SiteHeader({
 
   useEffect(() => {
     function close(event: PointerEvent) {
-      if (!bar.current?.contains(event.target as Node)) setOpen(null);
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (bar.current?.contains(target)) return;
+      if (target instanceof Element && target.closest(".tabbar, .drawer")) return;
+      setOpen(null);
     }
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
@@ -72,6 +76,10 @@ export function SiteHeader({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leagueId }),
     });
+    if (pathname === "/") {
+      router.refresh();
+      return;
+    }
     router.push(`/leghe/${leagueId}`);
     router.refresh();
   }
@@ -83,8 +91,6 @@ export function SiteHeader({
     router.push("/");
     router.refresh();
   }
-
-  const initial = (profileLabel.trim()[0] ?? email?.[0] ?? "F").toUpperCase();
 
   return (
     <>
@@ -102,6 +108,7 @@ export function SiteHeader({
                   <button className="drawer-close" type="button" onClick={() => setOpen(null)}>Chiudi</button>
                   <p className="drawer-kicker">Menu</p>
                   <Link href={current ? `/leghe/${current.id}?tab=formazione` : "/rosa"} onClick={() => setOpen(null)}>Formazione</Link>
+                  <Link href="/rosa" onClick={() => setOpen(null)}>Mercato</Link>
                   <Link href={current ? `/leghe/${current.id}?tab=regolamento` : "/rules"} onClick={() => setOpen(null)}>Regolamento</Link>
                   <Link href={current ? `/leghe/${current.id}?tab=lega` : "/leghe"} onClick={() => setOpen(null)}>Impostazioni lega</Link>
                   {hostMode && canSwitch ? <Link href={current ? `/leghe/${current.id}?tab=gestione` : "/leghe"} onClick={() => setOpen(null)}>Gestione lega</Link> : null}
@@ -164,32 +171,18 @@ export function SiteHeader({
           </Link>
         )}
 
-        {email ? (
-          <nav className="dash-tabs" aria-label="Sezioni">
-            <Link href="/" data-active={pathname === "/"}><HomeIcon />Dashboard</Link>
-            <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Rosa</Link>
-            <Link href={leagueHref("risultati")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "risultati")}><CalendarIcon />Calendario</Link>
-            <Link href={leagueHref("classifica")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "classifica")}><TrophyIcon />Classifica</Link>
-          </nav>
-        ) : <span className="tabs-slot" />}
-
-        {email ? (
-          <div className="profile-switch">
-            <button className="profile-pill" type="button" aria-label="Profilo" aria-expanded={open === "menu"} onClick={() => setOpen(open === "menu" ? null : "menu")}>
-              <span>{initial}</span>
-            </button>
-          </div>
-        ) : pathname.startsWith("/accesso") ? <span /> : (
+        {email ? <span className="header-balance" aria-hidden="true" /> : pathname.startsWith("/accesso") ? <span /> : (
           <Link className="primary dash-login" href="/accesso">Accedi</Link>
         )}
       </div>
     </header>
     {email ? (
       <nav className="tabbar" aria-label="Principale">
-        <Link href="/" data-active={pathname === "/"}><HomeIcon />Home</Link>
+        <Link href="/" data-active={pathname === "/"}><HomeIcon />Dashboard</Link>
+        <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Squadra</Link>
         <Link href={leagueHref("risultati")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "risultati")}><CalendarIcon />Calendario</Link>
         <Link href={leagueHref("classifica")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "classifica")}><TrophyIcon />Classifica</Link>
-        <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Checkpoint</Link>
+        <button type="button" data-active={open === "menu"} onClick={() => setOpen(open === "menu" ? null : "menu")}><MoreIcon />Altro</button>
       </nav>
     ) : null}
   </>
@@ -233,6 +226,16 @@ function TrophyIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
       <path d="M8 4h8v6a4 4 0 0 1-8 0zM6 6H4.5A2.5 2.5 0 0 0 7 10.2M18 6h1.5A2.5 2.5 0 0 1 17 10.2M12 14v3M9 20h6" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MoreIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="6" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="12" cy="12" r="1.4" fill="currentColor" />
+      <circle cx="18" cy="12" r="1.4" fill="currentColor" />
     </svg>
   );
 }

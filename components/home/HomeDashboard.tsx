@@ -1,97 +1,126 @@
 import Link from "next/link";
-import { ClubPair } from "@/components/TeamBadge";
 import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
-import { EmptyState } from "@/components/EmptyState";
 import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
-import type { HomeBoard, HomeLeagueCard } from "@/lib/server/home-board";
+import type { HomeBoard } from "@/lib/server/home-board";
 
-function formatLabel(format: string) {
-  if (format === "h2h") return "Scontri diretti";
-  if (format === "hybrid") return "Fasi";
-  return "Classifica";
+function points(value: number | null) {
+  if (value == null) return "—";
+  return value.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
 
-function LeagueSummary({ card }: { card: HomeLeagueCard }) {
-  const place = card.rank == null ? "Non in classifica" : `${card.rank}°`;
-  const points = card.total == null ? "" : card.format === "h2h" ? `${card.total} pt` : `${card.total} fantapunti`;
+function place(rank: number | null) {
+  if (rank == null) return "—";
+  return `${rank}ª`;
+}
+
+function Jersey({ letter }: { letter: string }) {
   return (
-    <Link className="card" href={`/leghe/${card.id}`}>
-      <p className="small muted">{formatLabel(card.format)} · {card.played} giornate</p>
-      <h2>{card.name}</h2>
-      <p className="rank-line">{place}{points ? ` · ${points}` : ""}</p>
-      {card.nextLabel ? <p>{card.nextLabel}</p> : null}
-    </Link>
+    <svg className="jersey" viewBox="0 0 64 76" aria-hidden="true">
+      <path d="M16 18c4-8 8-10 16-10s12 2 16 10l10 8-8 10h-6v32H20V36h-6L6 26z" fill="#c6f531" />
+      <path d="M32 8c6 0 10 2 14 10l10 8-8 10h-6v32H32z" fill="#f4f4f5" />
+      <path d="M26 10h12l-6 9z" fill="#09090b" />
+      <text x="32" y="48" textAnchor="middle" fontSize="16" fontWeight="700" fill="#09090b">{letter}</text>
+    </svg>
   );
 }
 
 export function HomeDashboard({ board }: { board: HomeBoard }) {
-  const kickoff = new Intl.DateTimeFormat("it-IT", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/Rome",
-  });
+  const focus = board.focus;
+  const leagueId = focus?.id ?? null;
+  const formazione = leagueId ? `/leghe/${leagueId}?tab=formazione` : "/rosa";
+  const voti = leagueId ? `/leghe/${leagueId}?tab=risultati` : "/leghe";
+  const initial = (board.teamName.trim()[0] ?? "F").toUpperCase();
+
+  if (!focus) {
+    return (
+      <section className="stack home-dash">
+        <article className="identity">
+          <Jersey letter={initial} />
+          <div>
+            <p className="small muted">{board.competitionName}</p>
+            <h1>{board.teamName}</h1>
+          </div>
+        </article>
+        <LeagueOnboarding variant="card" />
+      </section>
+    );
+  }
 
   return (
-    <section className="stack">
-      <header>
-        <p className="small muted">{board.competitionName}</p>
-        <h1 className="section-title">La tua giornata</h1>
-      </header>
-      <article className="card news-feature">
-        <h2>News</h2>
-        {board.news.length === 0 ? <p>Nessun avviso in questo momento.</p> : (
-          <ul className="news-list">
-            {board.news.map((item) => (
-              <li key={item.id}>
-                <strong>{item.title}</strong>
-                <p>{item.body}</p>
-                {item.linkUrl ? <a className="primary" href={item.linkUrl} target="_blank" rel="noreferrer">{item.linkLabel ?? "Apri"}</a> : null}
-              </li>
-            ))}
-          </ul>
-        )}
+    <section className="stack home-dash">
+      <article className="identity">
+        <Jersey letter={initial} />
+        <div className="identity-copy">
+          <p className="small muted">{focus.name}</p>
+          <h1>{board.teamName}</h1>
+        </div>
+        <div className="identity-actions">
+          <Link className="ghost" href="/rosa">Rosa</Link>
+          <Link className="ghost" href={formazione}>Formazione</Link>
+        </div>
       </article>
-      <div className="dash-grid">
-        {board.leagues.map((card) => <LeagueSummary key={card.id} card={card} />)}
-        <LeagueOnboarding variant="card" />
-        <Link className="card" href="/albo">
-          <p className="small muted">Stagioni chiuse</p>
-          <h2>Albo d&apos;oro</h2>
-          <p>Vincitori, podio e record delle stagioni archiviate.</p>
-        </Link>
+
+      <div className="stat-grid">
+        <article><span>Pos</span><strong>{place(focus.rank)}</strong></article>
+        <article><span>Media</span><strong>{points(focus.average)}</strong></article>
+        <article><span>G</span><strong>{focus.played}</strong></article>
+        <article><span>PT</span><strong>{points(focus.total)}</strong></article>
       </div>
-      <div className="dash-grid">
-        <article className="card">
-          <h2>Deadline</h2>
-          {board.deadlineAt && board.deadlineLabel ? (
-            <DeadlineCountdown deadlineAt={board.deadlineAt} label={board.deadlineLabel} />
-          ) : (
-            <EmptyState title="Nessuna deadline aperta">
-              Quando una giornata è in preparazione, il countdown compare qui. Fino ad allora la formazione della giornata in corso resta bloccata.
-            </EmptyState>
-          )}
+
+      <article className="card dash-block">
+        <div className="dash-block-head">
+          <h2>Giornata precedente</h2>
+          <Link href={voti}>Voti</Link>
+        </div>
+        {focus.lastRound ? (
+          <div className="last-round">
+            <strong>{points(focus.lastRound.points)}</strong>
+            <p>Giornata {focus.lastRound.number} · media di lega {points(focus.lastRound.average)}</p>
+          </div>
+        ) : <p>Nessuna giornata calcolata.</p>}
+      </article>
+
+      <article className="card dash-block">
+        <h2>{board.deadlineLabel ?? "Giornata"}</h2>
+        {board.deadlineAt && board.deadlineLabel ? (
+          <DeadlineCountdown deadlineAt={board.deadlineAt} label="Al blocco formazioni" />
+        ) : <p>Nessuna deadline aperta.</p>}
+        <div className="dash-actions">
+          <Link className="primary" href={formazione}>Inserisci Formazione</Link>
+          <a className="ghost" href={board.probabiliHref} target="_blank" rel="noreferrer">Probabili e altro</a>
+        </div>
+      </article>
+
+      {board.promo ? (
+        <a className="promo-banner" href={board.promo.href ?? undefined} target={board.promo.href ? "_blank" : undefined} rel="noreferrer">
+          <img src={board.promo.imageUrl} alt={board.promo.label ?? ""} />
+        </a>
+      ) : null}
+
+      {focus.recent.length > 0 ? (
+        <article className="card dash-block">
+          <h2>Ultime giornate</h2>
+          <div className="recent-row">
+            {focus.recent.map((dot) => (
+              <div key={dot.number} className="recent-dot" data-up={dot.above}>
+                <strong>{points(dot.points)}</strong>
+                <span>{dot.number}</span>
+              </div>
+            ))}
+          </div>
         </article>
-        <article className="card">
-          <h2>Prossime di {board.competitionName}</h2>
-          {board.fixtures.length === 0 ? (
-            <EmptyState title="Nessuna partita in programma">
-              Gli incontri della prossima giornata compaiono qui appena il calendario ha un orario.
-            </EmptyState>
-          ) : (
-            <ul className="fixture-list">
-              {board.fixtures.map((fixture) => (
-                <li key={fixture.id}>
-                  <strong><ClubPair home={fixture.home} away={fixture.away} /></strong>
-                  <span>{kickoff.format(new Date(fixture.kickoffAt))}</span>
-                </li>
-              ))}
-            </ul>
-          )}
+      ) : null}
+
+      {focus.insights.length > 0 ? (
+        <article className="dash-block">
+          <h2>Sala stampa</h2>
+          <div className="press-row">
+            {focus.insights.map((line) => (
+              <p className="press-card" key={line}>{line}</p>
+            ))}
+          </div>
         </article>
-      </div>
+      ) : null}
     </section>
   );
 }

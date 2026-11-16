@@ -1,12 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/sync-match-votes",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/sync-availability",
-      "schedule": "0 21 * * *"
-    }
-  ]
-}
+{}

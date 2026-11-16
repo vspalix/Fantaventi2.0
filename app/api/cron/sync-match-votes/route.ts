@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { errorMessage, errorStatus } from "@/lib/server/session";
-import { syncDueMatchVotes } from "@/lib/server/sync-match-votes";
+import { syncScheduledVotes } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
 
 function authorized(request: Request) {
@@ -22,7 +22,7 @@ async function run(request: Request) {
       return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401 });
     }
     assertServiceEnv();
-    const result = await meter("vote-fetch", () => syncDueMatchVotes());
+    const result = await meter("vote-fetch", () => syncScheduledVotes());
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });

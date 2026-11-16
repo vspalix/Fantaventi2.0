@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { fetchFantacalcioMatchweek, votesForClubs, type FantacalcioPlayerVote } from "@/lib/server/fantacalcio-live";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { schemaHint, scoreOfficialGameweek, refreshProvisionalScores, persistLiveProjection } from "@/lib/server/live-score";
+import { inspectVoteSyncWindow, shiftRomeDate, romeClock, VOTE_SYNC_SKIP_REASON } from "@/lib/server/vote-sync-window";
 import type { PlayerStat } from "@/lib/engine/calculator";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -79,6 +80,16 @@ function sameStat(stored: StoredStat, vote: FantacalcioPlayerVote) {
     && stored.penalties_saved === vote.penaltiesSaved
     && stored.own_goals === vote.ownGoals
     && stored.goals_conceded === vote.goalsConceded;
+}
+
+export async function syncScheduledVotes(now = new Date()): Promise<MatchVoteSyncResult | { skipped: true; reason: string }> {
+  const gate = await inspectVoteSyncWindow(now);
+  if (!gate.open) return { skipped: true, reason: VOTE_SYNC_SKIP_REASON };
+  if (gate.evening || gate.morning) {
+    const target = gate.morning ? shiftRomeDate(gate.date, -1) : gate.date;
+    return refreshPlayedDay(target);
+  }
+  return syncDueMatchVotes(now);
 }
 
 export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSyncResult> {
@@ -257,6 +268,99 @@ export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSync
     }
   }
 
+  return result;
+}
+
+async function refreshPlayedDay(playedOn: string): Promise<MatchVoteSyncResult> {
+  const admin = createAdminSupabase();
+  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [] };
+  const seasons = await admin.from("seasons").select("id, code, competitions!inner(code)");
+  if (seasons.error) throw new Error(seasons.error.message);
+  const seasonCode = new Map<string, string>();
+  const serieA = new Set<string>();
+  for (const season of seasons.data ?? []) {
+    const competition = Array.isArray(season.competitions) ? season.competitions[0] : season.competitions;
+    seasonCode.set(season.id as string, season.code as string);
+    if (competition?.code === "serie_a") serieA.add(season.id as string);
+  }
+  if (serieA.size === 0) return result;
+  const weeks = await admin
+    .from("gameweeks")
+    .select("id, number, status, season_id")
+    .in("season_id", [...serieA])
+    .neq("status", "final");
+  if (weeks.error) throw new Error(weeks.error.message);
+  const gameweeks = (weeks.data ?? []) as GameweekRow[];
+  if (gameweeks.length === 0) return result;
+  const matches = await admin
+    .from("real_matches")
+    .select("id, gameweek_id, kickoff_at, status, home_club_id, away_club_id")
+    .in("gameweek_id", gameweeks.map((week) => week.id));
+  if (matches.error) throw new Error(schemaHint(matches.error.message));
+  const rows = (matches.data ?? []) as MatchRow[];
+  const played = (kickoffAt: string) => {
+    const time = new Date(kickoffAt).getTime();
+    return Number.isFinite(time) && romeClock(new Date(time)).date === playedOn;
+  };
+  const targetIds = new Set(rows.filter((match) => played(match.kickoff_at)).map((match) => match.gameweek_id));
+  const clubIds = [...new Set(rows.flatMap((match) => [match.home_club_id, match.away_club_id]))];
+  const clubs = clubIds.length ? await admin.from("clubs").select("id, code").in("id", clubIds) : { data: [], error: null };
+  if (clubs.error) throw new Error(clubs.error.message);
+  const clubCode = new Map((clubs.data ?? []).map((club) => [club.id as string, (club.code as string).toLowerCase()]));
+
+  for (const week of gameweeks) {
+    if (!targetIds.has(week.id)) continue;
+    const weekMatches = rows.filter((match) => match.gameweek_id === week.id);
+    try {
+      const page = await fetchFantacalcioMatchweek(seasonCode.get(week.season_id) ?? "", week.number);
+      await auditWeek(admin, week, weekMatches, clubCode, page);
+      result.audited.push(week.number);
+      for (const match of weekMatches) {
+        const home = clubCode.get(match.home_club_id) ?? "";
+        const away = clubCode.get(match.away_club_id) ?? "";
+        const votes = votesForClubs(page.votes, home, away);
+        if (votes.length === 0) {
+          result.waiting.push({ gameweekNumber: week.number, matchId: match.id, reason: "I voti di questa partita non sono ancora pubblicati." });
+          continue;
+        }
+        const score = page.scores.find((item) => item.homeSlug === home && item.awaySlug === away);
+        if (score && score.homeGoals !== null && score.awayGoals !== null) {
+          const goals = await admin.from("real_matches").update({
+            home_goals: score.homeGoals,
+            away_goals: score.awayGoals,
+          }).eq("id", match.id);
+          if (goals.error && !/home_goals|away_goals/i.test(goals.error.message)) throw new Error(schemaHint(goals.error.message));
+        }
+        if (match.status !== "finished") {
+          await markFinished(admin, match.id);
+          match.status = "finished";
+        }
+        result.synced.push({ gameweekNumber: week.number, matchId: match.id, players: votes.length });
+      }
+      try {
+        await refreshProvisionalScores(week.id);
+      } catch (error) {
+        result.errors.push({
+          gameweekNumber: week.number,
+          matchId: null,
+          message: error instanceof Error ? error.message : "Punteggio live non aggiornato.",
+        });
+      }
+      const stillOpen = weekMatches.some((match) => match.status !== "finished");
+      if (!stillOpen && week.status === "scored") {
+        const outcome = await scoreOfficialGameweek(week.id, { allowRewrite: true });
+        if (!outcome.skipped) result.scored.push(week.number);
+      } else if (!stillOpen) {
+        await closeWeek(admin, week, result);
+      }
+    } catch (error) {
+      result.errors.push({
+        gameweekNumber: week.number,
+        matchId: null,
+        message: error instanceof Error ? error.message : "Ricalcolo dei voti non riuscito.",
+      });
+    }
+  }
   return result;
 }
 

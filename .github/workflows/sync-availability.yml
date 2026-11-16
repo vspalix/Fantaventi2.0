@@ -1,0 +1,22 @@
+name: Indisponibili
+
+on:
+  schedule:
+    - cron: "0 11 * * *"
+    - cron: "0 20 * * *"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Chiama gli indisponibili
+        env:
+          APP_URL: ${{ secrets.APP_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          base="${APP_URL%/}"
+          curl --fail-with-body --silent --show-error --max-time 60 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${base}/api/cron/sync-availability"

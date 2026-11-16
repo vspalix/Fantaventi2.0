@@ -44,6 +44,10 @@ export function SiteHeader({
   const leagueHref = (tab: string) => current ? `/leghe/${current.id}?tab=${tab}` : "/leghe";
 
   useEffect(() => {
+    setOpen(null);
+  }, [pathname, leagueTab]);
+
+  useEffect(() => {
     function close(event: PointerEvent) {
       if (!bar.current?.contains(event.target as Node)) setOpen(null);
     }
@@ -83,6 +87,7 @@ export function SiteHeader({
   const initial = (profileLabel.trim()[0] ?? email?.[0] ?? "F").toUpperCase();
 
   return (
+    <>
     <header className="site-header" ref={bar}>
       <div className="shell dash-shell">
         {email ? (
@@ -91,21 +96,34 @@ export function SiteHeader({
               <MenuIcon />
             </button>
             {open === "menu" ? (
-              <ul className="dash-menu">
-                <li><Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link></li>
-                <li><Link href="/albo" onClick={() => setOpen(null)}>Albo</Link></li>
-                <li><Link href="/rules" onClick={() => setOpen(null)}>Regolamento</Link></li>
-                {seasons.length > 1 ? (
-                  <li>
+              <>
+                <button className="drawer-backdrop" type="button" aria-label="Chiudi menu" onClick={() => setOpen(null)} />
+                <nav className="drawer" aria-label="Menu">
+                  <button className="drawer-close" type="button" onClick={() => setOpen(null)}>Chiudi</button>
+                  <p className="drawer-kicker">Menu</p>
+                  <Link href={current ? `/leghe/${current.id}?tab=formazione` : "/rosa"} onClick={() => setOpen(null)}>Formazione</Link>
+                  <Link href={current ? `/leghe/${current.id}?tab=regolamento` : "/rules"} onClick={() => setOpen(null)}>Regolamento</Link>
+                  <Link href={current ? `/leghe/${current.id}?tab=lega` : "/leghe"} onClick={() => setOpen(null)}>Impostazioni lega</Link>
+                  {hostMode && canSwitch ? <Link href={current ? `/leghe/${current.id}?tab=gestione` : "/leghe"} onClick={() => setOpen(null)}>Gestione lega</Link> : null}
+                  <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
+                  <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
+                  <Link href="/rules" onClick={() => setOpen(null)}>Regolamento generale</Link>
+                  {hostMode && platformAdmin ? <Link href="/admin" onClick={() => setOpen(null)}>Pannello admin</Link> : null}
+                  {seasons.length > 1 ? (
                     <label>
                       Stagione
                       <select aria-label="Competizione e stagione" value={activeSeasonId ?? seasons[0].id} onChange={(event) => void chooseSeason(event.target.value)}>
                         {seasons.map((season) => <option key={season.id} value={season.id}>{season.label}</option>)}
                       </select>
                     </label>
-                  </li>
-                ) : null}
-              </ul>
+                  ) : null}
+                  <p className="drawer-kicker">Profilo</p>
+                  <p className="profile-name">{profileLabel}</p>
+                  {canSwitch ? <div className="profile-mode"><ModeSwitch mode={hostMode ? "host" : "player"} /></div> : null}
+                  <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
+                  <button type="button" onClick={() => void signOut()}>Esci</button>
+                </nav>
+              </>
             ) : null}
           </div>
         ) : <span className="header-menu" />}
@@ -157,24 +175,24 @@ export function SiteHeader({
 
         {email ? (
           <div className="profile-switch">
-            <button className="profile-pill" type="button" aria-label="Profilo" aria-expanded={open === "profile"} onClick={() => setOpen(open === "profile" ? null : "profile")}>
+            <button className="profile-pill" type="button" aria-label="Profilo" aria-expanded={open === "menu"} onClick={() => setOpen(open === "menu" ? null : "menu")}>
               <span>{initial}</span>
             </button>
-            {open === "profile" ? (
-              <ul className="dash-menu dash-menu-right">
-                <li className="profile-name">{profileLabel}</li>
-                {canSwitch ? <li className="profile-mode"><ModeSwitch mode={hostMode ? "host" : "player"} /></li> : null}
-                {hostMode && platformAdmin ? <li><Link href="/admin" onClick={() => setOpen(null)}>Admin</Link></li> : null}
-                <li><Link href="/account" onClick={() => setOpen(null)}>Account</Link></li>
-                <li><button type="button" onClick={() => void signOut()}>Esci</button></li>
-              </ul>
-            ) : null}
           </div>
         ) : pathname.startsWith("/accesso") ? <span /> : (
           <Link className="primary dash-login" href="/accesso">Accedi</Link>
         )}
       </div>
     </header>
+    {email ? (
+      <nav className="tabbar" aria-label="Principale">
+        <Link href="/" data-active={pathname === "/"}><HomeIcon />Home</Link>
+        <Link href={leagueHref("risultati")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "risultati")}><CalendarIcon />Calendario</Link>
+        <Link href={leagueHref("classifica")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "classifica")}><TrophyIcon />Classifica</Link>
+        <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Checkpoint</Link>
+      </nav>
+    ) : null}
+  </>
   );
 }
 

@@ -209,6 +209,7 @@ export type StandingRow = {
   played: number;
   skipped: number;
   average: number | null;
+  best: number | null;
   ratedPlayers: number | null;
   onPitch: number | null;
 };

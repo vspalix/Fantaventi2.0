@@ -812,6 +812,7 @@ async function standingsFromDatabase(
       played: Number(row.played_count ?? 0),
       skipped: Number(row.skipped_count ?? 0),
       average: row.average_points === null ? null : Number(row.average_points),
+      best: null,
       ratedPlayers: null,
       onPitch: null,
     }];
@@ -984,7 +985,9 @@ async function standingsInApp(
     const counted = late
       ? seasonBase.filter((gameweek) => gameweek.number >= entry && fielded.has(`${participant.fantasyTeamId}:${gameweek.id}`))
       : seasonBase;
-    const realPoints = counted.reduce((sum, gameweek) => sum + pointsOf(participant.fantasyTeamId, gameweek.id), 0);
+    const weekTotals = counted.map((gameweek) => pointsOf(participant.fantasyTeamId, gameweek.id));
+    const realPoints = weekTotals.reduce((sum, value) => sum + value, 0);
+    const best = weekTotals.length === 0 ? null : Math.max(...weekTotals);
     const badge = badgeWeek ? scores.get(`${participant.fantasyTeamId}:${badgeWeek.id}`) : undefined;
     const played = counted.length;
     const average = late ? priorAverage(entry) : (played === 0 ? null : realPoints / played);
@@ -998,6 +1001,7 @@ async function standingsInApp(
       played,
       skipped,
       average: average === null ? null : round2(average),
+      best: best === null ? null : round2(best),
       ratedPlayers: live ? badge?.rated ?? null : null,
       onPitch: live ? badge?.onPitch ?? null : null,
     };
@@ -1016,6 +1020,7 @@ function emptyStanding(participant: LeagueHubData["league"]["participants"][numb
     played: 0,
     skipped: 0,
     average: null,
+    best: null,
     ratedPlayers: null,
     onPitch: null,
   };

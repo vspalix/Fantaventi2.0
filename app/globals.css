@@ -127,6 +127,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .announce-modal img { width: 100%; max-height: 62vh; object-fit: contain; border-radius: 14px; }
 .announce-modal h2 { margin: 0; }
+.avail { display: inline-flex; align-items: center; gap: 4px; margin-left: 6px; vertical-align: middle; }
+.avail b { font-size: 10px; letter-spacing: 0.04em; padding: 1px 5px; border-radius: 999px; color: #09090b; }
+.avail b[data-kind="suspended"] { background: #fb7185; }
+.avail b[data-kind="injured"] { background: #fb923c; }
+.avail b[data-kind="doubt"] { background: #e8c36a; }
+.avail em { font-style: normal; font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; font-weight: 700; }
+.avail em[data-hot="high"] { color: var(--accent); }
+.avail em[data-hot="low"] { color: #e8c36a; }
 .announce-close {
   position: absolute;
   top: 8px;

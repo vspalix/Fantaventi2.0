@@ -1,3 +1,4 @@
+import { attachAvailability } from "@/lib/server/availability";
 import { getFantasyTeam, getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
@@ -177,9 +178,13 @@ export async function loadLeagueHub(
   const editable = Boolean(selected && next && selected.id === next.id && !locked);
 
   const team = await getFantasyTeam(admin, userId, league.seasonId);
-  const roster = team && selected
+  const openWeek = rows.find((gameweek) => gameweek.status !== "scored" && gameweek.status !== "final") ?? null;
+  let roster = team && selected
     ? await rosterForGameweek(admin, team.id, selected.number, byId)
     : [];
+  if (selected && openWeek && selected.number === openWeek.number) {
+    roster = await attachAvailability(roster, openWeek.number);
+  }
 
   const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
   const lineupRows = selected && teamIds.length

@@ -19,6 +19,7 @@ const LINKS = [
   { href: "/admin/rules-editor", label: "Regolamento" },
   { href: "/admin/laboratorio", label: "Collaudo" },
   { href: "/admin/laboratorio/colori", label: "Colori" },
+  { href: "/admin/laboratorio/indisponibili", label: "Indisponibili" },
 ];
 
 export function AdminNav() {

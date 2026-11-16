@@ -37,6 +37,7 @@ export default async function LabPage() {
           </p>
         </header>
         <AdminNav />
+        <p><Link href="/admin/laboratorio/indisponibili">Indisponibili e fonte dati</Link></p>
         <SandboxDesk />
         <MaintenanceSwitch />
         <ChaosDesk />

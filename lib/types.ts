@@ -40,6 +40,11 @@ export type CatalogPlayer = {
   clubCode: string;
   clubName: string;
   clubShort: string;
+  availability?: {
+    status: "available" | "starter" | "bench" | "doubt" | "injured" | "suspended";
+    playProbability: number | null;
+    reason: string | null;
+  };
 };
 
 export type CatalogResponse = {

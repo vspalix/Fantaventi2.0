@@ -11,6 +11,7 @@ import { MatchCenter } from "@/components/leagues/MatchCenter";
 import { MatchdayResults } from "@/components/leagues/MatchdayResults";
 import { Pitch } from "@/components/leagues/Pitch";
 import { ClubPair, TeamBadge } from "@/components/TeamBadge";
+import { AvailabilityBadge, isUnavailable } from "@/components/lineups/AvailabilityBadge";
 import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
 import {
   FORMATIONS,
@@ -488,6 +489,7 @@ export function LeagueHub({
     setBenchIds(benchIds.filter((id) => id !== player.id));
     setPickerRole(null);
     setReplacingId(null);
+    if (isUnavailable(player)) pushToast("err", "Attenzione: giocatore indisponibile per questo turno.");
     });
   }
 
@@ -501,12 +503,16 @@ export function LeagueHub({
     if (captainId === replacingId) setCaptainId(null);
     if (viceId === replacingId) setViceId(null);
     setReplacingId(null);
+    if (isUnavailable(incoming)) pushToast("err", "Attenzione: giocatore indisponibile per questo turno.");
     });
   }
 
   function addToBench(player: CatalogPlayer) {
     if (!canEdit || pending || playerIds.includes(player.id) || benchIds.includes(player.id)) return;
-    picks.occupy(player.id, () => setBenchIds([...benchIds, player.id]));
+    picks.occupy(player.id, () => {
+      setBenchIds([...benchIds, player.id]);
+      if (isUnavailable(player)) pushToast("err", "Attenzione: giocatore indisponibile per questo turno.");
+    });
   }
 
   function dropFromBench(playerId: string) {
@@ -970,7 +976,7 @@ export function LeagueHub({
                               aria-busy={picks.busyId === player.id}
                               onClick={() => addToBench(player)}
                             >
-                              <strong>{player.fullName}</strong>
+                              <strong>{player.fullName}<AvailabilityBadge player={player} /></strong>
                               <span className="small muted">
                                 {picks.busyId === player.id ? "Aggiungo..." : <><TeamBadge teamName={player.clubShort} /> {ROLE_LABEL[player.role]} · {player.clubShort}</>}
                               </span>
@@ -1160,7 +1166,7 @@ export function LeagueHub({
                     aria-busy={picks.busyId === player.id}
                     onClick={() => replaceStarter(player)}
                   >
-                    <strong>{player.fullName}</strong>
+                    <strong>{player.fullName}<AvailabilityBadge player={player} /></strong>
                     <span>
                       {picks.busyId === player.id ? "Sostituisco..." : <><TeamBadge teamName={player.clubShort} /> {player.clubShort}</>}
                       {picks.busyId === player.id ? "" : benchIds.includes(player.id) ? " · in panchina" : ""}
@@ -1192,7 +1198,7 @@ export function LeagueHub({
                     aria-busy={picks.busyId === player.id}
                     onClick={() => place(player)}
                   >
-                    <strong>{player.fullName}</strong>
+                    <strong>{player.fullName}<AvailabilityBadge player={player} /></strong>
                     <span>
                       {picks.busyId === player.id ? "Schiero..." : <><TeamBadge teamName={player.clubShort} /> {player.clubShort}</>}
                       {picks.busyId === player.id ? "" : benchIds.includes(player.id) ? " · in panchina" : ""}

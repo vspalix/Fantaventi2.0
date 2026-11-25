@@ -195,7 +195,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   box-shadow: var(--glow);
   flex: none;
 }
-.squad-mark svg { width: 22px; height: 22px; }
+.squad-mark svg, .squad-mark img { width: 22px; height: 22px; object-fit: contain; }
+.brand-preview { width: 88px; height: 88px; object-fit: contain; background: #09090b; border-radius: 16px; border: 1px solid var(--line); }
+.brand-swatch { display: inline-block; width: 18px; height: 18px; border-radius: 6px; vertical-align: -3px; }
+.round-logo { width: 36px; height: 36px; object-fit: contain; }
 .squad-copy { display: grid; min-width: 0; flex: 1; }
 .squad-copy strong, .dash-menu strong {
   font-size: 14px;

@@ -2,6 +2,8 @@ import { getCurrentSeason } from "@/lib/server/catalog";
 import { deadlineFromKickoff } from "@/lib/server/serie-a-calendar";
 import { fetchSkyCalendar, romeLocalToIso } from "@/lib/server/sky-calendar";
 import { schemaHint } from "@/lib/server/live-score";
+import { writeSyncLog } from "@/lib/server/system-settings";
+import { alertKickoffSync } from "@/lib/server/telegram-alert";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -192,7 +194,7 @@ async function serieARunningSeason(admin: ReturnType<typeof createAdminSupabase>
   return getCurrentSeason(admin, data.id as string);
 }
 
-export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonId?: string }) {
+async function runKickoffRefresh(options?: { force?: boolean; seasonId?: string }) {
   const admin = createAdminSupabase();
   const season = options?.seasonId
     ? await getCurrentSeason(admin, options.seasonId)
@@ -237,6 +239,7 @@ export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonI
   const rounds = await fetchSkyCalendar();
   const stored = await loadStoredMatches(admin, season.id);
   const byKey = new Map(stored.matches.map((match) => [`${match.gameweekNumber}:${match.home}:${match.away}`, match]));
+  const changes: { kind: "kickoff" | "status"; round: number; label: string; at: string }[] = [];
   let updated = 0;
   let kept = 0;
   let results = 0;
@@ -254,6 +257,9 @@ export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonI
         update = await admin.from("real_matches").update({ status: "finished" }).eq("id", match.id);
       }
       if (update.error) throw new Error(schemaHint(update.error.message));
+      if (match.status !== "finished") {
+        changes.push({ kind: "status", round: round.number, label: `${match.home}-${match.away}`, at: match.kickoffAt });
+      }
       match.status = "finished";
       results += 1;
     }
@@ -284,6 +290,7 @@ export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonI
       if (new Date(match.kickoffAt).getTime() === new Date(fixture.kickoff).getTime()) continue;
       const { error } = await admin.from("real_matches").update({ kickoff_at: fixture.kickoff }).eq("id", match.id).eq("status", "scheduled");
       if (error) throw new Error(schemaHint(error.message));
+      changes.push({ kind: "kickoff", round: round.number, label: `${match.home}-${match.away}`, at: fixture.kickoff });
       match.kickoffAt = fixture.kickoff;
       updated += 1;
     }
@@ -294,6 +301,21 @@ export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonI
     rounds: rounds.length,
     fixtures: rounds.reduce((sum, round) => sum + round.fixtures.length, 0),
     updated,
+  });
+  const samples = kickoffSamples(changes);
+  const triggerSource = options?.force ? "manual" as const : "cron" as const;
+  await writeSyncLog({
+    jobType: "kickoffs",
+    triggerSource,
+    status: "success",
+    recordsWritten: changes.length,
+    message: changes.length ? `Orari o stati variati: ${changes.length}.` : "Nessuna variazione sugli orari.",
+  });
+  await alertKickoffSync({
+    status: "success",
+    message: changes.length ? `Orari o stati variati: ${changes.length}.` : "Nessuna variazione sugli orari.",
+    changed: changes.length,
+    samples,
   });
   return {
     seasonCode: season.code,
@@ -309,6 +331,46 @@ export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonI
     lockColumn: stored.lockColumn,
     logged,
   };
+}
+
+function kickoffSamples(changes: { kind: "kickoff" | "status"; round: number; label: string; at: string }[]) {
+  const rome = new Intl.DateTimeFormat("it-IT", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Europe/Rome",
+  });
+  const kickoffs = changes.filter((item) => item.kind === "kickoff").sort((left, right) => left.at.localeCompare(right.at));
+  const lines: string[] = [];
+  if (kickoffs.length > 0) {
+    const first = kickoffs[0];
+    const last = kickoffs[kickoffs.length - 1];
+    lines.push(`Giornata ${first.round}, primo calcio d'inizio ${rome.format(new Date(first.at))} (${first.label})`);
+    if (last !== first) lines.push(`Giornata ${last.round}, ultimo calcio d'inizio ${rome.format(new Date(last.at))} (${last.label})`);
+  }
+  for (const item of changes.filter((row) => row.kind === "status").slice(0, 3)) {
+    lines.push(`Giornata ${item.round}: ${item.label} finita`);
+  }
+  return lines.slice(0, 5);
+}
+
+export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonId?: string }) {
+  try {
+    return await runKickoffRefresh(options);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Aggiornamento orari non riuscito.";
+    await writeSyncLog({
+      jobType: "kickoffs",
+      triggerSource: options?.force ? "manual" : "cron",
+      status: "error",
+      recordsWritten: 0,
+      message,
+    });
+    await alertKickoffSync({ status: "error", message, changed: 0, samples: [] });
+    throw error;
+  }
 }
 
 export async function refreshKickoffsForAdmin(userId: string) {

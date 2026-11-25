@@ -39,6 +39,7 @@ export default async function LabPage() {
         <AdminNav />
         <p><Link href="/admin/laboratorio/indisponibili">Indisponibili e fonte dati</Link></p>
         <p><Link href="/admin/laboratorio/sincronizzazioni">Sincronizzazioni e finestre</Link></p>
+        <p><Link href="/admin/laboratorio/brand">Brand & Grafica</Link></p>
         <SandboxDesk />
         <MaintenanceSwitch />
         <ChaosDesk />

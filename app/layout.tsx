@@ -9,6 +9,8 @@ import { SiteHeader, type HeaderSeason, type HeaderSquad } from "@/components/Si
 import { AnnounceModal } from "@/components/AnnounceModal";
 import { NativeBridge } from "@/components/NativeBridge";
 import { ClubBadgeProvider } from "@/components/TeamBadge";
+import { accentOrDefault } from "@/lib/brand";
+import { readBrand } from "@/lib/server/brand";
 import { loadActiveAnnouncements } from "@/lib/server/announcements";
 import { loadClubBadgeOverrides } from "@/lib/server/club-badges";
 import { INVITE_COOKIE, joinHref, normalizeInviteCode } from "@/lib/invite";
@@ -113,9 +115,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   }
   const badges = await loadClubBadgeOverrides();
   const announcements = user ? await loadActiveAnnouncements() : [];
+  const brand = await readBrand();
+  const accent = accentOrDefault(brand.accentColor);
+  const red = Number.parseInt(accent.slice(1, 3), 16);
+  const green = Number.parseInt(accent.slice(3, 5), 16);
+  const blue = Number.parseInt(accent.slice(5, 7), 16);
   return (
     <html lang="it">
-      <body className={`${sans.variable} ${mono.variable}`}>
+      <body className={`${sans.variable} ${mono.variable}`} style={{ ["--accent" as string]: accent, ["--glow" as string]: `0 0 28px rgba(${red}, ${green}, ${blue}, 0.16)` }}>
         <ClubBadgeProvider badges={badges}>
         <Suspense fallback={<header className="site-header" />}>
           <SiteHeader
@@ -128,6 +135,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             platformAdmin={platformAdmin}
             hostMode={hostMode}
             canSwitch={canSwitch}
+            brandLogoUrl={brand.logoUrl}
           />
         </Suspense>
         {maintenance.enabled ? <MaintenanceBanner message={maintenance.message} admin={platformAdmin} /> : null}

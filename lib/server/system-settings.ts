@@ -15,11 +15,12 @@ export type SystemSettings = {
   syncWindowMorningStart: string;
   syncWindowMorningEnd: string;
   autoSyncEnabled: boolean;
+  notifyOnSyncSuccess: boolean;
   ready: boolean;
 };
 
 export type SyncLogEntry = {
-  jobType: "votes" | "availability";
+  jobType: "votes" | "availability" | "kickoffs";
   triggerSource: "cron" | "manual";
   status: "success" | "skipped" | "error";
   recordsWritten: number;
@@ -39,6 +40,7 @@ const DEFAULTS: SystemSettings = {
   syncWindowMorningStart: "09:15",
   syncWindowMorningEnd: "09:45",
   autoSyncEnabled: true,
+  notifyOnSyncSuccess: true,
   ready: false,
 };
 
@@ -77,6 +79,7 @@ function normalize(row: Record<string, unknown>): SystemSettings {
     syncWindowMorningStart: clockOr(row.sync_window_morning_start, DEFAULTS.syncWindowMorningStart),
     syncWindowMorningEnd: clockOr(row.sync_window_morning_end, DEFAULTS.syncWindowMorningEnd),
     autoSyncEnabled: typeof row.auto_sync_enabled === "boolean" ? row.auto_sync_enabled : DEFAULTS.autoSyncEnabled,
+    notifyOnSyncSuccess: typeof row.notify_on_sync_success === "boolean" ? row.notify_on_sync_success : DEFAULTS.notifyOnSyncSuccess,
     ready: true,
   };
 }
@@ -110,7 +113,7 @@ export function clockMinutes(value: string, fallback: number) {
 export type SyncLogRow = {
   id: string;
   createdAt: string;
-  jobType: "votes" | "availability";
+  jobType: "votes" | "availability" | "kickoffs";
   triggerSource: "cron" | "manual";
   status: "success" | "skipped" | "error";
   recordsWritten: number;
@@ -174,7 +177,13 @@ export async function saveSystemSettings(input: Omit<SystemSettings, "ready">) {
     if (missing(saved.error.message)) throw httpError("Manca la tabella. Esegui supabase/system_settings.sql nell'editor SQL.", 503);
     throw new Error(saved.error.message);
   }
-  return normalize({
+  const flagged = await admin.from("system_settings").update({
+    notify_on_sync_success: input.notifyOnSyncSuccess,
+  }).eq("id", 1);
+  const flagMissing = Boolean(flagged.error && /notify_on_sync_success|schema cache|could not find|column/i.test(flagged.error.message));
+  if (flagged.error && !flagMissing) throw new Error(flagged.error.message);
+  return {
+    settings: normalize({
     votes_source_url: url,
     votes_provider: provider,
     availability_provider: "api-sports",
@@ -187,7 +196,10 @@ export async function saveSystemSettings(input: Omit<SystemSettings, "ready">) {
     sync_window_morning_start: morningStart,
     sync_window_morning_end: morningEnd,
     auto_sync_enabled: input.autoSyncEnabled,
-  });
+    notify_on_sync_success: flagMissing ? current.notifyOnSyncSuccess : input.notifyOnSyncSuccess,
+  }),
+    notice: flagMissing ? "Il flag Telegram non è ancora in tabella. Esegui supabase/brand_storage.sql." : null,
+  };
 }
 
 export async function readSyncLogs(limit = 20): Promise<SyncLogRow[]> {
@@ -204,7 +216,7 @@ export async function readSyncLogs(limit = 20): Promise<SyncLogRow[]> {
   return (rows.data ?? []).map((row) => ({
     id: String(row.id),
     createdAt: String(row.created_at),
-    jobType: row.job_type === "availability" ? "availability" : "votes",
+    jobType: row.job_type === "availability" ? "availability" : row.job_type === "kickoffs" ? "kickoffs" : "votes",
     triggerSource: row.trigger_source === "manual" ? "manual" : "cron",
     status: row.status === "success" || row.status === "error" ? row.status : "skipped",
     recordsWritten: Number(row.records_written) || 0,
@@ -222,7 +234,7 @@ export async function writeSyncLog(entry: SyncLogEntry) {
       records_written: entry.recordsWritten,
       message: entry.message.slice(0, 500),
     });
-    if (saved.error && !missing(saved.error.message)) {
+    if (saved.error && !missing(saved.error.message) && !/job_type|check constraint/i.test(saved.error.message)) {
       console.error(saved.error.message);
     }
   } catch (error) {

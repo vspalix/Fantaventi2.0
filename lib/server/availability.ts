@@ -120,13 +120,13 @@ export async function syncAvailability(force = false) {
   if (!current.ready) throw httpError("Manca la tabella. Esegui player_availability.sql nell'editor SQL.", 503);
   const settings = current.settings;
   const { seasonId, open } = await openMatchday();
-  if (!open) return { skipped: true, reason: "Nessuna giornata aperta.", matchday: null, written: 0, unmatched: 0 };
+  if (!open) return { skipped: true as const, reason: "Nessuna giornata aperta.", matchday: null, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
   const deadlinePassed = new Date(open.deadlineAt).getTime() <= Date.now();
   if (!force && deadlinePassed && open.status !== "scored" && open.status !== "final") {
-    return { skipped: true, reason: "La giornata è già partita e non è ancora calcolata. Nessuna chiamata esterna.", matchday: open.number, written: 0, unmatched: 0 };
+    return { skipped: true as const, reason: "La giornata è già partita e non è ancora calcolata. Nessuna chiamata esterna.", matchday: open.number, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
   }
   if (settings.provider === "manual") {
-    return { skipped: true, reason: "La fonte attiva è solo manuale.", matchday: open.number, written: 0, unmatched: 0 };
+    return { skipped: true as const, reason: "La fonte attiva è solo manuale.", matchday: open.number, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
   }
   const rows = await providerFor(settings.provider).load({
     leagueId: settings.leagueId,
@@ -135,15 +135,15 @@ export async function syncAvailability(force = false) {
   });
   const known = await knownPlayers(seasonId, open.number);
   const { matched, unmatched } = matchAvailability(rows, known, settings.aliases);
-  const written = await upsertAutomatic(open.number, matched, settings.provider);
+  const savedRows = await upsertAutomatic(open.number, matched, settings.provider);
   const next: AvailabilitySettings = {
     ...settings,
     lastSyncAt: new Date().toISOString(),
-    lastSyncNote: `Giornata ${open.number}: ${written} aggiornati, ${unmatched.length} non abbinati.`,
+    lastSyncNote: `Giornata ${open.number}: ${savedRows.written} aggiornati, ${savedRows.changed} variati, ${unmatched.length} non abbinati.`,
     unmatched: unmatched.map((row) => ({ name: row.name, club: row.club, reason: row.reason })),
   };
   await writeSettings(next);
-  return { skipped: false, reason: next.lastSyncNote, matchday: open.number, written, unmatched: unmatched.length };
+  return { skipped: false as const, reason: next.lastSyncNote, matchday: open.number, written: savedRows.written, unmatched: unmatched.length, changed: savedRows.changed, samples: savedRows.samples };
 }
 
 async function knownPlayers(seasonId: string, matchday: number): Promise<KnownPlayer[]> {
@@ -186,15 +186,16 @@ async function knownPlayers(seasonId: string, matchday: number): Promise<KnownPl
 
 async function upsertAutomatic(
   matchday: number,
-  matched: { playerId: string; row: { status: AvailabilityStatus; playProbability: number | null; reason: string | null } }[],
+  matched: { playerId: string; row: { name: string; status: AvailabilityStatus; playProbability: number | null; reason: string | null } }[],
   source: string,
 ) {
   const admin = createAdminSupabase();
-  const existing = await admin.from("player_availability").select("player_id, source_provider").eq("matchday", matchday);
+  const existing = await admin.from("player_availability").select("player_id, source_provider, status, play_probability").eq("matchday", matchday);
   if (existing.error) {
     if (missing(existing.error.message)) throw httpError("Manca la tabella. Esegui player_availability.sql nell'editor SQL.", 503);
     throw new Error(existing.error.message);
   }
+  const previous = new Map((existing.data ?? []).map((row) => [row.player_id as string, row]));
   const manual = new Set((existing.data ?? []).filter((row) => row.source_provider === "manual").map((row) => row.player_id as string));
   const rows = matched
     .filter((item) => !manual.has(item.playerId))
@@ -215,10 +216,37 @@ async function upsertAutomatic(
     const removed = await admin.from("player_availability").delete().eq("matchday", matchday).in("player_id", stale);
     if (removed.error) throw new Error(removed.error.message);
   }
-  if (rows.length === 0) return 0;
+  if (rows.length === 0) {
+    return {
+      written: 0,
+      changed: stale.length,
+      samples: stale.length ? [`Rimosse ${stale.length} indisponibilità non più in elenco`] : [],
+    };
+  }
   const saved = await admin.from("player_availability").upsert(rows, { onConflict: "player_id,matchday" });
   if (saved.error) throw new Error(saved.error.message);
-  return rows.length;
+  const names = new Map(matched.map((item) => [item.playerId, item.row.name]));
+  const changedRows = rows.filter((row) => {
+    const before = previous.get(row.player_id);
+    if (!before || before.source_provider === "manual") return !before;
+    return before.status !== row.status || Number(before.play_probability) !== Number(row.play_probability);
+  });
+  const labels: Record<string, string> = {
+    suspended: "squalificato",
+    injured: "indisponibile",
+    doubt: "dubbio",
+    bench: "panchina",
+    starter: "titolare",
+    available: "disponibile",
+  };
+  return {
+    written: rows.length,
+    changed: changedRows.length + stale.length,
+    samples: [
+      ...changedRows.slice(0, 5).map((row) => `${names.get(row.player_id) ?? "Giocatore"} ${labels[row.status] ?? row.status}`),
+      ...(stale.length ? [`Rimosse ${stale.length} indisponibilità non più in elenco`] : []),
+    ].slice(0, 5),
+  };
 }
 
 export async function saveManualAvailability(input: {

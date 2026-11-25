@@ -20,6 +20,7 @@ export function SiteHeader({
   platformAdmin,
   hostMode,
   canSwitch,
+  brandLogoUrl = "",
 }: {
   email: string | null;
   profileLabel: string;
@@ -30,6 +31,7 @@ export function SiteHeader({
   platformAdmin: boolean;
   hostMode: boolean;
   canSwitch: boolean;
+  brandLogoUrl?: string;
 }) {
   const pathname = usePathname();
   const search = useSearchParams();
@@ -142,7 +144,7 @@ export function SiteHeader({
           <div className="squad-switch">
             <button className="squad-pill" type="button" aria-expanded={open === "squad"} aria-haspopup="listbox" onClick={() => setOpen(open === "squad" ? null : "squad")}>
               <span className="squad-mark" aria-hidden="true">
-                <ShieldIcon />
+                {brandLogoUrl ? <img src={brandLogoUrl} alt="" /> : <ShieldIcon />}
               </span>
               <span className="squad-copy">
                 <strong>{current.teamName}</strong>
@@ -166,7 +168,7 @@ export function SiteHeader({
           </div>
         ) : (
           <Link href={email ? "/rosa" : "/"} className="squad-pill squad-link">
-            <span className="squad-mark" aria-hidden="true"><ShieldIcon /></span>
+            <span className="squad-mark" aria-hidden="true">{brandLogoUrl ? <img src={brandLogoUrl} alt="" /> : <ShieldIcon />}</span>
             <span className="squad-copy">
               <strong>{email ? "Crea la rosa" : "Fantaventi"}</strong>
               <small>{email ? "Nessuna squadra ancora" : "Rosa libera"}</small>

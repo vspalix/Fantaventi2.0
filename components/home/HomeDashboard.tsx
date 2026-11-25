@@ -28,7 +28,7 @@ function Mark({ letter }: { letter: string }) {
   return <span className="face-mark" aria-hidden="true">{letter.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function HomeDashboard({ board }: { board: HomeBoard }) {
+export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoUrl?: string }) {
   const focus = board.focus;
   const leagueId = focus?.id ?? null;
   const formazione = leagueId ? `/leghe/${leagueId}?tab=formazione` : "/rosa";
@@ -103,6 +103,7 @@ export function HomeDashboard({ board }: { board: HomeBoard }) {
       <article className="card dash-block current-round">
         <div className="dash-block-head">
           <h2>Giornata corrente</h2>
+          {logoUrl ? <img className="round-logo" src={logoUrl} alt="" /> : null}
           <span>{[board.deadlineLabel, focus.nextRival ? "scontro diretto" : "sul totale"].filter(Boolean).join(" · ")}</span>
         </div>
         {focus.nextRival ? (

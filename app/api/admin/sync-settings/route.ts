@@ -31,6 +31,7 @@ export async function POST(request: Request) {
       syncWindowMorningStart?: string;
       syncWindowMorningEnd?: string;
       autoSyncEnabled?: boolean;
+      notifyOnSyncSuccess?: boolean;
     };
     const current = await readSystemSettings();
     const settings = await saveSystemSettings({
@@ -46,8 +47,9 @@ export async function POST(request: Request) {
       syncWindowMorningStart: body.syncWindowMorningStart ?? current.syncWindowMorningStart,
       syncWindowMorningEnd: body.syncWindowMorningEnd ?? current.syncWindowMorningEnd,
       autoSyncEnabled: body.autoSyncEnabled ?? current.autoSyncEnabled,
+      notifyOnSyncSuccess: body.notifyOnSyncSuccess ?? current.notifyOnSyncSuccess,
     });
-    return NextResponse.json({ settings });
+    return NextResponse.json({ settings: settings.settings, notice: settings.notice });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }

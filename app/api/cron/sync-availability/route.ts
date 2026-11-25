@@ -60,7 +60,7 @@ async function run(request: Request) {
       message: result.reason ?? "",
     };
     await writeSyncLog(entry);
-    await alertAvailabilitySync(entry);
+    await alertAvailabilitySync(entry, { changed: result.changed, samples: result.samples });
     return NextResponse.json(result);
   } catch (error) {
     const entry: SyncLogEntry = {

@@ -77,7 +77,7 @@ async function run(request: Request) {
     const result = await meter("vote-fetch", () => syncScheduledVotes(now, force));
     const entry = voteLog(result, triggerSource);
     await writeSyncLog(entry);
-    await alertVoteSync(entry, force, now);
+    await alertVoteSync(entry, force, now, "changed" in result ? { changed: result.changed, samples: result.samples } : undefined);
     return NextResponse.json(result);
   } catch (error) {
     const entry: SyncLogEntry = {

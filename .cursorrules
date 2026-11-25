@@ -24,12 +24,13 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 ## Cron chirurgici
 
 - Auth: `Authorization: Bearer CRON_SECRET` oppure `x-cron-secret`. Segreto solo in env (Vercel, GitHub Actions, `.env.local`). Mai nel codice, nei log o nel browser.
-- `system_settings` (riga `id = 1`) è la fonte di URL voti, league/season API-Sports, finestre e `auto_sync_enabled`. Se la tabella manca, si usano i default.
+- `system_settings` (riga `id = 1`) è la fonte di URL voti, league/season API-Sports, finestre, `auto_sync_enabled` e `notify_on_sync_success`. Se la tabella manca, si usano i default.
+- Logo e icone stanno nel bucket pubblico `brand-assets` (SQL `supabase/brand_storage.sql`, lo esegue l'utente). Le API caricano con la service role. `brand_logo_url`, `brand_icon_192_url`, `brand_icon_512_url` e `brand_accent_color` sono in `system_settings`. Se un URL è vuoto si usano `/icons/icon-192.png` e `/icons/icon-512.png`, e il colore `#c6f531`. Il pannello è `/admin/laboratorio/brand`.
 - Ogni esito (`success`, `skipped`, `error`) va in `sync_logs`. Un 401 non si logga.
 - Voti: chiamata esterna solo su una giornata di Serie A non final, dentro una finestra letta da `system_settings` in Europe/Rome (default: 125–150 minuti dopo il calcio d'inizio se la partita non è `finished`; rilettura 23:15–23:45 il giorno delle partite; 09:15–09:45 il giorno dopo). Fuori finestra: 200 `{ skipped: true }` senza richiesta a Fantacalcio.
 - Indisponibili: se la giornata aperta ha deadline passata e non è ancora calcolata, skip senza chiamata API-Sports.
 - `POST { "force": true }` (segreto cron o sessione super admin) salta finestre e guardia indisponibili e scrive. Origine log: `manual`. Il cron GitHub, senza body, è `cron`.
-- Telegram (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`): avviso solo se un sync voti o indisponibili finisce in `error`, oppure se la finestra mattutina dei voti si chiude con `records_written === 0` e la giornata di ieri è ancora da calcolare. Niente messaggi per `skipped` o `success`. Se le variabili mancano, il cron continua e lascia una riga in log. Il pulsante «Invia test alert» in Sincronizzazioni è solo super admin.
+- Telegram (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`): avviso se un sync voti, indisponibili o orari (`refreshSerieAKickoffs`) finisce in `error`. Con `notify_on_sync_success` acceso (default in questa fase) parte anche un riepilogo sui `success` che hanno scritto variazioni reali: primi esempi di giocatore e voto o stato, oppure primo e ultimo calcio d'inizio. Niente messaggi per `skipped` o per un giro senza variazioni. La finestra mattutina dei voti, se si chiude con `records_written === 0` e la giornata di ieri è ancora da calcolare, avvisa comunque. Se le variabili mancano, il cron continua e lascia una riga in log. Lo switch e «Invia test alert» stanno in Sincronizzazioni e sono solo super admin.
 - Non mettere `/api/cron/process-matchday` in schedule. Non chiamare `refreshSerieAKickoffs` da lì.
 - Non lanciare sync di scrittura (Forza sync, `force: true`) mentre una giornata di Serie A è in corso.
 

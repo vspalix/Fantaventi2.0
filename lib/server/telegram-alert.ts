@@ -1,5 +1,5 @@
 import { inspectVoteSyncWindow, playedDayStillOpen } from "@/lib/server/vote-sync-window";
-import type { SyncLogEntry } from "@/lib/server/system-settings";
+import { readSystemSettings, type SyncLogEntry } from "@/lib/server/system-settings";
 
 export type TelegramResult = { sent: true } | { sent: false; reason: string };
 
@@ -61,7 +61,30 @@ export async function sendTelegramMessage(text: string): Promise<TelegramResult>
 }
 
 function jobLabel(job: SyncLogEntry["jobType"]) {
-  return job === "votes" ? "Voti" : "Indisponibili";
+  if (job === "votes") return "Voti";
+  if (job === "kickoffs") return "Orari";
+  return "Indisponibili";
+}
+
+export type SyncDetail = {
+  changed: number;
+  samples: string[];
+};
+
+function summary(job: SyncLogEntry["jobType"], detail: SyncDetail, now: Date) {
+  const lines = [
+    "<b>Fantaventi — sync riuscito</b>",
+    `Job: ${jobLabel(job)}`,
+    `Quando: ${escapeHtml(romeStamp(now))}`,
+    `Aggiornati: ${detail.changed}`,
+  ];
+  for (const sample of detail.samples.slice(0, 5)) lines.push(`• ${escapeHtml(sample)}`);
+  return lines.join("\n");
+}
+
+async function successEnabled() {
+  const settings = await readSystemSettings();
+  return settings.notifyOnSyncSuccess;
 }
 
 export async function sendSyncTestAlert() {
@@ -73,7 +96,7 @@ export async function sendSyncTestAlert() {
   return sendTelegramMessage(text);
 }
 
-export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = new Date()) {
+export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = new Date(), detail?: SyncDetail) {
   try {
     if (entry.status === "error") {
       await sendTelegramMessage([
@@ -82,6 +105,10 @@ export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = n
         `Quando: ${escapeHtml(romeStamp(now))}`,
         `Dettaglio: ${escapeHtml(entry.message || "Errore senza dettaglio.")}`,
       ].join("\n"));
+      return;
+    }
+    if (entry.status === "success" && detail && detail.changed > 0 && await successEnabled()) {
+      await sendTelegramMessage(summary(entry.jobType, detail, now));
       return;
     }
     if (force || entry.jobType !== "votes" || entry.status !== "success" || entry.recordsWritten !== 0) return;
@@ -99,15 +126,39 @@ export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = n
   }
 }
 
-export async function alertAvailabilitySync(entry: SyncLogEntry, now = new Date()) {
-  if (entry.status !== "error") return;
+export async function alertAvailabilitySync(entry: SyncLogEntry, detail?: SyncDetail, now = new Date()) {
   try {
-    await sendTelegramMessage([
-      "<b>Fantaventi — sync in errore</b>",
-      "Job: Indisponibili",
-      `Quando: ${escapeHtml(romeStamp(now))}`,
-      `Dettaglio: ${escapeHtml(entry.message || "Errore senza dettaglio.")}`,
-    ].join("\n"));
+    if (entry.status === "error") {
+      await sendTelegramMessage([
+        "<b>Fantaventi — sync in errore</b>",
+        "Job: Indisponibili",
+        `Quando: ${escapeHtml(romeStamp(now))}`,
+        `Dettaglio: ${escapeHtml(entry.message || "Errore senza dettaglio.")}`,
+      ].join("\n"));
+      return;
+    }
+    if (entry.status !== "success" || !detail || detail.changed <= 0) return;
+    if (!(await successEnabled())) return;
+    await sendTelegramMessage(summary("availability", detail, now));
+  } catch {
+    quiet("Controllo allerta non riuscito.");
+  }
+}
+
+export async function alertKickoffSync(input: { status: "success" | "error"; message: string; changed: number; samples: string[] }, now = new Date()) {
+  try {
+    if (input.status === "error") {
+      await sendTelegramMessage([
+        "<b>Fantaventi — sync in errore</b>",
+        "Job: Orari",
+        `Quando: ${escapeHtml(romeStamp(now))}`,
+        `Dettaglio: ${escapeHtml(input.message || "Errore senza dettaglio.")}`,
+      ].join("\n"));
+      return;
+    }
+    if (input.changed <= 0) return;
+    if (!(await successEnabled())) return;
+    await sendTelegramMessage(summary("kickoffs", { changed: input.changed, samples: input.samples }, now));
   } catch {
     quiet("Controllo allerta non riuscito.");
   }

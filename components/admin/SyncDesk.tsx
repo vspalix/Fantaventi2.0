@@ -14,20 +14,21 @@ type Settings = {
   syncWindowMorningStart: string;
   syncWindowMorningEnd: string;
   autoSyncEnabled: boolean;
+  notifyOnSyncSuccess: boolean;
   ready: boolean;
 };
 
 type LogRow = {
   id: string;
   createdAt: string;
-  jobType: "votes" | "availability";
+  jobType: "votes" | "availability" | "kickoffs";
   triggerSource: "cron" | "manual";
   status: "success" | "skipped" | "error";
   recordsWritten: number;
   message: string;
 };
 
-const JOB = { votes: "Voti", availability: "Indisponibili" };
+const JOB = { votes: "Voti", availability: "Indisponibili", kickoffs: "Orari" };
 const ORIGIN = { cron: "Cron", manual: "Manuale" };
 const STATUS = { success: "Ok", skipped: "Saltato", error: "Errore" };
 
@@ -76,10 +77,10 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(settings),
       });
-      const body = await response.json() as { settings?: Settings; error?: string };
+      const body = await response.json() as { settings?: Settings; notice?: string | null; error?: string };
       if (!response.ok || !body.settings) throw new Error(body.error ?? "Salvataggio non riuscito.");
       setSettings(body.settings);
-      setNote("Configurazione salvata.");
+      setNote(body.notice || "Configurazione salvata.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Salvataggio non riuscito.");
     } finally {
@@ -145,6 +146,14 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
           />
           Attiva i giri automatici di voti e indisponibili
         </label>
+        <label className="check-line">
+          <input
+            type="checkbox"
+            checked={settings.notifyOnSyncSuccess}
+            onChange={(event) => patch({ notifyOnSyncSuccess: event.target.checked })}
+          />
+          Notifica Telegram con riepilogo anche a ogni sincronizzazione riuscita (Modalità Test)
+        </label>
       </section>
 
       <section className="card stack">
@@ -202,7 +211,7 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("votes")}>Forza sync voti ora</button>
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("availability")}>Forza sync indisponibili ora</button>
         </div>
-        <p className="small muted">Telegram avvisa solo se un giro va in errore, o se la finestra mattutina dei voti si chiude senza record e la giornata è ancora da calcolare.</p>
+        <p className="small muted">Con la modalità test accesa, Telegram manda un riepilogo anche quando voti, indisponibili o orari cambiano davvero. Gli errori arrivano comunque. I giri saltati e quelli senza variazioni restano muti.</p>
         <button className="ghost" type="button" disabled={busy} onClick={() => void sendTestAlert()}>Invia Test Alert</button>
       </section>
 

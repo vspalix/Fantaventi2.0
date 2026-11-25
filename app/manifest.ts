@@ -1,6 +1,17 @@
 import type { MetadataRoute } from "next";
+import { DEFAULT_ICON_192, DEFAULT_ICON_512, iconSrc } from "@/lib/brand";
+import { readBrand } from "@/lib/server/brand";
 
-export default function manifest(): MetadataRoute.Manifest {
+function iconType(src: string) {
+  if (src.endsWith(".svg")) return "image/svg+xml";
+  if (src.endsWith(".webp")) return "image/webp";
+  return "image/png";
+}
+
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const brand = await readBrand();
+  const icon192 = iconSrc(brand.icon192Url, DEFAULT_ICON_192);
+  const icon512 = iconSrc(brand.icon512Url, DEFAULT_ICON_512);
   return {
     name: "FantaVenti",
     short_name: "FantaVenti",
@@ -11,8 +22,8 @@ export default function manifest(): MetadataRoute.Manifest {
     background_color: "#09090b",
     theme_color: "#09090b",
     icons: [
-      { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-      { src: "/icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+      { src: icon192, sizes: "192x192", type: iconType(icon192), purpose: "any" },
+      { src: icon512, sizes: "512x512", type: iconType(icon512), purpose: "any" },
     ],
   };
 }

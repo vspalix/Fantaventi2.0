@@ -47,6 +47,8 @@ export type MatchVoteSyncResult = {
   scored: number[];
   skipped: { gameweekNumber: number; reason: string }[];
   errors: { gameweekNumber: number | null; matchId: string | null; message: string }[];
+  changed: number;
+  samples: string[];
 };
 
 function digest(matchId: string, votes: FantacalcioPlayerVote[]) {
@@ -94,7 +96,7 @@ export async function syncScheduledVotes(now = new Date(), force = false): Promi
 
 export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSyncResult> {
   const admin = createAdminSupabase();
-  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [] };
+  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [], changed: 0, samples: [] };
   const seasons = await admin
     .from("seasons")
     .select("id, code, competitions!inner(code)");
@@ -198,7 +200,7 @@ export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSync
           });
           continue;
         }
-        const written = await writeMatchVotes(admin, week.id, match, votes, false);
+        const written = await writeMatchVotes(admin, week.id, match, votes, false, result);
         if (written === 0) {
           result.waiting.push({
             gameweekNumber: week.number,
@@ -218,7 +220,7 @@ export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSync
           }
         }
         if (!othersOpen) {
-          await auditWeek(admin, week, weekMatches, clubCode, await pageFor(week, true));
+          await auditWeek(admin, week, weekMatches, clubCode, await pageFor(week, true), result);
           result.audited.push(week.number);
           await markFinished(admin, match.id);
           match.status = "finished";
@@ -255,7 +257,7 @@ export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSync
     if (liveImports.error) throw new Error(liveImports.error.message);
     if (!stillOpen && (liveImports.count ?? 0) > 0 && week.status !== "scored" && week.status !== "final" && !result.scored.includes(week.number)) {
       try {
-        await auditWeek(admin, week, weekMatches, clubCode, await pageFor(week, true));
+        await auditWeek(admin, week, weekMatches, clubCode, await pageFor(week, true), result);
         result.audited.push(week.number);
         await closeWeek(admin, week, result);
       } catch (error) {
@@ -273,7 +275,7 @@ export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSync
 
 async function refreshPlayedDay(playedOn: string): Promise<MatchVoteSyncResult> {
   const admin = createAdminSupabase();
-  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [] };
+  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [], changed: 0, samples: [] };
   const seasons = await admin.from("seasons").select("id, code, competitions!inner(code)");
   if (seasons.error) throw new Error(seasons.error.message);
   const seasonCode = new Map<string, string>();
@@ -313,7 +315,7 @@ async function refreshPlayedDay(playedOn: string): Promise<MatchVoteSyncResult> 
     const weekMatches = rows.filter((match) => match.gameweek_id === week.id);
     try {
       const page = await fetchFantacalcioMatchweek(seasonCode.get(week.season_id) ?? "", week.number);
-      await auditWeek(admin, week, weekMatches, clubCode, page);
+      await auditWeek(admin, week, weekMatches, clubCode, page, result);
       result.audited.push(week.number);
       for (const match of weekMatches) {
         const home = clubCode.get(match.home_club_id) ?? "";
@@ -409,6 +411,7 @@ async function writeMatchVotes(
   match: MatchRow,
   votes: FantacalcioPlayerVote[],
   onlyChanges: boolean,
+  sink?: { samples: string[]; changed: number },
 ) {
   const note = `match:${match.id}`;
   const hash = digest(match.id, votes);
@@ -475,6 +478,22 @@ async function writeMatchVotes(
     }), { onConflict: "gameweek_id,player_id" });
     if (error) throw new Error(schemaHint(error.message));
   }
+  if (sink && changed.length > 0) {
+    sink.changed += changed.length;
+    const room = 5 - sink.samples.length;
+    if (room > 0) {
+      const slice = changed.slice(0, room);
+      const namedIds = slice.map((vote) => playerId.get(vote.externalRef) as string);
+      const named = await admin.from("players").select("id, full_name").in("id", namedIds);
+      const names = new Map((named.data ?? []).map((row) => [row.id as string, String(row.full_name ?? "")]));
+      for (const vote of slice) {
+        const id = playerId.get(vote.externalRef) as string;
+        const name = names.get(id) || vote.externalRef;
+        const mark = vote.voto == null ? "s.v." : String(vote.voto).replace(".", ",");
+        sink.samples.push(`${name} ${mark}`);
+      }
+    }
+  }
   if (!hashMatches) {
     const sealed = await admin.from("vote_imports").update({ payload_hash: hash }).eq("id", importId);
     if (sealed.error) throw new Error(schemaHint(sealed.error.message));
@@ -503,6 +522,7 @@ async function auditWeek(
   matches: MatchRow[],
   clubCode: Map<string, string>,
   page: Awaited<ReturnType<typeof fetchFantacalcioMatchweek>>,
+  sink?: { samples: string[]; changed: number },
 ) {
   for (const match of matches) {
     const votes = votesForClubs(
@@ -511,7 +531,7 @@ async function auditWeek(
       clubCode.get(match.away_club_id) ?? "",
     );
     if (votes.length === 0) continue;
-    await writeMatchVotes(admin, week.id, match, votes, true);
+    await writeMatchVotes(admin, week.id, match, votes, true, sink);
   }
 }
 

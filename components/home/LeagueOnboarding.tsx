@@ -7,11 +7,10 @@ import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { DEFAULT_LEAGUE_RULES } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary } from "@/lib/types";
+import { readAction } from "@/lib/feedback";
 
 async function readJson<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? "Richiesta non riuscita.");
-  return body;
+  return readAction<T>(response);
 }
 
 export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "card" }) {

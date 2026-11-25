@@ -63,6 +63,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
       #0c0e14 44px 66px
     );
   border-bottom: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top);
 }
 .site-header .shell,
 .dash-shell {
@@ -441,11 +442,11 @@ input, select, textarea {
   color: var(--ok);
   border-color: var(--ok-line);
 }
-.banner { border-radius: 16px; padding: 12px 14px; background: var(--danger-soft); color: var(--danger); }
+.banner { border-radius: 16px; padding: 12px 14px; background: var(--danger-soft); color: var(--danger); overflow-wrap: anywhere; }
 .banner.ok { background: var(--ok-soft); color: var(--ok); }
 label.check-line { display: flex; align-items: center; gap: 10px; color: var(--text); }
 .sync-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
-.sync-log li { border-top: 1px solid var(--line); padding-top: 12px; }
+.sync-log li { border-top: 1px solid var(--line); padding-top: 12px; overflow-wrap: anywhere; }
 .sync-log li p { margin: 6px 0 0; }
 .sync-badge {
   display: inline-flex;
@@ -500,12 +501,17 @@ label.check-line { display: flex; align-items: center; gap: 10px; color: var(--t
 .toast[data-tone="err"] { background: var(--danger-soft); color: var(--danger); border-color: var(--danger-line); }
 .code {
   font-family: var(--font-mono), ui-monospace, monospace;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.08em;
   font-size: 22px;
   background: var(--surface-2);
   border-radius: 14px;
   padding: 12px 14px;
   border: 1px dashed var(--line);
+  overflow-wrap: anywhere;
+}
+.diag-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 860px) {
+  .diag-grid { grid-template-columns: 1fr; }
 }
 .list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .list a, .person, .player {
@@ -1195,7 +1201,8 @@ button.shirt-empty:disabled { cursor: default; }
   .tabbar a svg { width: 18px; height: 18px; }
   .tabbar a[data-active="true"] { background: var(--accent); color: var(--accent-ink); }
   .section-title, .hero h1 { font-size: 32px; }
-  .lede, .countdown { overflow-wrap: anywhere; }
+  .lede, .countdown, .code { overflow-wrap: anywhere; }
+  .code { font-size: 18px; letter-spacing: 0.06em; }
   .countdown { font-size: clamp(28px, 8vw, 36px); }
   .page-head { align-items: stretch; }
   .page-head .section-title { flex: 1 1 100%; }

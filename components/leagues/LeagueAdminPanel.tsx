@@ -12,8 +12,7 @@ import {
   type LeagueRules,
 } from "@/lib/league-rules";
 import { BusyLabel } from "@/components/BusyLabel";
-import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
-import { shareJoinCode } from "@/lib/native/bridge";
+import { CopyInviteLink, ShareJoinCode } from "@/components/leagues/CopyInviteLink";
 import type { LeagueDetail } from "@/lib/types";
 
 export function LeagueAdminPanel({
@@ -89,7 +88,7 @@ export function LeagueAdminPanel({
         <div className="code">{league.joinCode}</div>
         <div className="row">
           <CopyInviteLink code={league.joinCode} />
-          <button className="ghost" type="button" onClick={() => void shareJoinCode(league.joinCode)}>Condividi codice</button>
+          <ShareJoinCode code={league.joinCode} />
           <button className="ghost" type="button" disabled={pending} onClick={() => void onSave({ name, startMatchday, endMatchday, regenerateCode: true, rules })}>
             Genera un nuovo codice
           </button>

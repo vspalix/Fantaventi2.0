@@ -5,11 +5,15 @@ import Link from "next/link";
 import { pendingInvitePath, safeJoinPath, writeInviteCookie } from "@/lib/invite";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
 import { LegalLinks } from "@/components/LegalLinks";
+import { readableError } from "@/lib/feedback";
 
 function signInMessage(message: string) {
   const text = message.toLowerCase();
-  if (text.includes("invalid login") || text.includes("invalid credentials")) return "Email o password non corretti.";
-  if (text.includes("email not confirmed")) return "Conferma l'email prima di accedere.";
+  if (text.includes("invalid login") || text.includes("invalid credentials")) return "Email o password non corretti. Resta qui e riprova.";
+  if (text.includes("email not confirmed")) return "Conferma l'email prima di accedere. Il link è nella casella con cui ti sei registrato.";
+  if (text.includes("failed to fetch") || text.includes("network") || text.includes("load failed")) {
+    return "Connessione assente. Resta su questa schermata, controlla la rete e riprova.";
+  }
   return message;
 }
 
@@ -53,7 +57,7 @@ export function AuthForm() {
       }
       window.location.assign(pendingInvitePath());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Accesso non riuscito.");
+      setError(readableError(reason, "Accesso non riuscito. Resta su questa schermata e riprova."));
     } finally {
       setPending(false);
     }
@@ -91,7 +95,7 @@ export function AuthForm() {
       }
       window.location.assign(pendingInvitePath());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Registrazione non riuscita.");
+      setError(readableError(reason, "Registrazione non riuscita. Resta su questa schermata e riprova."));
     } finally {
       setPending(false);
     }
@@ -107,12 +111,12 @@ export function AuthForm() {
       const redirectTo = `${window.location.origin}/accesso/nuova-password`;
       const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
       if (result.error) {
-        setError(result.error.message);
+        setError(signInMessage(result.error.message));
         return;
       }
       setNotice("Se l'email è registrata, ti abbiamo inviato il link per scegliere una nuova password.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Recupero non riuscito.");
+      setError(readableError(reason, "Recupero non riuscito. Resta su questa schermata e riprova."));
     } finally {
       setPending(false);
     }

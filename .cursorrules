@@ -9,7 +9,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Supabase: il client browser fa solo auth. Letture e scritture dati passano da `createAdminSupabase()` (service role, bypassa RLS). Le policy restano nel SQL che l'utente esegue a mano nell'editor Supabase.
 - GitHub Actions per i cron. Vercel Hobby solo per il deploy web.
 - `vercel.json` resta `{}`. Non aggiungere mai una chiave `crons`: Vercel Hobby non regge job sub-giornalieri e un cron lì cancellerebbe o duplicherebbe la pianificazione su GitHub.
-- Capacitor avvolge il sito di produzione (`capacitor.config.ts`, `server.url` su `https://fantaventi2-0.vercel.app`, `cleartext: false`). `ios/` e `android/` restano fuori dal repo. Per generarle in locale: `npx cap add ios`, `npx cap add android`, poi `npx cap sync` dopo ogni cambio di config o plugin. Il bridge è in `lib/native/bridge.ts` (condivisione, aptico, push nativa). I token nativi stanno in `device_push_tokens`: lo SQL `supabase/device_push_tokens.sql` lo esegue l'utente nell'editor Supabase.
+- Capacitor avvolge il sito di produzione (`capacitor.config.ts`, `server.url` su `https://fantaventi2-0.vercel.app`, `cleartext: false`). `ios/` e `android/` restano fuori dal repo. Per generarle in locale: `npx cap add ios`, `npx cap add android`, poi `npx cap sync` dopo ogni cambio di config o plugin. Il kit store (comandi, checklist App Store e Play, APNs/FCM) è in `docs/STORE_READINESS.md`. Il bridge è in `lib/native/bridge.ts` (condivisione, aptico, push nativa). I token nativi stanno in `device_push_tokens`: lo SQL `supabase/device_push_tokens.sql` lo esegue l'utente nell'editor Supabase.
 
 ## Cartelle
 

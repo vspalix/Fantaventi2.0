@@ -2,6 +2,8 @@ import type { MetadataRoute } from "next";
 import { DEFAULT_ICON_192, DEFAULT_ICON_512, iconSrc } from "@/lib/brand";
 import { readBrand } from "@/lib/server/brand";
 
+export const dynamic = "force-dynamic";
+
 function iconType(src: string) {
   if (src.endsWith(".svg")) return "image/svg+xml";
   if (src.endsWith(".webp")) return "image/webp";

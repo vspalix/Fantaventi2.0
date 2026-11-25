@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
+import { readableError } from "@/lib/feedback";
 
 export function DeleteAccount() {
   const [phrase, setPhrase] = useState("");
@@ -14,16 +15,23 @@ export function DeleteAccount() {
     setError(null);
     try {
       const response = await fetch("/api/account", { method: "DELETE" });
-      const body = (await response.json()) as { error?: string };
+      let body: { error?: string } = {};
+      try {
+        body = (await response.json()) as { error?: string };
+      } catch {
+        setError("Il server non ha risposto. L'account non è stato toccato: resta qui e riprova.");
+        return;
+      }
       if (!response.ok) {
-        setError(body.error ?? "Eliminazione non riuscita.");
+        const detail = body.error ?? "Eliminazione non riuscita.";
+        setError(`${detail} L'account non è stato toccato: resta su questa pagina e riprova.`);
         return;
       }
       const supabase = createBrowserSupabase();
       await supabase.auth.signOut();
       window.location.assign("/accesso");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Eliminazione non riuscita.");
+      setError(readableError(reason, "Eliminazione non riuscita. L'account non è stato toccato: resta qui e riprova."));
     } finally {
       setPending(false);
     }

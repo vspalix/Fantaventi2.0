@@ -9,11 +9,10 @@ import { useEffect, useRef, useState } from "react";
 import { BONUS_FIELDS, COMPETITION_FORMATS, DEFAULT_LEAGUE_RULES, defaultPhases, type CompetitionFormat, type LeagueRules } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary } from "@/lib/types";
+import { readAction } from "@/lib/feedback";
 
 async function readJson<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? "Richiesta non riuscita.");
-  return body;
+  return readAction<T>(response);
 }
 
 export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolean; hostMode?: boolean }) {

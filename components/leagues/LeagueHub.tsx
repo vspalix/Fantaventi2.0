@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
-import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
+import { CopyInviteLink, ShareJoinCode } from "@/components/leagues/CopyInviteLink";
 import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
@@ -31,7 +31,8 @@ import { RegulationPanel } from "@/components/rules/RegulationView";
 import { ROLE_LABEL } from "@/lib/types";
 import { useTapGuard } from "@/components/useTapGuard";
 import { pushToast } from "@/lib/toast";
-import { shareJoinCode, triggerHaptic } from "@/lib/native/bridge";
+import { triggerHaptic } from "@/lib/native/bridge";
+import { readAction, readableError } from "@/lib/feedback";
 
 const BENCH_ROLES: PlayerRole[] = ["GK", "DEF", "MID", "FWD"];
 const deadlineFormat = new Intl.DateTimeFormat("it-IT", {
@@ -41,9 +42,7 @@ const deadlineFormat = new Intl.DateTimeFormat("it-IT", {
 });
 
 async function readJson<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as T & { error?: string };
-  if (!response.ok) throw new Error(body.error ?? "Richiesta non riuscita.");
-  return body;
+  return readAction<T>(response);
 }
 
 function sameIds(left: string[], right: string[]) {
@@ -622,7 +621,7 @@ export function LeagueHub({
       pushToast("ok", "Formazione salvata.");
       void triggerHaptic();
     } catch (reason) {
-      const text = reason instanceof Error ? reason.message : "Salvataggio non riuscito.";
+      const text = readableError(reason, "Salvataggio non riuscito. La formazione non è cambiata: riprova da questa schermata.");
       setError(text);
       pushToast("err", text);
     } finally {
@@ -1571,7 +1570,7 @@ function LeagueSettings({
         <div className="code">{league.joinCode}</div>
         <div className="row">
           <CopyInviteLink code={league.joinCode} />
-          <button className="ghost" type="button" onClick={() => void shareJoinCode(league.joinCode)}>Condividi codice</button>
+          <ShareJoinCode code={league.joinCode} />
           {league.isOwner ? (
             <button className="ghost" type="button" disabled={pending} onClick={() => void onSave(true)}>Genera un nuovo codice</button>
           ) : null}

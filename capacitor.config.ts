@@ -7,6 +7,18 @@ const config: CapacitorConfig = {
   server: {
     url: "https://fantaventi2-0.vercel.app",
     cleartext: false,
+    androidScheme: "https",
+  },
+  ios: {
+    contentInset: "automatic",
+  },
+  android: {
+    allowMixedContent: false,
+  },
+  plugins: {
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   },
 };
 

@@ -212,6 +212,7 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("availability")}>Forza sync indisponibili ora</button>
         </div>
         <p className="small muted">Con la modalità test accesa, Telegram manda un riepilogo anche quando voti, indisponibili o orari cambiano davvero. Gli errori arrivano comunque. I giri saltati e quelli senza variazioni restano muti.</p>
+        <p><a href="/admin/laboratorio/diagnostica">Apri la diagnostica</a></p>
         <button className="ghost" type="button" disabled={busy} onClick={() => void sendTestAlert()}>Invia Test Alert</button>
       </section>
 

@@ -457,21 +457,23 @@ export async function joinLeague(
   };
 }
 
-export async function getLeagueDetail(userId: string, leagueId: string): Promise<LeagueDetail> {
+export const getLeagueDetail = cache(async (userId: string, leagueId: string): Promise<LeagueDetail> => {
   const admin = createAdminSupabase();
   const loaded = await readLeagueRow(admin, leagueId);
   if (!loaded) throw httpError("Lega non trovata.", 404);
   const { row: league, startMatchday, endMatchday, rangeReady } = loaded;
-  const sandboxFlag = await admin.from("private_leagues").select("is_sandbox").eq("id", leagueId).maybeSingle();
+  const [sandboxFlag, team, roundCount, delegateIds, platformOverride] = await Promise.all([
+    admin.from("private_leagues").select("is_sandbox").eq("id", leagueId).maybeSingle(),
+    teamInLeague(admin, userId, leagueId),
+    seasonRoundCount(admin, league.season_id as string),
+    delegateUserIds(admin, leagueId),
+    isSuperAdmin(userId),
+  ]);
   if (!sandboxFlag.error && (sandboxFlag.data as { is_sandbox?: boolean } | null)?.is_sandbox) {
     throw httpError("Questa lega è il laboratorio sandbox e resta fuori dal gioco.", 404);
   }
 
-  const team = await teamInLeague(admin, userId, leagueId);
-  const roundCount = await seasonRoundCount(admin, league.season_id as string);
   const isOwner = league.owner_user_id === userId;
-  const delegateIds = await delegateUserIds(admin, leagueId);
-  const platformOverride = await isSuperAdmin(userId);
   const membership = team ? { fantasy_team_id: team.id } : null;
 
   const actor = leagueActor({
@@ -521,11 +523,15 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
       displayName: names.get(id) || participants.find((participant) => participant.userId === id)?.displayName || "Admin",
     }));
 
+  const [code, settings] = await Promise.all([
+    seasonCode(admin, league.season_id as string),
+    readLeagueSettings(admin, league.id),
+  ]);
   return {
     id: league.id as string,
     name: league.name as string,
     joinCode: league.join_code as string,
-    seasonCode: await seasonCode(admin, league.season_id as string),
+    seasonCode: code,
     isOwner,
     isManager,
     platformOverride,
@@ -539,9 +545,9 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
     rangeReady,
     seasonId: league.season_id,
     roundCount,
-    rules: (await readLeagueSettings(admin, league.id)).rules,
+    rules: settings.rules,
   };
-}
+});
 
 async function assertCanJoin(
   admin: ReturnType<typeof createAdminSupabase>,

@@ -1,4 +1,5 @@
 import type { User } from "@supabase/supabase-js";
+import { cache } from "react";
 import { requireSessionUser } from "@/lib/server/session";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 
@@ -10,7 +11,7 @@ function denied() {
   return error;
 }
 
-export async function readPlatformRole(userId: string): Promise<PlatformRole> {
+export const readPlatformRole = cache(async (userId: string): Promise<PlatformRole> => {
   if (!hasServiceSupabaseEnv()) return "member";
   const admin = createAdminSupabase();
   const { data, error } = await admin.from("profiles").select("platform_role").eq("id", userId).maybeSingle();
@@ -19,7 +20,7 @@ export async function readPlatformRole(userId: string): Promise<PlatformRole> {
     throw new Error(error.message);
   }
   return data?.platform_role === "super_admin" ? "super_admin" : "member";
-}
+});
 
 export async function isSuperAdmin(userId: string) {
   return (await readPlatformRole(userId)) === "super_admin";

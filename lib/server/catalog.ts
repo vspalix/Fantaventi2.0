@@ -180,18 +180,26 @@ export async function ensureProfile(admin: SupabaseClient, userId: string, email
   if (error) throw new Error(error.message);
 }
 
-export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
+const catalogForSeason = cache(async (seasonId: string): Promise<CatalogResponse> => {
   assertServiceEnv();
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin, seasonId);
 
-  const { data: clubRows, error: clubError } = await admin
-    .from("season_clubs")
-    .select("club_id, clubs(code, club_translations(locale, name, short_name))")
-    .eq("season_id", season.id);
-  if (clubError) throw new Error(clubError.message);
+  const [clubQuery, registrationQuery] = await Promise.all([
+    admin
+      .from("season_clubs")
+      .select("club_id, clubs(code, club_translations(locale, name, short_name))")
+      .eq("season_id", season.id),
+    admin
+      .from("player_registrations")
+      .select("player_id, role, club_id, players(full_name), clubs(code, club_translations(locale, name, short_name))")
+      .eq("season_id", season.id)
+      .is("effective_to_gameweek", null),
+  ]);
+  if (clubQuery.error) throw new Error(clubQuery.error.message);
+  if (registrationQuery.error) throw new Error(registrationQuery.error.message);
 
-  const clubs: ClubRef[] = (clubRows ?? []).map((row) => {
+  const clubs: ClubRef[] = (clubQuery.data ?? []).map((row) => {
     const club = one(row.clubs as RegistrationRow["clubs"]);
     const label = italianName(club?.club_translations, club?.code ?? "Club");
     return {
@@ -202,14 +210,7 @@ export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
     };
   }).sort((a, b) => a.name.localeCompare(b.name, "it"));
 
-  const { data: registrations, error } = await admin
-    .from("player_registrations")
-    .select("player_id, role, club_id, players(full_name), clubs(code, club_translations(locale, name, short_name))")
-    .eq("season_id", season.id)
-    .is("effective_to_gameweek", null);
-  if (error) throw new Error(error.message);
-
-  const players: CatalogPlayer[] = (registrations as RegistrationRow[] | null ?? []).map((row) => {
+  const players: CatalogPlayer[] = (registrationQuery.data as RegistrationRow[] | null ?? []).map((row) => {
     const player = one(row.players);
     const club = one(row.clubs);
     const label = italianName(club?.club_translations, club?.code ?? "Club");
@@ -225,6 +226,12 @@ export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
   }).sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
 
   return { seasonId: season.id, seasonCode: season.code, clubs, players, rules: season.rules };
+});
+
+export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
+  assertServiceEnv();
+  const season = await getCurrentSeason(createAdminSupabase(), seasonId);
+  return catalogForSeason(season.id);
 }
 
 export type FantasyTeamRef = { id: string; name: string };

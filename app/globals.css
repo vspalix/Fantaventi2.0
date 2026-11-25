@@ -74,6 +74,21 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   gap: 14px;
   min-height: 72px;
 }
+.page-loading { padding-top: 8px; }
+.skeleton {
+  border-radius: 16px;
+  background: linear-gradient(90deg, #141416 0%, #1c1c1f 45%, #141416 100%);
+  background-size: 200% 100%;
+  animation: skeleton-pulse 1.1s ease-in-out infinite;
+}
+.skeleton-title { height: 28px; width: min(220px, 55%); }
+.skeleton-line { height: 14px; width: min(320px, 80%); }
+.skeleton-tabs { height: 42px; width: 100%; }
+.skeleton-card { height: 112px; width: 100%; }
+@keyframes skeleton-pulse {
+  0% { background-position: 100% 0; }
+  100% { background-position: -100% 0; }
+}
 .header-balance, .inbox { grid-area: profile; justify-self: end; position: relative; }
 .inbox .menu-pill { position: relative; }
 .inbox .menu-pill svg { width: 20px; height: 20px; }

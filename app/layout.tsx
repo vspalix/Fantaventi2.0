@@ -72,20 +72,14 @@ export const viewport: Viewport = {
 export const dynamic = "force-dynamic";
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const user = hasPublicSupabaseEnv() ? await getSessionUser() : null;
-  const access = user && hasServiceSupabaseEnv()
-    ? await hostAccess(user.id)
-    : { platformAdmin: false, canSwitch: false, hostMode: false };
-  const { platformAdmin, canSwitch, hostMode } = access;
-  const path = (await headers()).get("x-pathname") ?? "";
-  if (user && hasServiceSupabaseEnv() && !path.startsWith("/accesso/nuova-password")) {
-    if (await mustResetPassword(user.id).catch(() => false)) {
-      const code = normalizeInviteCode((await cookies()).get(INVITE_COOKIE)?.value);
-      redirect(code ? `/accesso/nuova-password?next=${encodeURIComponent(joinHref(code))}` : "/accesso/nuova-password");
-    }
-  }
   const service = hasServiceSupabaseEnv();
-  const [maintenance, playable, badges, announcements, brand] = await Promise.all([
+  const user = hasPublicSupabaseEnv() ? await getSessionUser() : null;
+  const [access, path, needsReset, maintenance, playable, badges, announcements, brand, jar] = await Promise.all([
+    user && service
+      ? hostAccess(user.id)
+      : Promise.resolve({ platformAdmin: false, canSwitch: false, hostMode: false }),
+    headers().then((value) => value.get("x-pathname") ?? ""),
+    user && service ? mustResetPassword(user.id).catch(() => false) : Promise.resolve(false),
     service
       ? readMaintenance().catch(() => ({ enabled: false, message: "", updatedAt: null }))
       : Promise.resolve({ enabled: false, message: "", updatedAt: null as string | null }),
@@ -93,7 +87,13 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     loadClubBadgeOverrides(),
     user ? loadActiveAnnouncements() : Promise.resolve([]),
     readBrand(),
+    cookies(),
   ]);
+  const { platformAdmin, canSwitch, hostMode } = access;
+  if (user && service && needsReset && !path.startsWith("/accesso/nuova-password")) {
+    const code = normalizeInviteCode(jar.get(INVITE_COOKIE)?.value);
+    redirect(code ? `/accesso/nuova-password?next=${encodeURIComponent(joinHref(code))}` : "/accesso/nuova-password");
+  }
   let seasons: HeaderSeason[] = playable.map((season) => ({
     id: season.id,
     label: `${season.competitionName} ${season.code}`,
@@ -105,7 +105,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   if (service && playable.length > 0) {
     try {
       const admin = createAdminSupabase();
-      activeSeasonId = (await getCurrentSeason(admin)).id;
+      const season = await getCurrentSeason(admin);
+      activeSeasonId = season.id;
       if (user && activeSeasonId) {
         const [leagues, profile] = await Promise.all([
           listLeaguesForUser(user.id),
@@ -116,7 +117,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           teamName: league.teamName || "La tua squadra",
           leagueName: league.name,
         }));
-        const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value;
+        const saved = jar.get(LEAGUE_FOCUS_COOKIE)?.value;
         activeLeagueId = squads.find((squad) => squad.id === saved)?.id ?? squads[0]?.id ?? null;
         const displayName = profile.data?.display_name;
         if (typeof displayName === "string" && displayName.trim()) profileLabel = displayName.trim();

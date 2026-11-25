@@ -355,6 +355,8 @@ export function LeagueHub({
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [squads, setSquads] = useState(initial.squads);
+  const [squadsLoading, setSquadsLoading] = useState(false);
   const flight = useRef(false);
   const picks = useTapGuard();
   const [now, setNow] = useState(() => Date.now());
@@ -366,6 +368,11 @@ export function LeagueHub({
       body: JSON.stringify({ leagueId: initial.league.id }),
     });
   }, [initial.league.id]);
+
+  useEffect(() => {
+    setHub(initial);
+    setSquads(initial.squads);
+  }, [initial]);
 
   const selected = hub.gameweeks.find((gameweek) => gameweek.id === hub.selectedGameweekId) ?? null;
   const mineId = hub.opponents.find((opponent) => opponent.isMine)?.fantasyTeamId ?? null;
@@ -405,6 +412,28 @@ export function LeagueHub({
   useEffect(() => {
     if (!roundLive && board === "live") setBoard("generale");
   }, [roundLive, board]);
+
+  useEffect(() => {
+    if (shownTab !== "squadre") return;
+    let cancelled = false;
+    setSquadsLoading(true);
+    const week = selected?.number ?? "";
+    void fetch(`/api/leagues/${hub.league.id}/squads?gameweek=${week}`)
+      .then(async (response) => {
+        const body = await response.json() as { squads?: typeof squads; error?: string };
+        if (!response.ok) throw new Error(body.error ?? "Rose non disponibili.");
+        if (!cancelled) setSquads(body.squads ?? []);
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "Rose non disponibili.");
+      })
+      .finally(() => {
+        if (!cancelled) setSquadsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shownTab, selected?.number, hub.league.id]);
 
   useEffect(() => {
     if (hub.home.phase !== "countdown" || !hub.home.deadlineAt) return;
@@ -791,7 +820,7 @@ export function LeagueHub({
           {selected ? (
             <p className="small muted">Giornata {selected.number} <InfoTip label="Rose">Rose valide in questa giornata: portieri, difensori, centrocampisti e attaccanti.</InfoTip></p>
           ) : null}
-          <Squads squads={hub.squads} />
+          {squadsLoading ? <p className="small muted">Carico le rose...</p> : <Squads squads={squads} />}
         </section>
       ) : null}
 

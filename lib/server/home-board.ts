@@ -72,10 +72,13 @@ function clubLabel(row: { code?: string; club_translations?: { locale: string; s
 
 export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   const admin = createAdminSupabase();
-  const season = await getCurrentSeason(admin);
-  const leagues = await listLeaguesForUser(userId);
-  const promo = await loadHomePromo();
-  const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
+  const [season, leagues, promo, jar] = await Promise.all([
+    getCurrentSeason(admin),
+    listLeaguesForUser(userId),
+    loadHomePromo(),
+    cookies(),
+  ]);
+  const saved = jar.get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
 
   const weeks = await admin
     .from("gameweeks")
@@ -94,39 +97,38 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   ));
 
   const weekIds = calendar.map((week) => week.id as string);
-  let fixtures: HomeFixture[] = [];
-  if (weekIds.length > 0) {
-    const matches = await admin
-      .from("real_matches")
-      .select("id, kickoff_at, status, home_club_id, away_club_id, gameweek_id")
-      .in("gameweek_id", weekIds)
-      .gte("kickoff_at", new Date(now).toISOString())
-      .order("kickoff_at", { ascending: true });
-    const nextWeekId = matches.data?.[0]?.gameweek_id;
-    const round = (matches.data ?? []).filter((match) => match.gameweek_id === nextWeekId);
-    if (!matches.error && round.length > 0) {
+  const [fixtures, cards] = await Promise.all([
+    (async (): Promise<HomeFixture[]> => {
+      if (weekIds.length === 0) return [];
+      const matches = await admin
+        .from("real_matches")
+        .select("id, kickoff_at, status, home_club_id, away_club_id, gameweek_id")
+        .in("gameweek_id", weekIds)
+        .gte("kickoff_at", new Date(now).toISOString())
+        .order("kickoff_at", { ascending: true });
+      const nextWeekId = matches.data?.[0]?.gameweek_id;
+      const round = (matches.data ?? []).filter((match) => match.gameweek_id === nextWeekId);
+      if (matches.error || round.length === 0) return [];
       const clubIds = [...new Set(round.flatMap((match) => [match.home_club_id as string, match.away_club_id as string]))];
       const clubs = await admin.from("clubs").select("id, code, club_translations(locale, short_name, name)").in("id", clubIds);
       const names = new Map((clubs.data ?? []).map((club) => [club.id as string, clubLabel(club as { code?: string; club_translations?: { locale: string; short_name: string; name: string }[] })]));
-      fixtures = round.map((match) => ({
+      return round.map((match) => ({
         id: match.id as string,
         kickoffAt: match.kickoff_at as string,
         home: names.get(match.home_club_id as string) ?? "Casa",
         away: names.get(match.away_club_id as string) ?? "Trasferta",
         status: match.status as string,
       }));
-    }
-  }
-
-  const cards: HomeLeagueCard[] = [];
-  for (const league of leagues) {
-    cards.push(await leagueCard(admin, season.id, league.id, league.name, league.teamId, calendar));
-  }
+    })(),
+    Promise.all(leagues.map((league) => leagueCard(admin, season.id, league.id, league.name, league.teamId, calendar))),
+  ]);
 
   const focus = cards.find((card) => card.id === saved) ?? cards[0] ?? null;
   const focusLeague = leagues.find((league) => league.id === focus?.id) ?? null;
-  const look = await readTeamLook(focusLeague?.teamId ?? null, focusLeague?.teamName || "La tua squadra");
-  const sponsors = await readSponsors();
+  const [look, sponsors] = await Promise.all([
+    readTeamLook(focusLeague?.teamId ?? null, focusLeague?.teamName || "La tua squadra"),
+    readSponsors(),
+  ]);
   return {
     competitionName: season.competitionName,
     teamId: focusLeague?.teamId ?? null,

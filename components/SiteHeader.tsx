@@ -87,17 +87,6 @@ export function SiteHeader({
   }, []);
 
   useEffect(() => {
-    router.prefetch("/");
-    router.prefetch("/rosa");
-    router.prefetch("/calendario");
-    router.prefetch("/leghe");
-    if (!current) return;
-    router.prefetch(`/leghe/${current.id}?tab=risultati`);
-    router.prefetch(`/leghe/${current.id}?tab=classifica`);
-    router.prefetch(`/leghe/${current.id}?tab=formazione`);
-  }, [router, current?.id]);
-
-  useEffect(() => {
     function close(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Node)) return;
@@ -119,9 +108,9 @@ export function SiteHeader({
     if (response.ok) router.refresh();
   }
 
-  async function chooseSquad(leagueId: string) {
+  function chooseSquad(leagueId: string) {
     setOpen(null);
-    await fetch("/api/active-league", {
+    void fetch("/api/active-league", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leagueId }),
@@ -131,7 +120,6 @@ export function SiteHeader({
       return;
     }
     router.push(`/leghe/${leagueId}`);
-    router.refresh();
   }
 
   async function signOut() {
@@ -188,7 +176,7 @@ export function SiteHeader({
                 role="tab"
                 aria-selected={squad.id === current.id}
                 data-active={squad.id === current.id}
-                onClick={() => void chooseSquad(squad.id)}
+                onClick={() => chooseSquad(squad.id)}
               >
                 {squad.leagueName}
               </button>

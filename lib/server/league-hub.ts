@@ -156,21 +156,23 @@ export async function loadLeagueHub(
 ): Promise<LeagueHubData> {
   const league = await getLeagueDetail(userId, leagueId);
   const admin = createAdminSupabase();
-  const catalog = await loadCatalog(league.seasonId);
   const now = Date.now();
+  const [catalog, gameweekQuery, matchState, season] = await Promise.all([
+    loadCatalog(league.seasonId),
+    admin
+      .from("gameweeks")
+      .select("id, number, deadline_at, status")
+      .eq("season_id", league.seasonId)
+      .gte("number", league.startMatchday)
+      .lte("number", league.endMatchday)
+      .order("number", { ascending: true }),
+    loadWeekMatchState(admin, league.seasonId, now),
+    getCurrentSeason(admin, league.seasonId),
+  ]);
+  if (gameweekQuery.error) throw new Error(gameweekQuery.error.message);
   const byId = new Map(catalog.players.map((player) => [player.id, player]));
 
-  const { data: gameweekRows, error: gameweekError } = await admin
-    .from("gameweeks")
-    .select("id, number, deadline_at, status")
-    .eq("season_id", league.seasonId)
-    .gte("number", league.startMatchday)
-    .lte("number", league.endMatchday)
-    .order("number", { ascending: true });
-  if (gameweekError) throw new Error(gameweekError.message);
-
-  const rows = (gameweekRows ?? []) as GameweekRow[];
-  const matchState = await loadWeekMatchState(admin, league.seasonId, now);
+  const rows = (gameweekQuery.data ?? []) as GameweekRow[];
   const inPlay = matchState.inPlay;
   const liveWeek = rows.find((gameweek) => weekUnderway(gameweek, now, matchState)) ?? null;
   const next = liveWeek ? null : rows.find((gameweek) => !isLocked(gameweek, now, inPlay)) ?? null;
@@ -184,17 +186,39 @@ export async function loadLeagueHub(
 
   const team = teamOf(userId, league.participants);
   const openWeek = rows.find((gameweek) => gameweek.status !== "scored" && gameweek.status !== "final") ?? null;
-  let roster = team && selected
-    ? await rosterForGameweek(admin, team.id, selected.number, byId)
-    : [];
-  if (selected && openWeek && selected.number === openWeek.number) {
+  const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
+  const roles = new Map([...byId].map(([id, player]) => [id, player.role]));
+  const selectedUnderway = selected ? weekUnderway(selected, now, matchState) : false;
+  const lastClosed = [...rows].reverse().find((gameweek) => isLocked(gameweek, now, inPlay)) ?? null;
+  const liveRound = [...rows].reverse().find((gameweek) =>
+    isLocked(gameweek, now, inPlay) && gameweek.status !== "scored" && gameweek.status !== "final"
+  ) ?? null;
+  const fixtureWeek = liveRound ?? next ?? lastClosed;
+
+  const [rosterSeed, lineupRows, standingPack, selectedPreview, livePreviewOther, stamp, fixtures, selectedFixturesExtra] = await Promise.all([
+    team && selected ? rosterForGameweek(admin, team.id, selected.number, byId) : Promise.resolve([] as CatalogPlayer[]),
+    selected && teamIds.length ? lineupsFor(admin, selected.id, teamIds) : Promise.resolve([] as Awaited<ReturnType<typeof lineupsFor>>),
+    standingsFor(admin, league, league.participants, rows, now, inPlay),
+    selectedUnderway && selected
+      ? loadPreview(selected.id, league.id, catalog.seasonCode, selected.number, roles)
+      : Promise.resolve(null),
+    liveWeek && liveWeek.id !== selected?.id
+      ? loadPreview(liveWeek.id, league.id, catalog.seasonCode, liveWeek.number, roles)
+      : Promise.resolve(null),
+    team && focus
+      ? admin.from("lineups").select("saved_at").eq("fantasy_team_id", team.id).eq("gameweek_id", focus.id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    fixtureWeek ? fixturesFor(admin, fixtureWeek.id, catalog.clubs) : Promise.resolve([] as HubFixture[]),
+    selected && (!fixtureWeek || selected.id !== fixtureWeek.id)
+      ? fixturesFor(admin, selected.id, catalog.clubs)
+      : Promise.resolve(null as HubFixture[] | null),
+  ]);
+
+  let roster = rosterSeed;
+  if (selected && openWeek && selected.number === openWeek.number && roster.length > 0) {
     roster = await attachAvailability(roster, openWeek.number);
   }
 
-  const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
-  const lineupRows = selected && teamIds.length
-    ? await lineupsFor(admin, selected.id, teamIds)
-    : [];
   const mine = team ? lineupRows.find((row) => row.fantasy_team_id === team.id) : undefined;
   const rosterIds = new Set(roster.map((player) => player.id));
   let lineup = mine ? restrictPick(pickFromSlots(slotsOf(mine)), rosterIds) : emptyPick();
@@ -244,60 +268,41 @@ export async function loadLeagueHub(
       bench,
     };
   });
-  const squads = await squadsFor(
-    admin,
-    league.participants,
-    team?.id ?? null,
-    selected?.number ?? league.startMatchday,
-    byId,
-  );
-  const selectedUnderway = selected ? weekUnderway(selected, now, matchState) : false;
-  const roles = new Map([...byId].map(([id, player]) => [id, player.role]));
-  const selectedPreview = selectedUnderway && selected
-    ? await loadPreview(selected.id, league.id, catalog.seasonCode, selected.number, roles)
-    : null;
   const livePreview = liveWeek
-    ? (liveWeek.id === selected?.id ? selectedPreview : await loadPreview(liveWeek.id, league.id, catalog.seasonCode, liveWeek.number, roles))
+    ? (liveWeek.id === selected?.id ? selectedPreview : livePreviewOther)
     : null;
-  const partial = selectedPreview
-    ? partialFromPreview(league.participants, selectedPreview.scores, opponents)
-    : await partialStandings(admin, league.participants, selected?.id ?? null, opponents);
+  const [partial, live, checkpointHistory, lastRound] = await Promise.all([
+    selectedPreview
+      ? Promise.resolve(partialFromPreview(league.participants, selectedPreview.scores, opponents))
+      : partialStandings(admin, league.participants, selected?.id ?? null, opponents),
+    liveStandingsFor(league.id, standingPack.rows, livePreview),
+    loadCheckpointHistory({
+      leagueId: league.id,
+      seasonId: league.seasonId,
+      teamId: team?.id ?? null,
+      startMatchday: league.startMatchday,
+      checkpoints: league.rules.checkpoints,
+      participants: league.participants.map((person) => ({
+        fantasyTeamId: person.fantasyTeamId,
+        teamName: person.teamName,
+      })),
+      gameweeks: rows.map((gameweek) => ({ id: gameweek.id, number: gameweek.number, status: gameweek.status })),
+      rules: league.rules,
+      knownPoints: standingPack.weekPoints,
+    }),
+    !lastClosed
+      ? Promise.resolve([] as PartialStanding[])
+      : livePreview && lastClosed.id === liveWeek?.id
+        ? Promise.resolve(partialFromPreview(league.participants, livePreview.scores, []))
+        : partialStandings(admin, league.participants, lastClosed.id, []),
+  ]);
   const liveSheet = selectedPreview && team
     ? lineupSheet(lineup, roster, selectedPreview, team.id)
     : null;
 
-  const standingPack = await standingsFor(admin, league, league.participants, rows, now, inPlay);
-  const standings = standingPack.rows;
-  const live = await liveStandingsFor(league.id, standings, livePreview);
-  const checkpointHistory = await loadCheckpointHistory({
-    leagueId: league.id,
-    seasonId: league.seasonId,
-    teamId: team?.id ?? null,
-    startMatchday: league.startMatchday,
-    checkpoints: league.rules.checkpoints,
-    participants: league.participants.map((person) => ({
-      fantasyTeamId: person.fantasyTeamId,
-      teamName: person.teamName,
-    })),
-    gameweeks: rows.map((gameweek) => ({ id: gameweek.id, number: gameweek.number, status: gameweek.status })),
-    rules: league.rules,
-    knownPoints: standingPack.weekPoints,
-  });
-  const season = await getCurrentSeason(admin, league.seasonId);
-  const lastClosed = [...rows].reverse().find((gameweek) => isLocked(gameweek, now, inPlay)) ?? null;
-  const liveRound = [...rows].reverse().find((gameweek) =>
-    isLocked(gameweek, now, inPlay) && gameweek.status !== "scored" && gameweek.status !== "final"
-  ) ?? null;
-  const fixtureWeek = liveRound ?? next ?? lastClosed;
   let lineupSaved = false;
   let lineupSavedAt: string | null = null;
   if (team && focus) {
-    const stamp = await admin
-      .from("lineups")
-      .select("saved_at")
-      .eq("fantasy_team_id", team.id)
-      .eq("gameweek_id", focus.id)
-      .maybeSingle();
     if (stamp.error && /saved_at|schema cache/i.test(stamp.error.message)) {
       const saved = await admin
         .from("lineups")
@@ -314,17 +319,9 @@ export async function loadLeagueHub(
       lineupSavedAt = (stamp.data?.saved_at as string | null) ?? null;
     }
   }
-  const lastRound = !lastClosed
-    ? []
-    : livePreview && lastClosed.id === liveWeek?.id
-      ? partialFromPreview(league.participants, livePreview.scores, [])
-      : await partialStandings(admin, league.participants, lastClosed.id, []);
-  const fixtures = fixtureWeek ? await fixturesFor(admin, fixtureWeek.id, catalog.clubs) : [];
   const selectedFixtures = selected && fixtureWeek && selected.id === fixtureWeek.id
     ? fixtures
-    : selected
-      ? await fixturesFor(admin, selected.id, catalog.clubs)
-      : [];
+    : selectedFixturesExtra ?? [];
 
   return {
     league,
@@ -344,10 +341,10 @@ export async function loadLeagueHub(
     lineupOrigin,
     carriedFromMatchday,
     opponents,
-    squads,
+    squads: [],
     partial,
     liveSheet,
-    standings,
+    standings: standingPack.rows,
     liveStandings: live.rows,
     liveReady: live.ready,
     checkpointHistory,
@@ -551,6 +548,21 @@ export async function loadLeagueRosters(
   const byId = new Map(players.map((player) => [player.id, player]));
   const squads = await squadsFor(admin, league.participants, team?.id ?? null, gameweekNumber, byId);
   return { leagueName: league.name, squads: squads.filter((squad) => !squad.isMine) };
+}
+
+export async function loadLeagueSquads(userId: string, leagueId: string, gameweekNumber?: number) {
+  const admin = createAdminSupabase();
+  const league = await getLeagueDetail(userId, leagueId);
+  const catalog = await loadCatalog(league.seasonId);
+  const byId = new Map(catalog.players.map((player) => [player.id, player]));
+  const team = teamOf(userId, league.participants);
+  return squadsFor(
+    admin,
+    league.participants,
+    team?.id ?? null,
+    gameweekNumber ?? league.startMatchday,
+    byId,
+  );
 }
 
 async function squadsFor(

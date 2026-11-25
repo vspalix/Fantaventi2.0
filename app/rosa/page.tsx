@@ -4,7 +4,6 @@ import { RosterBuilder } from "@/components/roster/RosterBuilder";
 import { SetupNotice } from "@/components/SetupNotice";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { loadCatalog } from "@/lib/server/catalog";
-import { loadLeagueRosters } from "@/lib/server/league-hub";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { describeCheckpoint, loadRoster } from "@/lib/server/roster";
 import { errorMessage, getSessionUser } from "@/lib/server/session";
@@ -35,14 +34,11 @@ export default async function RosterPage() {
         </section>
       );
     }
-    const [catalog, roster] = await Promise.all([loadCatalog(), meter("roster", () => loadRoster(user.id, league.id))]);
-    const checkpointNote = await describeCheckpoint(user.id, league.id).catch(() => null);
-    let others: Awaited<ReturnType<typeof loadLeagueRosters>> | null = null;
-    try {
-      others = await loadLeagueRosters(user.id, league.id, roster.appliesFrom, catalog.players);
-    } catch {
-      others = null;
-    }
+    const [catalog, roster, checkpointNote] = await Promise.all([
+      loadCatalog(),
+      meter("roster", () => loadRoster(user.id, league.id)),
+      describeCheckpoint(user.id, league.id).catch(() => null),
+    ]);
     return (
       <section className="roster-screen">
         <RosterBuilder
@@ -50,7 +46,7 @@ export default async function RosterPage() {
           catalog={catalog}
           initialRoster={roster}
           loadError={null}
-          others={others}
+          others={null}
           checkpointNote={checkpointNote}
           leagueId={league.id}
           leagueName={league.name}

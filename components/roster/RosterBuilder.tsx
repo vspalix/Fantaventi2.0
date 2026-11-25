@@ -55,6 +55,8 @@ export function RosterBuilder({
   const [error, setError] = useState<string | null>(loadError);
   const [pending, setPending] = useState(false);
   const [joinOffer, setJoinOffer] = useState<{ targetName: string; sources: RosterImportSource[] } | null>(null);
+  const [othersView, setOthersView] = useState(others);
+  const [othersLoading, setOthersLoading] = useState(false);
   const flight = useRef(false);
   const picks = useTapGuard();
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -67,6 +69,27 @@ export function RosterBuilder({
   useEffect(() => {
     setInviteCode(readInviteCookie());
   }, []);
+
+  useEffect(() => {
+    if (mode !== "others" || othersView || othersLoading || !leagueId) return;
+    let cancelled = false;
+    setOthersLoading(true);
+    void fetch(`/api/leagues/${leagueId}/others?gameweek=${appliesFrom}`)
+      .then(async (response) => {
+        const body = await response.json() as { leagueName?: string; squads?: LeagueSquad[]; error?: string };
+        if (!response.ok) throw new Error(body.error ?? "Rose non disponibili.");
+        if (!cancelled) setOthersView({ leagueName: body.leagueName ?? leagueName, squads: body.squads ?? [] });
+      })
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "Rose non disponibili.");
+      })
+      .finally(() => {
+        if (!cancelled) setOthersLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, othersView, othersLoading, leagueId, appliesFrom, leagueName]);
 
   const selected = useMemo(
     () => selectedIds
@@ -268,7 +291,7 @@ export function RosterBuilder({
         <h1 className="section-title">{mode === "others" ? "Rose degli altri" : teamName || "Rosa"}</h1>
         {mode === "rosa" ? <p className="small muted">{leagueName ? `${leagueName} · ` : ""}{selected.length}/{rules.squadSize}</p> : null}
         {mode === "checkpoint" ? <p className="checkpoint-pill" data-on="true">Checkpoint</p> : null}
-        {mode === "others" && others ? <p className="small muted">{others.leagueName}</p> : null}
+        {mode === "others" && othersView ? <p className="small muted">{othersView.leagueName}</p> : null}
       </div>
       <button className="info-button" type="button" aria-expanded={info} aria-label="Come funziona la rosa" onClick={() => setInfo((current) => !current)}>i</button>
     </header>
@@ -288,11 +311,13 @@ export function RosterBuilder({
         {head}
         {infoCard}
         <button className="ghost" type="button" onClick={() => setMode("rosa")}>Torna alla tua rosa</button>
-        {!others || others.squads.length === 0 ? (
+        {othersLoading ? <p className="small muted">Carico le rose...</p> : null}
+        {!othersLoading && (!othersView || othersView.squads.length === 0) ? (
           <EmptyState title="Nessun'altra rosa">
             Quando gli altri della lega salvano la rosa, la vedi da qui.
           </EmptyState>
-        ) : others.squads.map((squad) => (
+        ) : null}
+        {!othersLoading && othersView ? othersView.squads.map((squad) => (
           <article className="card" key={squad.fantasyTeamId}>
             <h2>{squad.teamName}</h2>
             <p className="small muted">{[squad.displayName, `${squad.players.length} calciatori`].filter(Boolean).join(" · ")}</p>
@@ -313,7 +338,7 @@ export function RosterBuilder({
               </div>
             )}
           </article>
-        ))}
+        )) : null}
       </div>
     );
   }

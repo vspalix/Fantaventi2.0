@@ -1,3 +1,5 @@
+import path from "node:path";
+import { pathToFileURL } from "node:url";
 import { playingEleven, scoreLineup, type LineupSlotInput, type PlayerStat } from "../lib/engine/calculator";
 import type { PlayerRole } from "../lib/types";
 
@@ -39,16 +41,14 @@ function play(starters: Row[], bench: Row[]) {
   return { trace, score };
 }
 
-const failures: string[] = [];
+export function runSubstitutionChecks() {
+  const failures: string[] = [];
+  const names: string[] = [];
 
-function check(name: string, passed: boolean, actual: string) {
-  if (passed) {
-    console.log(`PASS ${name}`);
-    return;
+  function check(name: string, passed: boolean, actual: string) {
+    names.push(name);
+    if (!passed) failures.push(`FAIL ${name}: ${actual}`);
   }
-  failures.push(`FAIL ${name}: ${actual}`);
-  console.error(`FAIL ${name}: ${actual}`);
-}
 
 const base442: Row[] = [
   { id: "gk", role: "GK", voto: 6 },
@@ -121,5 +121,13 @@ check(
   switchStep ? `${switchStep.outcome} ${switchStep.entrantId} ordine ${switchStep.benchOrder}` : "nessun cambio",
 );
 
-if (failures.length > 0) process.exit(1);
-console.log("Sostituzioni e modulo: PASSED 3/3");
+  return { passed: names.length - failures.length, total: names.length, failures };
+}
+
+const isDirect = process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+if (isDirect) {
+  const result = runSubstitutionChecks();
+  for (const failure of result.failures) console.error(failure);
+  if (result.failures.length > 0) process.exit(1);
+  console.log(`Sostituzioni e modulo: PASSED ${result.passed}/${result.total}`);
+}

@@ -1,3 +1,11 @@
+import {
+  availabilitySummaryKind,
+  availabilityWriteKind,
+  kickoffAlertKind,
+  unmatchedAlertKind,
+  voteAlertKind,
+  voteAlertNeedsMorning,
+} from "@/lib/server/telegram-decisions";
 import { inspectVoteSyncWindow, playedDayStillOpen } from "@/lib/server/vote-sync-window";
 import { readSystemSettings, type SyncLogEntry } from "@/lib/server/system-settings";
 
@@ -117,7 +125,24 @@ export async function sendSyncTestAlert() {
 
 export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = new Date(), detail?: SyncDetail) {
   try {
-    if (entry.status === "error") {
+    const changed = detail ? detail.changed : null;
+    const successOn = entry.status === "success" && changed !== null && changed > 0 ? await successEnabled() : false;
+    const base = {
+      status: entry.status,
+      jobType: entry.jobType,
+      recordsWritten: entry.recordsWritten,
+      force,
+      changed,
+      successEnabled: successOn,
+    };
+    let morningClosing = false;
+    let playedDayStill = false;
+    if (voteAlertNeedsMorning(base)) {
+      morningClosing = (await inspectVoteSyncWindow(now)).closing;
+      if (morningClosing) playedDayStill = await playedDayStillOpen(now);
+    }
+    const kind = voteAlertKind({ ...base, morningClosing, playedDayStillOpen: playedDayStill });
+    if (kind === "error") {
       await sendTelegramMessage([
         "<b>Fantaventi — sync in errore</b>",
         `Job: ${jobLabel(entry.jobType)}`,
@@ -126,20 +151,18 @@ export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = n
       ].join("\n"));
       return;
     }
-    if (entry.status === "success" && detail && detail.changed > 0 && await successEnabled()) {
+    if (kind === "success" && detail) {
       await sendTelegramMessage(summary(entry.jobType, detail, now));
       return;
     }
-    if (force || entry.jobType !== "votes" || entry.status !== "success" || entry.recordsWritten !== 0) return;
-    const gate = await inspectVoteSyncWindow(now);
-    if (!gate.closing) return;
-    if (!(await playedDayStillOpen(now))) return;
-    await sendTelegramMessage([
-      "<b>Fantaventi — finestra mattutina vuota</b>",
-      "Job: Voti",
-      `Quando: ${escapeHtml(romeStamp(now))}`,
-      "La finestra mattutina si è chiusa senza voti scritti, ma ci sono ancora partite della giornata da calcolare.",
-    ].join("\n"));
+    if (kind === "morning-empty") {
+      await sendTelegramMessage([
+        "<b>Fantaventi — finestra mattutina vuota</b>",
+        "Job: Voti",
+        `Quando: ${escapeHtml(romeStamp(now))}`,
+        "La finestra mattutina si è chiusa senza voti scritti, ma ci sono ancora partite della giornata da calcolare.",
+      ].join("\n"));
+    }
   } catch {
     quiet("Controllo allerta non riuscito.");
   }
@@ -156,7 +179,7 @@ export async function alertUnmatchedAvailability(
   matchday: number,
 ) {
   try {
-    if (rows.length === 0) return;
+    if (unmatchedAlertKind(rows.length) === "none") return;
     const shown = rows.slice(0, 30).map((row) => {
       const status = AVAILABILITY_LABEL[row.status] ?? row.status;
       return `• ${escapeHtml(row.name)} · ${escapeHtml(row.club)} · ${escapeHtml(status)}`;
@@ -180,7 +203,7 @@ export async function alertAvailabilityWrites(input: {
   samples: string[];
 }) {
   try {
-    if (input.changed <= 0) return;
+    if (availabilityWriteKind(input.changed) === "none") return;
     const shown = input.samples.slice(0, 5).map((sample) => `• ${escapeHtml(sample)}`);
     await sendTelegramMessage([
       "<b>Fantaventi — indisponibili aggiornati</b>",
@@ -196,7 +219,10 @@ export async function alertAvailabilityWrites(input: {
 
 export async function alertAvailabilitySync(entry: SyncLogEntry, detail?: SyncDetail, now = new Date()) {
   try {
-    if (entry.status === "error") {
+    const changed = detail?.changed ?? 0;
+    const successOn = entry.status === "success" && changed > 0 ? await successEnabled() : false;
+    const kind = availabilitySummaryKind({ status: entry.status, changed, successEnabled: successOn });
+    if (kind === "error") {
       await sendTelegramMessage([
         "<b>Fantaventi — sync in errore</b>",
         "Job: Indisponibili",
@@ -205,9 +231,7 @@ export async function alertAvailabilitySync(entry: SyncLogEntry, detail?: SyncDe
       ].join("\n"));
       return;
     }
-    if (entry.status !== "success" || !detail || detail.changed <= 0) return;
-    if (!(await successEnabled())) return;
-    await sendTelegramMessage(summary("availability", detail, now));
+    if (kind === "success" && detail) await sendTelegramMessage(summary("availability", detail, now));
   } catch {
     quiet("Controllo allerta non riuscito.");
   }
@@ -215,7 +239,9 @@ export async function alertAvailabilitySync(entry: SyncLogEntry, detail?: SyncDe
 
 export async function alertKickoffSync(input: { status: "success" | "error"; message: string; changed: number; samples: string[] }, now = new Date()) {
   try {
-    if (input.status === "error") {
+    const successOn = input.status === "success" && input.changed > 0 ? await successEnabled() : false;
+    const kind = kickoffAlertKind({ status: input.status, changed: input.changed, successEnabled: successOn });
+    if (kind === "error") {
       await sendTelegramMessage([
         "<b>Fantaventi — sync in errore</b>",
         "Job: Orari",
@@ -224,9 +250,9 @@ export async function alertKickoffSync(input: { status: "success" | "error"; mes
       ].join("\n"));
       return;
     }
-    if (input.changed <= 0) return;
-    if (!(await successEnabled())) return;
-    await sendTelegramMessage(summary("kickoffs", { changed: input.changed, samples: input.samples }, now));
+    if (kind === "success") {
+      await sendTelegramMessage(summary("kickoffs", { changed: input.changed, samples: input.samples }, now));
+    }
   } catch {
     quiet("Controllo allerta non riuscito.");
   }

@@ -4,6 +4,8 @@ import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
 import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/lib/testing/scoringEngineTestSuite";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
+import { runRulesCoverage } from "./test-rules-coverage";
+import { runSubstitutionChecks } from "./test-substitutions";
 
 const ENGINE_MIN = 34;
 const FULL_SUITE = 40;
@@ -57,7 +59,19 @@ async function main() {
     console.log(`- ${step.passed ? "PASS" : "FAIL"} ${step.name}: ${step.detail}`);
   }
 
-  if (broken.length > 0 || !lifecycle.passed) process.exit(1);
+  const substitutions = runSubstitutionChecks();
+  console.log(`Sostituzioni e modulo: ${substitutions.failures.length === 0 ? "PASSED" : "FAILED"} ${substitutions.passed}/${substitutions.total}`);
+  for (const failure of substitutions.failures) console.log(`- ${failure}`);
+
+  const rules = runRulesCoverage();
+  console.log(`Regole, parser e avvisi: ${rules.failures.length === 0 ? "PASSED" : "FAILED"} ${rules.passed}/${rules.total}`);
+  for (const failure of rules.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed;
+  console.log(`Verifica complessiva: ${passed}/${total}`);
+
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || total < 100) process.exit(1);
 }
 
 main().catch((error: unknown) => {

@@ -111,7 +111,14 @@ async function openMatchday() {
     .eq("season_id", season.id)
     .order("number", { ascending: true });
   if (weeks.error) throw new Error(weeks.error.message);
-  const open = (weeks.data ?? []).find((week) => week.status !== "scored" && week.status !== "final");
+  const rows = weeks.data ?? [];
+  const now = Date.now();
+  const playable = rows.find((week) => {
+    const deadline = new Date(week.deadline_at as string).getTime();
+    return (week.status === "open" || week.status === "scheduled") && Number.isFinite(deadline) && deadline > now;
+  });
+  const latestUnscored = [...rows].reverse().find((week) => week.status !== "scored" && week.status !== "final");
+  const open = playable ?? latestUnscored;
   return { seasonId: season.id, open: open ? { number: Number(open.number), deadlineAt: open.deadline_at as string, status: open.status as string } : null };
 }
 

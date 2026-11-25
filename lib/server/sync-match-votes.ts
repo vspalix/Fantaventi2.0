@@ -535,6 +535,56 @@ async function auditWeek(
   }
 }
 
+export async function importPublishedWeekVotes(gameweekId: string) {
+  const admin = createAdminSupabase();
+  const week = await admin.from("gameweeks").select("id, number, season_id").eq("id", gameweekId).maybeSingle();
+  if (week.error) throw new Error(week.error.message);
+  if (!week.data) throw new Error("Giornata non trovata.");
+  const season = await admin.from("seasons").select("code").eq("id", week.data.season_id).maybeSingle();
+  if (season.error) throw new Error(season.error.message);
+  const matches = await admin
+    .from("real_matches")
+    .select("id, gameweek_id, kickoff_at, status, home_club_id, away_club_id")
+    .eq("gameweek_id", gameweekId);
+  if (matches.error) throw new Error(schemaHint(matches.error.message));
+  const rows = (matches.data ?? []) as MatchRow[];
+  const clubIds = [...new Set(rows.flatMap((match) => [match.home_club_id, match.away_club_id]))];
+  const clubs = clubIds.length
+    ? await admin.from("clubs").select("id, code").in("id", clubIds)
+    : { data: [] as { id: string; code: string }[], error: null };
+  if (clubs.error) throw new Error(clubs.error.message);
+  const clubCode = new Map((clubs.data ?? []).map((club) => [club.id as string, String(club.code).toLowerCase()]));
+  const page = await fetchFantacalcioMatchweek(String(season.data?.code ?? ""), Number(week.data.number));
+  const realGrades = page.votes.filter((vote) => vote.voto !== null).length;
+  let matchesWithVotes = 0;
+  let players = 0;
+  const missing: string[] = [];
+  for (const match of rows) {
+    const home = clubCode.get(match.home_club_id) ?? "";
+    const away = clubCode.get(match.away_club_id) ?? "";
+    const votes = votesForClubs(page.votes, home, away);
+    const label = `${home || "?"}-${away || "?"}`;
+    if (votes.length === 0) {
+      missing.push(label);
+      continue;
+    }
+    const written = await writeMatchVotes(admin, gameweekId, match, votes, false);
+    if (written === 0) {
+      missing.push(`${label} (non in listone)`);
+      continue;
+    }
+    matchesWithVotes += 1;
+    players += written;
+  }
+  return {
+    realGrades,
+    matches: rows.length,
+    matchesWithVotes,
+    players,
+    missing,
+  };
+}
+
 async function closeWeek(
   admin: ReturnType<typeof createAdminSupabase>,
   week: GameweekRow,

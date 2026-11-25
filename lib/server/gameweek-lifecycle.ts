@@ -4,6 +4,7 @@ import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export const APPEAL_MS = 24 * 60 * 60 * 1000;
+export const AUTO_SCORE_FROM_GAMEWEEK = 12;
 const MATCH_WINDOW_MS = MATCH_CLOSE_MS;
 
 type GameweekRow = {
@@ -111,6 +112,77 @@ export async function processGameweekLifecycle(now = new Date(), options?: { fin
   }
 
   return { locked, scored, finalized, skipped, matches };
+}
+
+export async function closeFinishedGameweeks(now = new Date()) {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
+    .from("gameweeks")
+    .select("id, number, status, deadline_at, scored_at, season_id")
+    .order("number");
+  if (error) throw new Error(schemaHint(error.message));
+  const sandboxSeasons = await admin.from("seasons").select("id").eq("code", SANDBOX_SEASON_CODE);
+  const sandboxIds = new Set((sandboxSeasons.data ?? []).map((row) => row.id as string));
+  const gameweeks = ((data ?? []) as GameweekRow[]).filter((gameweek) => (
+    gameweek.number >= AUTO_SCORE_FROM_GAMEWEEK
+    && gameweek.status !== "scored"
+    && gameweek.status !== "final"
+    && (!gameweek.season_id || !sandboxIds.has(gameweek.season_id))
+  ));
+  const closed: number[] = [];
+  const waiting: { number: number; reason: string }[] = [];
+  for (const gameweek of gameweeks) {
+    const matches = await admin.from("real_matches").select("status, kickoff_at").eq("gameweek_id", gameweek.id);
+    if (matches.error) {
+      waiting.push({ number: gameweek.number, reason: matches.error.message });
+      continue;
+    }
+    const rows = matches.data ?? [];
+    if (rows.length === 0) {
+      waiting.push({ number: gameweek.number, reason: "Nessuna partita reale." });
+      continue;
+    }
+    const kickoffs = rows
+      .map((match) => new Date(String(match.kickoff_at)).getTime())
+      .filter((time) => Number.isFinite(time));
+    const firstKickoff = kickoffs.length > 0 ? Math.min(...kickoffs) : null;
+    if (firstKickoff !== null && firstKickoff > now.getTime()) continue;
+    if (rows.some((match) => match.status !== "finished")) {
+      waiting.push({ number: gameweek.number, reason: "Ci sono partite non finite." });
+      continue;
+    }
+    const lastKickoff = kickoffs.length > 0 ? Math.max(...kickoffs) : null;
+    if (lastKickoff === null || now.getTime() < lastKickoff + MATCH_WINDOW_MS) {
+      waiting.push({ number: gameweek.number, reason: "Finestra di sicurezza non ancora chiusa." });
+      continue;
+    }
+    const imports = await admin.from("vote_imports").select("id", { count: "exact", head: true }).eq("gameweek_id", gameweek.id);
+    if (imports.error) {
+      waiting.push({ number: gameweek.number, reason: imports.error.message });
+      continue;
+    }
+    if ((imports.count ?? 0) === 0) {
+      waiting.push({ number: gameweek.number, reason: "Voti non ancora presenti." });
+      continue;
+    }
+    try {
+      const outcome = await scoreOfficialGameweek(gameweek.id);
+      if (outcome.skipped) {
+        waiting.push({ number: gameweek.number, reason: outcome.reason ?? "Calcolo non rieseguito." });
+        continue;
+      }
+      const stamp = now.toISOString();
+      let statusUpdate = await admin.from("gameweeks").update({ status: "scored", scored_at: stamp }).eq("id", gameweek.id).in("status", ["scheduled", "open", "locked"]);
+      if (statusUpdate.error && /scored_at/i.test(statusUpdate.error.message)) {
+        statusUpdate = await admin.from("gameweeks").update({ status: "scored" }).eq("id", gameweek.id).in("status", ["scheduled", "open", "locked"]);
+      }
+      if (statusUpdate.error) throw new Error(schemaHint(statusUpdate.error.message));
+      closed.push(gameweek.number);
+    } catch (error) {
+      waiting.push({ number: gameweek.number, reason: error instanceof Error ? error.message : "Calcolo non riuscito." });
+    }
+  }
+  return { closed, waiting };
 }
 
 export function gameweekShouldLock(input: {

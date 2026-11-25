@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { alphabeticalOfficeLineup } from "@/lib/formations";
 import { officeLineupMode } from "@/lib/league-rules";
 import { readLeagueSettings } from "@/lib/server/league-settings";
@@ -152,6 +153,7 @@ async function alphabeticalSlots(seasonId: string, gameweek: number, teamId: str
 async function copyLineup(teamId: string, gameweekId: string, slots: SlotCopy[]) {
   const admin = createAdminSupabase();
   const withOrigin = await admin.from("lineups").insert({
+    id: randomUUID(),
     fantasy_team_id: teamId,
     gameweek_id: gameweekId,
     status: "locked",
@@ -160,6 +162,7 @@ async function copyLineup(teamId: string, gameweekId: string, slots: SlotCopy[])
   }).select("id").maybeSingle();
   const created = withOrigin.error && /origin|saved_at|schema cache|could not find/i.test(withOrigin.error.message)
     ? await admin.from("lineups").insert({
+      id: randomUUID(),
       fantasy_team_id: teamId,
       gameweek_id: gameweekId,
       status: "locked",

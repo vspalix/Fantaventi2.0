@@ -4,6 +4,7 @@ import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
 import { alertVoteSync } from "@/lib/server/telegram-alert";
 import { readSystemSettings, writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
+import { closeFinishedGameweeks } from "@/lib/server/gameweek-lifecycle";
 import { syncScheduledVotes, type MatchVoteSyncResult } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
 
@@ -75,10 +76,23 @@ async function run(request: Request) {
     }
     const now = new Date();
     const result = await meter("vote-fetch", () => syncScheduledVotes(now, force));
-    const entry = voteLog(result, triggerSource);
+    const settled = await closeFinishedGameweeks(now).catch((error: unknown) => ({
+      closed: [] as number[],
+      waiting: [{ number: 0, reason: errorMessage(error) }],
+    }));
+    let entry = voteLog(result, triggerSource);
+    if (settled.closed.length > 0) {
+      const note = `Calcolate le giornate ${settled.closed.join(", ")}.`;
+      entry = entry.status === "error"
+        ? entry
+        : { ...entry, status: "success", recordsWritten: Math.max(entry.recordsWritten, settled.closed.length), message: entry.status === "skipped" ? note : `${entry.message} ${note}` };
+    }
     await writeSyncLog(entry);
-    await alertVoteSync(entry, force, now, "changed" in result ? { changed: result.changed, samples: result.samples } : undefined);
-    return NextResponse.json(result);
+    const detail = settled.closed.length > 0
+      ? { changed: settled.closed.length, samples: settled.closed.map((number) => `Giornata ${number} calcolata`) }
+      : "changed" in result ? { changed: result.changed, samples: result.samples } : undefined;
+    await alertVoteSync(entry, force, now, detail);
+    return NextResponse.json({ ...result, settled });
   } catch (error) {
     const entry: SyncLogEntry = {
       jobType: "votes",

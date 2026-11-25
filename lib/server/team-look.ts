@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
+import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { moderateImage, moderateText } from "@/lib/moderation";
-import { getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
+import { ensureLeagueTeam, listLeaguesForUser } from "@/lib/server/leagues";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type TeamLook = {
@@ -63,9 +65,11 @@ export async function saveTeamLook(
   }
 
   const admin = createAdminSupabase();
-  const season = await getCurrentSeason(admin);
-  const team = await getFantasyTeam(admin, userId, season.id);
-  if (!team) throw httpError("Prima crea la rosa: il nome e i colori stanno sulla tua squadra.", 409);
+  const focusedId = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value;
+  const leagues = await listLeaguesForUser(userId);
+  const league = leagues.find((item) => item.id === focusedId) ?? leagues[0];
+  if (!league) throw httpError("Entra in una lega: nome e colori stanno sulla squadra di quella lega.", 409);
+  const team = await ensureLeagueTeam(userId, league.id, name);
   const renamed = await admin.from("fantasy_teams").update({ name }).eq("id", team.id).eq("user_id", userId);
   if (renamed.error) throw new Error(renamed.error.message);
 

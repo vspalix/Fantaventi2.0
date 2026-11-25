@@ -359,6 +359,14 @@ export function LeagueHub({
   const picks = useTapGuard();
   const [now, setNow] = useState(() => Date.now());
 
+  useEffect(() => {
+    void fetch("/api/active-league", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ leagueId: initial.league.id }),
+    });
+  }, [initial.league.id]);
+
   const selected = hub.gameweeks.find((gameweek) => gameweek.id === hub.selectedGameweekId) ?? null;
   const mineId = hub.opponents.find((opponent) => opponent.isMine)?.fantasyTeamId ?? null;
 

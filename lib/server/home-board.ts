@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { headToHeadPairings, weekScoreMode, fantapuntiToGoals } from "@/lib/league-rules";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
-import { getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
+import { getCurrentSeason } from "@/lib/server/catalog";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { listLeaguesForUser } from "@/lib/server/leagues";
@@ -73,7 +73,6 @@ function clubLabel(row: { code?: string; club_translations?: { locale: string; s
 export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const team = await getFantasyTeam(admin, userId, season.id);
   const leagues = await listLeaguesForUser(userId);
   const promo = await loadHomePromo();
   const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
@@ -121,15 +120,16 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
 
   const cards: HomeLeagueCard[] = [];
   for (const league of leagues) {
-    cards.push(await leagueCard(admin, season.id, league.id, league.name, team?.id ?? null, calendar));
+    cards.push(await leagueCard(admin, season.id, league.id, league.name, league.teamId, calendar));
   }
 
   const focus = cards.find((card) => card.id === saved) ?? cards[0] ?? null;
-  const look = await readTeamLook(team?.id ?? null, team?.name ?? "La tua squadra");
+  const focusLeague = leagues.find((league) => league.id === focus?.id) ?? null;
+  const look = await readTeamLook(focusLeague?.teamId ?? null, focusLeague?.teamName || "La tua squadra");
   const sponsors = await readSponsors();
   return {
     competitionName: season.competitionName,
-    teamId: team?.id ?? null,
+    teamId: focusLeague?.teamId ?? null,
     teamName: look.name,
     teamPrimary: look.primary,
     teamSecondary: look.secondary,

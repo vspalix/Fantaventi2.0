@@ -233,9 +233,11 @@ create table if not exists public.fantasy_teams (
   user_id    uuid not null references public.profiles (id),
   season_id  uuid not null references public.seasons (id),
   name       text not null,
-  created_at timestamptz not null default now(),
-  unique (user_id, season_id)
+  created_at timestamptz not null default now()
 );
+
+create index if not exists fantasy_teams_user_season_idx
+  on public.fantasy_teams (user_id, season_id);
 
 create table if not exists public.roster_stints (
   id                       uuid primary key,

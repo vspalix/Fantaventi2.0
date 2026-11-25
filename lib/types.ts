@@ -62,6 +62,8 @@ export type LeagueSummary = {
   seasonCode: string;
   isOwner: boolean;
   isManager: boolean;
+  teamId: string | null;
+  teamName: string;
 };
 
 export type LeagueParticipant = {
@@ -70,6 +72,13 @@ export type LeagueParticipant = {
   teamName: string;
   displayName: string;
   role?: "owner" | "admin" | "member";
+};
+
+export type RosterImportSource = {
+  leagueId: string;
+  leagueName: string;
+  teamName: string;
+  players: number;
 };
 
 export type LeagueDelegate = {

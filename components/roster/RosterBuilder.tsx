@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { clearInviteCookie, joinHref, readInviteCookie } from "@/lib/invite";
 import { pushToast } from "@/lib/toast";
 import { BusyLabel } from "@/components/BusyLabel";
+import { JoinImportPrompt } from "@/components/leagues/JoinImportPrompt";
 import { TeamBadge } from "@/components/TeamBadge";
 import { EmptyState } from "@/components/EmptyState";
 import { ClubGrid } from "@/components/roster/ClubGrid";
@@ -12,7 +13,7 @@ import { ClubModal } from "@/components/roster/ClubModal";
 import { RosterSidebar } from "@/components/roster/RosterSidebar";
 import { useTapGuard } from "@/components/useTapGuard";
 import { evaluateRoster } from "@/lib/constraints";
-import { DEFAULT_RULES, ROLE_LABEL, type CatalogPlayer, type CatalogResponse, type LeagueSquad, type PlayerRole, type RosterMarket, type RosterState } from "@/lib/types";
+import { DEFAULT_RULES, ROLE_LABEL, type CatalogPlayer, type CatalogResponse, type LeagueSquad, type PlayerRole, type RosterImportSource, type RosterMarket, type RosterState } from "@/lib/types";
 
 const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
@@ -27,6 +28,8 @@ export function RosterBuilder({
   loadError,
   others = null,
   checkpointNote = null,
+  leagueId = null,
+  leagueName = "",
 }: {
   signedIn: boolean;
   catalog: CatalogResponse | null;
@@ -34,6 +37,8 @@ export function RosterBuilder({
   loadError: string | null;
   others?: { leagueName: string; squads: LeagueSquad[] } | null;
   checkpointNote?: string | null;
+  leagueId?: string | null;
+  leagueName?: string;
 }) {
   const rules = catalog?.rules ?? DEFAULT_RULES;
   const players = catalog?.players ?? [];
@@ -49,6 +54,7 @@ export function RosterBuilder({
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(loadError);
   const [pending, setPending] = useState(false);
+  const [joinOffer, setJoinOffer] = useState<{ targetName: string; sources: RosterImportSource[] } | null>(null);
   const flight = useRef(false);
   const picks = useTapGuard();
   const [inviteCode, setInviteCode] = useState<string | null>(null);
@@ -153,7 +159,7 @@ export function RosterBuilder({
       const response = await fetch("/api/roster", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ teamName, playerIds: selected.map((player) => player.id) }),
+        body: JSON.stringify({ teamName, playerIds: selected.map((player) => player.id), leagueId }),
       });
       const body = (await response.json()) as { error?: string; roster?: { appliesFrom?: number } };
       if (!response.ok) {
@@ -170,7 +176,18 @@ export function RosterBuilder({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ code: invite }),
         });
-        const joined = (await join.json()) as { error?: string; league?: { id: string } };
+        const joined = (await join.json()) as {
+          error?: string;
+          league?: { id: string };
+          needsImport?: boolean;
+          targetName?: string;
+          sources?: RosterImportSource[];
+        };
+        if (joined.needsImport && joined.targetName && joined.sources) {
+          setJoinOffer({ targetName: joined.targetName, sources: joined.sources });
+          pushToast("ok", "Rosa salvata. Scegli se portarla nella lega nuova.");
+          return;
+        }
         if (join.ok && joined.league?.id) {
           clearInviteCookie();
           pushToast("ok", "Rosa salvata. Ti sto iscrivendo alla lega.");
@@ -195,6 +212,33 @@ export function RosterBuilder({
     }
   }
 
+  async function finishInvite(importFromLeagueId: string | null) {
+    const invite = readInviteCookie();
+    if (!invite || flight.current) return;
+    flight.current = true;
+    setPending(true);
+    setError(null);
+    try {
+      const join = await fetch("/api/leagues/join", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: invite, confirmed: true, importFromLeagueId }),
+      });
+      const joined = (await join.json()) as { error?: string; league?: { id: string } };
+      if (!join.ok || !joined.league?.id) {
+        const text = joined.error ?? "Iscrizione non riuscita.";
+        setError(text);
+        pushToast("err", text);
+        return;
+      }
+      clearInviteCookie();
+      window.location.assign(`/leghe/${joined.league.id}`);
+    } finally {
+      flight.current = false;
+      setPending(false);
+    }
+  }
+
   if (!signedIn) {
     return (
       <section className="card">
@@ -204,11 +248,25 @@ export function RosterBuilder({
     );
   }
 
+  if (joinOffer) {
+    return (
+      <div className="stack">
+        {error ? <p className="banner">{error}</p> : null}
+        <JoinImportPrompt
+          targetName={joinOffer.targetName}
+          sources={joinOffer.sources}
+          pending={pending}
+          onPick={(importFromLeagueId) => void finishInvite(importFromLeagueId)}
+        />
+      </div>
+    );
+  }
+
   const head = (
     <header className="rosa-head">
       <div>
         <h1 className="section-title">{mode === "others" ? "Rose degli altri" : teamName || "Rosa"}</h1>
-        {mode === "rosa" ? <p className="small muted">{selected.length}/{rules.squadSize}{others ? ` · ${others.leagueName}` : ""}</p> : null}
+        {mode === "rosa" ? <p className="small muted">{leagueName ? `${leagueName} · ` : ""}{selected.length}/{rules.squadSize}</p> : null}
         {mode === "checkpoint" ? <p className="checkpoint-pill" data-on="true">Checkpoint</p> : null}
         {mode === "others" && others ? <p className="small muted">{others.leagueName}</p> : null}
       </div>
@@ -219,6 +277,7 @@ export function RosterBuilder({
     <p className="card rosa-info">
       Dal checkpoint apri un club e scegli un calciatore: la lista si chiude da sola. Togli sta a destra sulla tessera del club.
       Durante le partite della giornata la rosa resta ferma. Al salvataggio restano un club ciascuno e i limiti di ruolo.
+      Questa rosa vale solo in questa lega.
       I cambi valgono dalla giornata {appliesFrom}.
     </p>
   ) : null;

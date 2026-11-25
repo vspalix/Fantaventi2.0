@@ -6,8 +6,9 @@ import { leagueActor } from "@/lib/server/access-policy";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { readLeagueSettings } from "@/lib/server/league-settings";
-import type { LeagueDetail, LeagueSummary } from "@/lib/types";
-import { ensureProfile, getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
+import type { LeagueDetail, LeagueSummary, RosterImportSource } from "@/lib/types";
+import { createDedicatedTeam, ensureProfile, getCurrentSeason, listSeasonTeams, teamInLeague } from "@/lib/server/catalog";
+import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 
 type LeagueRow = {
@@ -119,7 +120,8 @@ async function seasonCode(admin: ReturnType<typeof createAdminSupabase>, seasonI
 export const listLeaguesForUser = cache(async (userId: string): Promise<LeagueSummary[]> => {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const team = await getFantasyTeam(admin, userId, season.id);
+  const teams = await listSeasonTeams(admin, userId, season.id);
+  const teamById = new Map(teams.map((team) => [team.id, team]));
 
   const ownedQuery = await admin
     .from("private_leagues")
@@ -133,45 +135,88 @@ export const listLeaguesForUser = cache(async (userId: string): Promise<LeagueSu
   if (ownedResult.error) throw new Error(ownedResult.error.message);
   const owned = ownedResult.data;
 
-  let joined: { id: string; name: string; join_code: string }[] = [];
-  if (team) {
-    const { data: memberships, error } = await admin
+  const memberships = teams.length === 0
+    ? { data: [] as { fantasy_team_id: string; private_leagues: JoinedLeague | JoinedLeague[] | null }[], error: null }
+    : await admin
       .from("private_league_members")
-      .select("private_leagues(id, name, join_code, season_id, owner_user_id)")
-      .eq("fantasy_team_id", team.id);
-    if (error) throw new Error(error.message);
-    joined = (memberships ?? []).flatMap((row) => {
-      const league = one(row.private_leagues as JoinedLeague | JoinedLeague[] | null);
-      if (!league || league.season_id !== season.id || league.owner_user_id === userId) return [];
-      return [{ id: league.id, name: league.name, join_code: league.join_code }];
+      .select("fantasy_team_id, private_leagues(id, name, join_code, season_id, owner_user_id)")
+      .in("fantasy_team_id", teams.map((team) => team.id));
+  if (memberships.error) throw new Error(memberships.error.message);
+
+  const delegated = await delegateLeagueIds(admin, userId);
+  const byId = new Map<string, LeagueSummary>();
+  for (const row of memberships.data ?? []) {
+    const league = one(row.private_leagues as JoinedLeague | JoinedLeague[] | null);
+    if (!league || league.season_id !== season.id) continue;
+    const team = teamById.get(row.fantasy_team_id as string);
+    const isOwner = league.owner_user_id === userId;
+    byId.set(league.id, {
+      id: league.id,
+      name: league.name,
+      joinCode: league.join_code,
+      seasonCode: season.code,
+      isOwner,
+      isManager: isOwner || delegated.has(league.id),
+      teamId: team?.id ?? null,
+      teamName: team?.name ?? "",
     });
   }
-
-  const ownedIds = new Set((owned ?? []).map((league) => league.id as string));
-  const delegated = await delegateLeagueIds(admin, userId);
-  const summaries: LeagueSummary[] = [
-    ...(owned ?? []).map((league) => ({
+  for (const league of owned ?? []) {
+    if (byId.has(league.id as string)) continue;
+    byId.set(league.id as string, {
       id: league.id as string,
       name: league.name as string,
       joinCode: league.join_code as string,
       seasonCode: season.code,
       isOwner: true,
       isManager: true,
-    })),
-    ...joined
-      .filter((league) => !ownedIds.has(league.id))
-      .map((league) => ({
-        id: league.id,
-        name: league.name,
-        joinCode: league.join_code,
-        seasonCode: season.code,
-        isOwner: false,
-        isManager: delegated.has(league.id),
-      })),
-  ];
+      teamId: null,
+      teamName: "",
+    });
+  }
 
-  return summaries.sort((a, b) => a.name.localeCompare(b.name, "it"));
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "it"));
 });
+
+export async function ensureLeagueTeam(userId: string, leagueId: string, preferredName?: string) {
+  const admin = createAdminSupabase();
+  const league = await admin.from("private_leagues").select("id, season_id").eq("id", leagueId).maybeSingle();
+  if (league.error) throw new Error(league.error.message);
+  if (!league.data) throw httpError("Lega non trovata.", 404);
+  const seasonId = league.data.season_id as string;
+  const name = preferredName?.trim() ?? "";
+  const existing = await teamInLeague(admin, userId, leagueId);
+  if (existing) {
+    if (name && name !== existing.name) {
+      const { error } = await admin.from("fantasy_teams").update({ name }).eq("id", existing.id).eq("user_id", userId);
+      if (error) throw new Error(error.message);
+      return { id: existing.id, name };
+    }
+    return existing;
+  }
+
+  const teams = await listSeasonTeams(admin, userId, seasonId);
+  const taken = teams.length === 0
+    ? { data: [] as { fantasy_team_id: string }[], error: null }
+    : await admin.from("private_league_members").select("fantasy_team_id").in("fantasy_team_id", teams.map((team) => team.id));
+  if (taken.error) throw new Error(taken.error.message);
+  const used = new Set((taken.data ?? []).map((row) => row.fantasy_team_id as string));
+  const free = teams.find((team) => !used.has(team.id));
+  const team = free
+    ? { id: free.id, name: free.name }
+    : { id: await createDedicatedTeam(admin, userId, seasonId, name || "La mia squadra"), name: name || "La mia squadra" };
+  if (free && name && name !== free.name) {
+    const { error } = await admin.from("fantasy_teams").update({ name }).eq("id", free.id).eq("user_id", userId);
+    if (error) throw new Error(error.message);
+    team.name = name;
+  }
+  const { error } = await admin.from("private_league_members").insert({
+    private_league_id: leagueId,
+    fantasy_team_id: team.id,
+  });
+  if (error && error.code !== "23505") throw new Error(error.message);
+  return team;
+}
 
 export async function createLeague(
   userId: string,
@@ -188,7 +233,6 @@ export async function createLeague(
   const admin = createAdminSupabase();
   await ensureProfile(admin, userId, email);
   const season = await getCurrentSeason(admin);
-  const team = await getFantasyTeam(admin, userId, season.id);
   const id = crypto.randomUUID();
 
   let joinCode = createJoinCode();
@@ -249,24 +293,59 @@ export async function createLeague(
     );
   }
 
-  if (team) {
-    const { error } = await admin.from("private_league_members").insert({
-      private_league_id: id,
-      fantasy_team_id: team.id,
-    });
-    if (error) throw new Error(error.message);
+  let squad: { id: string; name: string };
+  try {
+    squad = await ensureLeagueTeam(userId, id);
+  } catch (error) {
+    await admin.from("private_leagues").delete().eq("id", id);
+    throw error;
   }
 
-  return { id, name: trimmed, joinCode, seasonCode: season.code, isOwner: true, isManager: true, rules, rulesStored };
+  return {
+    id,
+    name: trimmed,
+    joinCode,
+    seasonCode: season.code,
+    isOwner: true,
+    isManager: true,
+    teamId: squad.id,
+    teamName: squad.name,
+    rules,
+    rulesStored,
+  };
 }
 
-export async function joinLeague(userId: string, email: string | undefined, code: string) {
+async function openRosterIds(admin: ReturnType<typeof createAdminSupabase>, teamId: string) {
+  const rows = await admin
+    .from("roster_stints")
+    .select("player_id")
+    .eq("fantasy_team_id", teamId)
+    .is("active_until_gameweek", null);
+  if (rows.error) throw new Error(rows.error.message);
+  return [...new Set((rows.data ?? []).map((row) => row.player_id as string))];
+}
+
+export async function importableRosters(userId: string, exceptLeagueId: string): Promise<RosterImportSource[]> {
+  const admin = createAdminSupabase();
+  const leagues = await listLeaguesForUser(userId);
+  const sources: RosterImportSource[] = [];
+  for (const league of leagues) {
+    if (league.id === exceptLeagueId || !league.teamId) continue;
+    const players = (await openRosterIds(admin, league.teamId)).length;
+    if (players === 0) continue;
+    sources.push({
+      leagueId: league.id,
+      leagueName: league.name,
+      teamName: league.teamName,
+      players,
+    });
+  }
+  return sources;
+}
+
+async function leagueByJoinCode(admin: ReturnType<typeof createAdminSupabase>, code: string) {
   const joinCode = code.trim().toUpperCase();
   if (joinCode.length < 4) throw new Error("Inserisci il codice invito.");
-
-  const admin = createAdminSupabase();
-  await ensureProfile(admin, userId, email);
-
   const flagged = await admin
     .from("private_leagues")
     .select("id, name, join_code, season_id, is_sandbox")
@@ -279,20 +358,92 @@ export async function joinLeague(userId: string, email: string | undefined, code
   const league = plainLeague.data as { id: string; name: string; join_code: string; season_id: string; is_sandbox?: boolean } | null;
   if (!league) throw new Error("Nessuna lega trovata con questo codice.");
   if (league.is_sandbox) throw new Error("Questo codice appartiene al laboratorio sandbox e non iscrive a una lega reale.");
+  return league;
+}
 
-  const team = await getFantasyTeam(admin, userId, league.season_id as string);
-  if (!team) {
-    throw new Error("Prima crea la rosa di questa competizione: l'iscrizione usa la squadra di quella stagione.");
+export async function joinRosterOffer(userId: string, input: { code?: string; leagueId?: string }) {
+  const admin = createAdminSupabase();
+  let leagueId = input.leagueId?.trim() ?? "";
+  let name = "";
+  if (leagueId) {
+    const { rules, ready } = await readLeagueSettings(admin, leagueId);
+    if (!ready || rules.visibility !== "public") throw httpError("Questa lega non è pubblica. Serve il codice invito.", 403);
+    const row = await admin.from("private_leagues").select("name").eq("id", leagueId).maybeSingle();
+    if (row.error) throw new Error(row.error.message);
+    if (!row.data) throw httpError("Lega non trovata.", 404);
+    name = row.data.name as string;
+  } else {
+    const league = await leagueByJoinCode(admin, input.code ?? "");
+    leagueId = league.id;
+    name = league.name;
   }
-  await assertCanJoin(admin, league.id as string, league.season_id as string);
+  if (await teamInLeague(admin, userId, leagueId)) return { needed: false, targetName: name, sources: [] as RosterImportSource[] };
+  const sources = await importableRosters(userId, leagueId);
+  return { needed: sources.length > 0, targetName: name, sources };
+}
 
-  const { error: memberError } = await admin.from("private_league_members").insert({
-    private_league_id: league.id,
-    fantasy_team_id: team.id,
-  });
-  if (memberError && memberError.code !== "23505") {
-    throw new Error(memberError.message);
+async function rosterToImport(admin: ReturnType<typeof createAdminSupabase>, userId: string, targetLeagueId: string, sourceLeagueId: string) {
+  if (sourceLeagueId === targetLeagueId) throw httpError("Scegli una rosa di un'altra lega.", 400);
+  const source = await teamInLeague(admin, userId, sourceLeagueId);
+  if (!source) throw httpError("Questa rosa non è tra le tue.", 403);
+  const playerIds = await openRosterIds(admin, source.id);
+  if (playerIds.length === 0) throw httpError("Quella rosa non ha calciatori da portare.", 409);
+  const settings = await readLeagueSettings(admin, targetLeagueId);
+  if (settings.ready && settings.rules.exclusiveRosters) {
+    const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", targetLeagueId);
+    if (members.error) throw new Error(members.error.message);
+    const otherIds = (members.data ?? []).map((row) => row.fantasy_team_id as string);
+    if (otherIds.length > 0) {
+      const taken = await admin
+        .from("roster_stints")
+        .select("player_id")
+        .in("fantasy_team_id", otherIds)
+        .is("active_until_gameweek", null);
+      if (taken.error) throw new Error(taken.error.message);
+      const owned = new Set((taken.data ?? []).map((row) => row.player_id as string));
+      if (playerIds.some((playerId) => owned.has(playerId))) {
+        throw httpError("In questa lega le rose sono esclusive e alcuni calciatori sono già in un'altra squadra. Puoi entrare con una rosa vuota.", 409);
+      }
+    }
   }
+  return playerIds;
+}
+
+async function copyOpenRoster(
+  admin: ReturnType<typeof createAdminSupabase>,
+  teamId: string,
+  seasonId: string,
+  playerIds: string[],
+) {
+  const from = await rosterAppliesFrom(admin, seasonId);
+  const inserted = await admin.from("roster_stints").insert(playerIds.map((playerId) => ({
+    id: crypto.randomUUID(),
+    fantasy_team_id: teamId,
+    player_id: playerId,
+    active_from_gameweek: from,
+    active_until_gameweek: null,
+  })));
+  if (inserted.error) throw new Error(inserted.error.message);
+}
+
+export async function joinLeague(
+  userId: string,
+  email: string | undefined,
+  code: string,
+  importFromLeagueId?: string | null,
+) {
+  const admin = createAdminSupabase();
+  await ensureProfile(admin, userId, email);
+  const league = await leagueByJoinCode(admin, code);
+
+  let imported: string[] | null = null;
+  const already = await teamInLeague(admin, userId, league.id as string);
+  if (!already) {
+    await assertCanJoin(admin, league.id as string, league.season_id as string);
+    if (importFromLeagueId) imported = await rosterToImport(admin, userId, league.id as string, importFromLeagueId);
+  }
+  const squad = already ?? await ensureLeagueTeam(userId, league.id as string);
+  if (imported) await copyOpenRoster(admin, squad.id, league.season_id as string, imported);
 
   return {
     id: league.id as string,
@@ -301,6 +452,8 @@ export async function joinLeague(userId: string, email: string | undefined, code
     seasonCode: await seasonCode(admin, league.season_id as string),
     isOwner: false,
     isManager: false,
+    teamId: squad.id,
+    teamName: squad.name,
   };
 }
 
@@ -314,21 +467,12 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
     throw httpError("Questa lega è il laboratorio sandbox e resta fuori dal gioco.", 404);
   }
 
-  const team = await getFantasyTeam(admin, userId, league.season_id as string);
+  const team = await teamInLeague(admin, userId, leagueId);
   const roundCount = await seasonRoundCount(admin, league.season_id as string);
   const isOwner = league.owner_user_id === userId;
   const delegateIds = await delegateUserIds(admin, leagueId);
   const platformOverride = await isSuperAdmin(userId);
-
-  const { data: membership, error: membershipError } = team
-    ? await admin
-        .from("private_league_members")
-        .select("fantasy_team_id")
-        .eq("private_league_id", leagueId)
-        .eq("fantasy_team_id", team.id)
-        .maybeSingle()
-    : { data: null, error: null };
-  if (membershipError) throw new Error(membershipError.message);
+  const membership = team ? { fantasy_team_id: team.id } : null;
 
   const actor = leagueActor({
     userId,
@@ -385,6 +529,8 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
     isOwner,
     isManager,
     platformOverride,
+    teamId: team?.id ?? null,
+    teamName: team?.name ?? "",
     isMember: Boolean(membership),
     delegates,
     participants,
@@ -448,11 +594,18 @@ export async function listPublicLeagues(userId: string): Promise<LeagueSummary[]
       seasonCode: season.code,
       isOwner: false,
       isManager: false,
+      teamId: null,
+      teamName: "",
     }];
   });
 }
 
-export async function joinPublicLeague(userId: string, email: string | undefined, leagueId: string) {
+export async function joinPublicLeague(
+  userId: string,
+  email: string | undefined,
+  leagueId: string,
+  importFromLeagueId?: string | null,
+) {
   const admin = createAdminSupabase();
   await ensureProfile(admin, userId, email);
   const season = await getCurrentSeason(admin);
@@ -460,9 +613,12 @@ export async function joinPublicLeague(userId: string, email: string | undefined
   if (!ready || rules.visibility !== "public") {
     throw httpError("Questa lega non è pubblica. Serve il codice invito.", 403);
   }
-  const team = await getFantasyTeam(admin, userId, season.id);
-  if (!team) throw new Error("Prima crea la rosa: l'iscrizione alla lega usa la tua squadra.");
-  await assertCanJoin(admin, leagueId, season.id);
+  let imported: string[] | null = null;
+  const already = await teamInLeague(admin, userId, leagueId);
+  if (!already) {
+    await assertCanJoin(admin, leagueId, season.id);
+    if (importFromLeagueId) imported = await rosterToImport(admin, userId, leagueId, importFromLeagueId);
+  }
   const { data: league, error } = await admin
     .from("private_leagues")
     .select("id, name, join_code")
@@ -471,11 +627,8 @@ export async function joinPublicLeague(userId: string, email: string | undefined
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!league) throw httpError("Lega non trovata.", 404);
-  const { error: memberError } = await admin.from("private_league_members").insert({
-    private_league_id: leagueId,
-    fantasy_team_id: team.id,
-  });
-  if (memberError && memberError.code !== "23505") throw new Error(memberError.message);
+  const squad = already ?? await ensureLeagueTeam(userId, leagueId);
+  if (imported) await copyOpenRoster(admin, squad.id, season.id, imported);
   return {
     id: league.id as string,
     name: league.name as string,
@@ -483,6 +636,8 @@ export async function joinPublicLeague(userId: string, email: string | undefined
     seasonCode: season.code,
     isOwner: false,
     isManager: false,
+    teamId: squad.id,
+    teamName: squad.name,
   };
 }
 

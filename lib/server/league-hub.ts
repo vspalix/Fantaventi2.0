@@ -1,5 +1,5 @@
 import { attachAvailability } from "@/lib/server/availability";
-import { getFantasyTeam, getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
+import { getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
 import { filedPlayerScore, liveFormula, projectLiveScore } from "@/lib/engine/calculator";
@@ -27,6 +27,11 @@ import type {
 } from "@/lib/types";
 
 const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
+
+function teamOf(userId: string, participants: { userId: string; fantasyTeamId: string; teamName: string }[]) {
+  const mine = participants.find((participant) => participant.userId === userId);
+  return mine ? { id: mine.fantasyTeamId, name: mine.teamName } : null;
+}
 
 const CLOSED = new Set(["locked", "scored", "final"]);
 
@@ -177,7 +182,7 @@ export async function loadLeagueHub(
   const locked = selected ? isLocked(selected, now, inPlay) : false;
   const editable = Boolean(selected && next && selected.id === next.id && !locked);
 
-  const team = await getFantasyTeam(admin, userId, league.seasonId);
+  const team = teamOf(userId, league.participants);
   const openWeek = rows.find((gameweek) => gameweek.status !== "scored" && gameweek.status !== "final") ?? null;
   let roster = team && selected
     ? await rosterForGameweek(admin, team.id, selected.number, byId)
@@ -438,7 +443,7 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
   if (!week.data) throw httpError("Giornata non trovata in questa stagione.", 404);
   const row = week.data as GameweekRow;
   const locked = CLOSED.has(row.status) || new Date(row.deadline_at).getTime() <= Date.now();
-  const team = await getFantasyTeam(admin, userId, league.seasonId);
+  const team = teamOf(userId, league.participants);
   const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
   const lineupRows = teamIds.length ? await lineupsFor(admin, row.id, teamIds) : [];
   const playerIds = [...new Set(lineupRows.flatMap((item) => slotsOf(item).map((slot) => slot.player_id)))];
@@ -542,7 +547,7 @@ export async function loadLeagueRosters(
 ) {
   const admin = createAdminSupabase();
   const league = await getLeagueDetail(userId, leagueId);
-  const team = await getFantasyTeam(admin, userId, league.seasonId);
+  const team = teamOf(userId, league.participants);
   const byId = new Map(players.map((player) => [player.id, player]));
   const squads = await squadsFor(admin, league.participants, team?.id ?? null, gameweekNumber, byId);
   return { leagueName: league.name, squads: squads.filter((squad) => !squad.isMine) };
@@ -1212,7 +1217,7 @@ export async function saveLeagueLineup(
   await assertWritesOpen();
 
   const admin = createAdminSupabase();
-  const team = await getFantasyTeam(admin, userId, hub.league.seasonId);
+  const team = teamOf(userId, hub.league.participants);
   if (!team) throw httpError("Prima salva la rosa: la formazione usa quei calciatori.", 400);
 
   const playerIds = [...new Set(input.playerIds)];

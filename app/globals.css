@@ -150,7 +150,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   line-height: 1;
 }
 .header-menu { grid-area: menu; }
-.squad-switch, .dash-shell > .squad-pill { grid-area: squad; }
+.squad-switch, .dash-shell > .squad-pill, .league-switch, .league-current { grid-area: squad; }
 .dash-tabs, .tabs-slot { grid-area: tabs; }
 .profile-switch, .dash-login { grid-area: profile; justify-self: end; }
 .menu-pill {
@@ -168,6 +168,39 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .menu-pill[data-active="false"], .menu-pill[aria-expanded="false"] { color: var(--text); }
 .menu-pill[aria-expanded="true"] { color: var(--accent); box-shadow: var(--glow), 0 10px 28px rgba(0, 0, 0, 0.35); }
 .squad-switch, .profile-switch, .dash-menu-wrap { position: relative; }
+.league-switch {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.league-switch::-webkit-scrollbar { display: none; }
+.league-switch button {
+  flex: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 650;
+  padding: 8px 0 6px;
+  border-bottom: 2px solid transparent;
+}
+.league-switch button[data-active="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+.league-current {
+  min-width: 0;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .squad-pill, .dash-tabs, .profile-pill {
   background: rgba(20, 20, 22, 0.92);
   color: var(--text);
@@ -1220,7 +1253,7 @@ button.shirt-empty:disabled { cursor: default; }
     padding: 10px 0 12px;
     gap: 8px;
   }
-  .squad-switch, .dash-shell > .squad-pill { min-width: 0; }
+  .squad-switch, .dash-shell > .squad-pill, .league-switch, .league-current { min-width: 0; }
   .nav .primary, .nav .text-button, .nav-tools a {
     min-height: 44px;
     padding: 10px 14px;

@@ -4,8 +4,8 @@ import { readLeagueSettings } from "@/lib/server/league-settings";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
-import { ensureFantasyTeam, ensureProfile, getCurrentSeason, getFantasyTeam } from "@/lib/server/catalog";
-import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
+import { ensureFantasyTeam, ensureProfile, getCurrentSeason, teamInLeague } from "@/lib/server/catalog";
+import { ensureLeagueTeam, listLeaguesForUser } from "@/lib/server/leagues";
 import type { RosterMarket } from "@/lib/types";
 
 const MATCH_WINDOW_MS = MATCH_CLOSE_MS;
@@ -158,10 +158,10 @@ function covers(stint: StintRow, gameweek: number) {
     && (stint.active_until_gameweek === null || stint.active_until_gameweek >= gameweek);
 }
 
-export async function loadRoster(userId: string) {
+export async function loadRoster(userId: string, leagueId?: string) {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const team = await getFantasyTeam(admin, userId, season.id);
+  const team = leagueId ? await teamInLeague(admin, userId, leagueId) : null;
   const market = await loadRosterMarket(admin, season.id);
   const appliesFrom = await rosterAppliesFrom(admin, season.id);
   if (!team) return { teamId: null, teamName: "", playerIds: [] as string[], appliesFrom, market };
@@ -182,7 +182,7 @@ export async function loadRoster(userId: string) {
   };
 }
 
-export async function saveRoster(userId: string, email: string | undefined, teamName: string, playerIds: string[]) {
+export async function saveRoster(userId: string, email: string | undefined, teamName: string, playerIds: string[], leagueId?: string) {
   const trimmed = teamName.trim();
   if (trimmed.length < 2 || trimmed.length > 40) {
     throw new Error("Il nome squadra deve avere tra 2 e 40 caratteri.");
@@ -198,7 +198,16 @@ export async function saveRoster(userId: string, email: string | undefined, team
   const season = await getCurrentSeason(admin);
   const market = await loadRosterMarket(admin, season.id);
   if (market.locked && market.message) throw httpError(market.message, 409);
-  const teamId = await ensureFantasyTeam(admin, userId, season.id, trimmed);
+  let teamId: string;
+  if (leagueId) {
+    const leagues = await listLeaguesForUser(userId);
+    if (!leagues.some((league) => league.id === leagueId)) {
+      throw httpError("Non fai parte di questa lega.", 403);
+    }
+    teamId = (await ensureLeagueTeam(userId, leagueId, trimmed)).id;
+  } else {
+    teamId = await ensureFantasyTeam(admin, userId, season.id, trimmed);
+  }
   const gameweek = await rosterAppliesFrom(admin, season.id);
 
   const { data: previousRows, error: previousError } = await admin
@@ -248,30 +257,7 @@ export async function saveRoster(userId: string, email: string | undefined, team
   }
   if (changed) await clearOpenLineups(admin, season.id, teamId, gameweek);
 
-  const ownedFiltered = await admin
-    .from("private_leagues")
-    .select("id")
-    .eq("owner_user_id", userId)
-    .eq("season_id", season.id)
-    .eq("is_sandbox", false);
-  const ownedResult = ownedFiltered.error && missingSandboxColumn(ownedFiltered.error.message)
-    ? await admin.from("private_leagues").select("id").eq("owner_user_id", userId).eq("season_id", season.id)
-    : ownedFiltered;
-  if (ownedResult.error) throw new Error(ownedResult.error.message);
-  const ownedLeagues = ownedResult.data;
-
-  if ((ownedLeagues ?? []).length > 0) {
-    const { error: memberError } = await admin.from("private_league_members").upsert(
-      (ownedLeagues ?? []).map((league) => ({
-        private_league_id: league.id as string,
-        fantasy_team_id: teamId,
-      })),
-      { onConflict: "private_league_id,fantasy_team_id", ignoreDuplicates: true },
-    );
-    if (memberError) throw new Error(memberError.message);
-  }
-
-  return { teamId, teamName: trimmed, playerIds, appliesFrom: gameweek, gameweek };
+  return { teamId, teamName: trimmed, playerIds, appliesFrom: gameweek, gameweek, leagueId: leagueId ?? null };
 }
 
 async function assertRosterMarket(
@@ -458,10 +444,10 @@ async function clearOpenLineups(
   if (lineupError) throw new Error(lineupError.message);
 }
 
-export async function describeCheckpoint(userId: string) {
+export async function describeCheckpoint(userId: string, leagueId?: string) {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const team = await getFantasyTeam(admin, userId, season.id);
+  const team = leagueId ? await teamInLeague(admin, userId, leagueId) : null;
   if (!team) return "La prima rosa si compone da Checkpoint. Poi i cambi seguono le finestre della lega.";
   const memberships = await admin.from("private_league_members").select("private_league_id").eq("fantasy_team_id", team.id);
   if (memberships.error) return "Il checkpoint della lega non è disponibile in questo momento.";

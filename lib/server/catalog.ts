@@ -227,25 +227,61 @@ export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
   return { seasonId: season.id, seasonCode: season.code, clubs, players, rules: season.rules };
 }
 
-const teamForRequest = cache(async (userId: string, seasonId: string) => {
-  const admin = createAdminSupabase();
-  return readFantasyTeam(admin, userId, seasonId);
-});
+export type FantasyTeamRef = { id: string; name: string };
 
-async function readFantasyTeam(admin: SupabaseClient, userId: string, seasonId: string) {
+export async function listSeasonTeams(admin: SupabaseClient, userId: string, seasonId: string) {
   const scoped = await admin
     .from("fantasy_teams")
     .select("id, name")
     .eq("user_id", userId)
     .eq("season_id", seasonId)
-    .eq("is_sandbox", false)
-    .maybeSingle();
+    .eq("is_sandbox", false);
   const plain = scoped.error && missingSandboxColumn(scoped.error.message)
-    ? await admin.from("fantasy_teams").select("id, name").eq("user_id", userId).eq("season_id", seasonId).maybeSingle()
+    ? await admin.from("fantasy_teams").select("id, name").eq("user_id", userId).eq("season_id", seasonId)
     : scoped;
   if (plain.error) throw new Error(plain.error.message);
-  return plain.data as { id: string; name: string } | null;
+  return (plain.data ?? []) as FantasyTeamRef[];
 }
+
+export async function teamInLeague(admin: SupabaseClient, userId: string, leagueId: string) {
+  const league = await admin.from("private_leagues").select("season_id").eq("id", leagueId).maybeSingle();
+  if (league.error) throw new Error(league.error.message);
+  const seasonId = league.data?.season_id as string | undefined;
+  if (!seasonId) return null;
+  const teams = await listSeasonTeams(admin, userId, seasonId);
+  if (teams.length === 0) return null;
+  const members = await admin
+    .from("private_league_members")
+    .select("fantasy_team_id")
+    .eq("private_league_id", leagueId)
+    .in("fantasy_team_id", teams.map((team) => team.id));
+  if (members.error) throw new Error(members.error.message);
+  const ids = new Set((members.data ?? []).map((row) => row.fantasy_team_id as string));
+  return teams.find((team) => ids.has(team.id)) ?? null;
+}
+
+export async function createDedicatedTeam(admin: SupabaseClient, userId: string, seasonId: string, teamName: string) {
+  const id = crypto.randomUUID();
+  const { error } = await admin.from("fantasy_teams").insert({
+    id,
+    user_id: userId,
+    season_id: seasonId,
+    name: teamName,
+  });
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("Per una rosa diversa in ogni lega esegui supabase/league_teams.sql nell'editor SQL di Supabase.");
+    }
+    throw new Error(error.message);
+  }
+  return id;
+}
+
+const teamForRequest = cache(async (userId: string, seasonId: string) => {
+  const admin = createAdminSupabase();
+  const teams = await listSeasonTeams(admin, userId, seasonId);
+  return teams.length === 1 ? teams[0] : null;
+});
 
 export async function getFantasyTeam(admin: SupabaseClient, userId: string, seasonId: string) {
   void admin;
@@ -258,7 +294,11 @@ export async function ensureFantasyTeam(
   seasonId: string,
   teamName: string,
 ) {
-  const existing = await getFantasyTeam(admin, userId, seasonId);
+  const teams = await listSeasonTeams(admin, userId, seasonId);
+  if (teams.length > 1) {
+    throw new Error("Questa utenza ha una squadra per lega: indica la lega.");
+  }
+  const existing = teams[0];
   if (existing) {
     if (teamName && teamName !== existing.name) {
       const { error } = await admin.from("fantasy_teams").update({ name: teamName }).eq("id", existing.id);
@@ -267,13 +307,5 @@ export async function ensureFantasyTeam(
     return existing.id;
   }
 
-  const id = crypto.randomUUID();
-  const { error } = await admin.from("fantasy_teams").insert({
-    id,
-    user_id: userId,
-    season_id: seasonId,
-    name: teamName,
-  });
-  if (error) throw new Error(error.message);
-  return id;
+  return createDedicatedTeam(admin, userId, seasonId, teamName);
 }

@@ -11,7 +11,7 @@ import {
 } from "@/lib/admin-types";
 import { evaluateRoster } from "@/lib/constraints";
 import { FORMATIONS, autoLineup, formationIssue } from "@/lib/formations";
-import { ensureProfile, getCurrentSeason, getFantasyTeam, loadCatalog } from "@/lib/server/catalog";
+import { ensureProfile, getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { activateSeasonGameweek } from "@/lib/server/gameweek-cycle";
 import { loadLeagueHub } from "@/lib/server/league-hub";
 import { getLeagueDetail } from "@/lib/server/leagues";
@@ -391,11 +391,19 @@ export async function generateTestTeams(userId: string, leagueId: string): Promi
       .from("fantasy_teams")
       .select("id")
       .eq("user_id", authId)
-      .eq("season_id", league.seasonId)
-      .maybeSingle();
+      .eq("season_id", league.seasonId);
     if (existing.error) throw new Error(existing.error.message);
+    const existingIds = (existing.data ?? []).map((row) => row.id as string);
+    const memberOfLeague = existingIds.length === 0
+      ? { data: [] as { fantasy_team_id: string }[], error: null }
+      : await admin
+        .from("private_league_members")
+        .select("fantasy_team_id")
+        .eq("private_league_id", leagueId)
+        .in("fantasy_team_id", existingIds);
+    if (memberOfLeague.error) throw new Error(memberOfLeague.error.message);
 
-    let teamId = existing.data?.id as string | undefined;
+    let teamId = memberOfLeague.data?.[0]?.fantasy_team_id as string | undefined;
     if (!teamId) {
       teamId = randomUUID();
       const { error } = await admin.from("fantasy_teams").insert({
@@ -589,9 +597,9 @@ export async function setAdminLineups(
   if (week.error) throw new Error(week.error.message);
   if (!week.data) throw httpError("Giornata non trovata in questa stagione.", 404);
 
-  const mine = await getFantasyTeam(admin, userId, league.seasonId);
+  const mine = league.participants.find((participant) => participant.userId === userId) ?? null;
   const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
-  if (mine && !teamIds.includes(mine.id)) teamIds.push(mine.id);
+  if (mine && !teamIds.includes(mine.fantasyTeamId)) teamIds.push(mine.fantasyTeamId);
   const targets = fantasyTeamId ? teamIds.filter((teamId) => teamId === fantasyTeamId) : teamIds;
   if (fantasyTeamId && targets.length === 0) throw httpError("Questa squadra non è nella lega.", 404);
 
@@ -852,16 +860,7 @@ export async function loadAdminLineups(userId: string, leagueId: string, gamewee
   const admin = createAdminSupabase();
   const catalog = await loadCatalog(league.seasonId);
   const byId = new Map(catalog.players.map((player) => [player.id, player]));
-  const mine = await getFantasyTeam(admin, userId, league.seasonId);
   const participants = [...league.participants];
-  if (mine && !participants.some((participant) => participant.fantasyTeamId === mine.id)) {
-    participants.unshift({
-      fantasyTeamId: mine.id,
-      userId,
-      teamName: mine.name,
-      displayName: "Tu",
-    });
-  }
   const teamIds = participants.map((participant) => participant.fantasyTeamId);
   if (teamIds.length === 0) return [];
 
@@ -927,7 +926,7 @@ export async function loadAdminLineups(userId: string, leagueId: string, gamewee
       fantasyTeamId: participant.fantasyTeamId,
       teamName: participant.teamName,
       displayName: participant.displayName,
-      isMine: participant.fantasyTeamId === mine?.id,
+      isMine: participant.userId === userId,
       filed: Boolean(lineup),
       savedAt: (lineup as { saved_at?: string | null } | undefined)?.saved_at ?? null,
       starters,

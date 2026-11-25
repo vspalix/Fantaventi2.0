@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { cookies } from "next/headers";
 import { RosterBuilder } from "@/components/roster/RosterBuilder";
 import { SetupNotice } from "@/components/SetupNotice";
@@ -22,14 +23,23 @@ export default async function RosterPage() {
   }
 
   try {
-    const [catalog, roster] = await Promise.all([loadCatalog(), meter("roster", () => loadRoster(user.id))]);
-    const checkpointNote = await describeCheckpoint(user.id).catch(() => null);
+    const leagues = await listLeaguesForUser(user.id);
+    const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value;
+    const league = leagues.find((item) => item.id === saved) ?? leagues[0] ?? null;
+    if (!league) {
+      return (
+        <section className="card">
+          <h2>Ogni lega ha la sua rosa</h2>
+          <p>L&apos;account è uno solo. La squadra, la formazione e il ruolo li decidi dentro la lega: admin in una, giocatore in un&apos;altra.</p>
+          <Link className="primary" href="/leghe">Vai alle leghe</Link>
+        </section>
+      );
+    }
+    const [catalog, roster] = await Promise.all([loadCatalog(), meter("roster", () => loadRoster(user.id, league.id))]);
+    const checkpointNote = await describeCheckpoint(user.id, league.id).catch(() => null);
     let others: Awaited<ReturnType<typeof loadLeagueRosters>> | null = null;
     try {
-      const leagues = await listLeaguesForUser(user.id);
-      const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value;
-      const league = leagues.find((item) => item.id === saved) ?? leagues[0];
-      if (league) others = await loadLeagueRosters(user.id, league.id, roster.appliesFrom, catalog.players);
+      others = await loadLeagueRosters(user.id, league.id, roster.appliesFrom, catalog.players);
     } catch {
       others = null;
     }
@@ -42,6 +52,8 @@ export default async function RosterPage() {
           loadError={null}
           others={others}
           checkpointNote={checkpointNote}
+          leagueId={league.id}
+          leagueName={league.name}
         />
       </section>
     );

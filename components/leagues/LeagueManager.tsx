@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { BusyLabel } from "@/components/BusyLabel";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
+import { JoinImportPrompt } from "@/components/leagues/JoinImportPrompt";
 import { EmptyState } from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { BONUS_FIELDS, COMPETITION_FORMATS, DEFAULT_LEAGUE_RULES, defaultPhases, type CompetitionFormat, type LeagueRules } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
-import type { LeagueSummary } from "@/lib/types";
+import type { LeagueSummary, RosterImportSource } from "@/lib/types";
 import { readAction } from "@/lib/feedback";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -24,6 +25,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
   const [rules, setRules] = useState<LeagueRules>(DEFAULT_LEAGUE_RULES);
   const [code, setCode] = useState("");
   const [created, setCreated] = useState<(LeagueSummary & { rulesStored?: boolean }) | null>(null);
+  const [offer, setOffer] = useState<{ targetName: string; sources: RosterImportSource[]; payload: { code?: string; leagueId?: string } } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const flight = useRef(false);
@@ -72,23 +74,34 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
     }
   }
 
-  async function joinLeague() {
+  async function submitJoin(payload: { code?: string; leagueId?: string }, importFromLeagueId?: string | null, confirmed = false) {
     if (flight.current) return;
     flight.current = true;
     setPending(true);
     setError(null);
     try {
-      const body = await readJson<{ league: LeagueSummary }>(await fetch("/api/leagues/join", {
+      const body = await readJson<{ league?: LeagueSummary; needsImport?: boolean; targetName?: string; sources?: RosterImportSource[] }>(await fetch("/api/leagues/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ ...payload, confirmed, importFromLeagueId }),
       }));
+      if (body.needsImport && body.targetName && body.sources) {
+        setOffer({ targetName: body.targetName, sources: body.sources, payload });
+        return;
+      }
+      if (!body.league) throw new Error("Iscrizione non riuscita.");
+      setOffer(null);
       router.push(`/leghe/${body.league.id}`);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+    } finally {
       flight.current = false;
       setPending(false);
     }
+  }
+
+  async function joinLeague() {
+    await submitJoin({ code });
   }
 
   if (!signedIn) {
@@ -104,6 +117,14 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
   return (
     <div className="stack">
       {error ? <p className="banner">{error}</p> : null}
+      {offer ? (
+        <JoinImportPrompt
+          targetName={offer.targetName}
+          sources={offer.sources}
+          pending={pending}
+          onPick={(importFromLeagueId) => void submitJoin(offer.payload, importFromLeagueId, true)}
+        />
+      ) : null}
       {created ? (
         <section className="card">
           <h2>Lega creata</h2>
@@ -255,7 +276,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
         </form>
         <form className="card stack" onSubmit={(event) => { event.preventDefault(); void joinLeague(); }}>
           <h2>Unisciti con un codice</h2>
-          <p>Serve una rosa già salvata: la lega iscrive la squadra, non solo l&apos;utente.</p>
+          <p>Se hai già una rosa in un&apos;altra lega, prima di entrare ti chiedo se portarla.</p>
           <label>
             Codice invito
             <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="H7K2M9QA" />
@@ -280,24 +301,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
                   type="button"
                   disabled={pending}
                   aria-busy={pending}
-                  onClick={() => {
-                    if (flight.current) return;
-                    flight.current = true;
-                    setPending(true);
-                    setError(null);
-                    void fetch("/api/leagues/join", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ leagueId: league.id }),
-                    })
-                      .then((response) => readJson<{ league: LeagueSummary }>(response))
-                      .then((body) => router.push(`/leghe/${body.league.id}`))
-                      .catch((reason: unknown) => {
-                        setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
-                        flight.current = false;
-                        setPending(false);
-                      });
-                  }}
+                  onClick={() => void submitJoin({ leagueId: league.id })}
                 >
                   <BusyLabel pending={pending} idle="Entra" busy="Iscrizione..." />
                 </button>

@@ -18,7 +18,7 @@ import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { mustResetPassword } from "@/lib/server/account-password";
 import { readMaintenance } from "@/lib/server/maintenance";
-import { getCurrentSeason, getFantasyTeam, listPlayableSeasons } from "@/lib/server/catalog";
+import { getCurrentSeason, listPlayableSeasons } from "@/lib/server/catalog";
 import { getSessionUser } from "@/lib/server/session";
 import { hostAccess } from "@/lib/server/view-mode";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -107,13 +107,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       const admin = createAdminSupabase();
       activeSeasonId = (await getCurrentSeason(admin)).id;
       if (user && activeSeasonId) {
-        const [team, leagues, profile] = await Promise.all([
-          getFantasyTeam(admin, user.id, activeSeasonId),
+        const [leagues, profile] = await Promise.all([
           listLeaguesForUser(user.id),
           admin.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
         ]);
-        const teamName = team?.name ?? "La tua squadra";
-        squads = leagues.map((league) => ({ id: league.id, teamName, leagueName: league.name }));
+        squads = leagues.map((league) => ({
+          id: league.id,
+          teamName: league.teamName || "La tua squadra",
+          leagueName: league.name,
+        }));
         const saved = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value;
         activeLeagueId = squads.find((squad) => squad.id === saved)?.id ?? squads[0]?.id ?? null;
         const displayName = profile.data?.display_name;
@@ -145,7 +147,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             platformAdmin={platformAdmin}
             hostMode={hostMode}
             canSwitch={canSwitch}
-            brandLogoUrl={brand.logoUrl}
           />
         </Suspense>
         {maintenance.enabled ? <MaintenanceBanner message={maintenance.message} admin={platformAdmin} /> : null}

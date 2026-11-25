@@ -22,7 +22,6 @@ export function SiteHeader({
   platformAdmin,
   hostMode,
   canSwitch,
-  brandLogoUrl = "",
 }: {
   email: string | null;
   profileLabel: string;
@@ -33,13 +32,12 @@ export function SiteHeader({
   platformAdmin: boolean;
   hostMode: boolean;
   canSwitch: boolean;
-  brandLogoUrl?: string;
 }) {
   const pathname = usePathname();
   const search = useSearchParams();
   const router = useRouter();
   const [leagueTab, setLeagueTab] = useState(search.get("tab"));
-  const [open, setOpen] = useState<"squad" | "menu" | "profile" | "more" | null>(null);
+  const [open, setOpen] = useState<"menu" | "profile" | "more" | null>(null);
   const bar = useRef<HTMLElement>(null);
   const clientTab = useRef<string | null>(null);
   const pathLeague = pathname.match(/^\/leghe\/([^/]+)/)?.[1];
@@ -181,39 +179,24 @@ export function SiteHeader({
           </div>
         ) : <span className="header-menu" />}
 
-        {email && current ? (
-          <div className="squad-switch">
-            <button className="squad-pill" type="button" aria-expanded={open === "squad"} aria-haspopup="listbox" onClick={() => setOpen(open === "squad" ? null : "squad")}>
-              <span className="squad-mark" aria-hidden="true">
-                {brandLogoUrl ? <img src={brandLogoUrl} alt="" /> : <ShieldIcon />}
-              </span>
-              <span className="squad-copy">
-                <strong>{current.teamName}</strong>
-                <small>{current.leagueName}</small>
-              </span>
-              <ChevronIcon />
-            </button>
-            {open === "squad" ? (
-              <ul className="dash-menu" role="listbox" aria-label="Le tue squadre">
-                {squads.map((squad) => (
-                  <li key={squad.id}>
-                    <button type="button" data-active={squad.id === current.id} onClick={() => void chooseSquad(squad.id)}>
-                      <strong>{squad.teamName}</strong>
-                      <small>{squad.leagueName}</small>
-                    </button>
-                  </li>
-                ))}
-                <li><Link href="/leghe" onClick={() => setOpen(null)}>Tutte le leghe</Link></li>
-              </ul>
-            ) : null}
+        {email && squads.length > 1 && current ? (
+          <div className="league-switch" role="tablist" aria-label="Le tue leghe">
+            {squads.map((squad) => (
+              <button
+                key={squad.id}
+                type="button"
+                role="tab"
+                aria-selected={squad.id === current.id}
+                data-active={squad.id === current.id}
+                onClick={() => void chooseSquad(squad.id)}
+              >
+                {squad.leagueName}
+              </button>
+            ))}
           </div>
         ) : (
-          <Link href={email ? "/rosa" : "/"} className="squad-pill squad-link">
-            <span className="squad-mark" aria-hidden="true">{brandLogoUrl ? <img src={brandLogoUrl} alt="" /> : <ShieldIcon />}</span>
-            <span className="squad-copy">
-              <strong>{email ? "Crea la rosa" : "Fantaventi"}</strong>
-              <small>{email ? "Nessuna squadra ancora" : "Rosa libera"}</small>
-            </span>
+          <Link href={email ? (current ? `/leghe/${current.id}` : "/leghe") : "/"} className="league-current">
+            {email ? (current?.leagueName ?? "Le tue leghe") : "Fantaventi"}
           </Link>
         )}
 
@@ -243,14 +226,6 @@ export function SiteHeader({
       </div>
     ) : null}
   </>
-  );
-}
-
-function ChevronIcon() {
-  return (
-    <svg className="squad-chevron" viewBox="0 0 20 20" aria-hidden="true">
-      <path d="M5 7.5 10 12.5 15 7.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
 

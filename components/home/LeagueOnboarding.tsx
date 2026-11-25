@@ -4,9 +4,10 @@ import { useRef, useState } from "react";
 import { BusyLabel } from "@/components/BusyLabel";
 import { useRouter } from "next/navigation";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
+import { JoinImportPrompt } from "@/components/leagues/JoinImportPrompt";
 import { DEFAULT_LEAGUE_RULES } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
-import type { LeagueSummary } from "@/lib/types";
+import type { LeagueSummary, RosterImportSource } from "@/lib/types";
 import { readAction } from "@/lib/feedback";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -19,6 +20,7 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
   const [name, setName] = useState("");
   const [code, setCode] = useState("");
   const [created, setCreated] = useState<LeagueSummary | null>(null);
+  const [offer, setOffer] = useState<{ targetName: string; sources: RosterImportSource[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const flight = useRef(false);
@@ -47,21 +49,27 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
     }
   }
 
-  async function joinLeague() {
+  async function joinLeague(importFromLeagueId?: string | null, confirmed = false) {
     if (flight.current) return;
     flight.current = true;
     setPending(true);
     setError(null);
     try {
-      const body = await readJson<{ league: LeagueSummary }>(await fetch("/api/leagues/join", {
+      const body = await readJson<{ league?: LeagueSummary; needsImport?: boolean; targetName?: string; sources?: RosterImportSource[] }>(await fetch("/api/leagues/join", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify({ code, confirmed, importFromLeagueId }),
       }));
+      if (body.needsImport && body.targetName && body.sources) {
+        setOffer({ targetName: body.targetName, sources: body.sources });
+        return;
+      }
+      if (!body.league) throw new Error("Iscrizione non riuscita.");
       router.push(`/leghe/${body.league.id}`);
       router.refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+    } finally {
       flight.current = false;
       setPending(false);
     }
@@ -94,7 +102,18 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
           </div>
         </form>
       ) : null}
-      {step === "join" ? (
+      {step === "join" && offer ? (
+        <>
+          <JoinImportPrompt
+            targetName={offer.targetName}
+            sources={offer.sources}
+            pending={pending}
+            onPick={(importFromLeagueId) => void joinLeague(importFromLeagueId, true)}
+          />
+          <button className="ghost" type="button" onClick={() => { setOffer(null); setError(null); }}>Indietro</button>
+        </>
+      ) : null}
+      {step === "join" && !offer ? (
         <form className="stack" onSubmit={(event) => { event.preventDefault(); void joinLeague(); }}>
           <label>
             Codice
@@ -104,7 +123,7 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
             <button className="primary" type="submit" disabled={pending || code.trim().length < 4} aria-busy={pending}>
               <BusyLabel pending={pending} idle="Unisciti con Codice" busy="Iscrizione..." />
             </button>
-            <button className="ghost" type="button" onClick={() => { setError(null); setStep("choose"); }}>Indietro</button>
+            <button className="ghost" type="button" onClick={() => { setError(null); setOffer(null); setStep("choose"); }}>Indietro</button>
           </div>
         </form>
       ) : null}

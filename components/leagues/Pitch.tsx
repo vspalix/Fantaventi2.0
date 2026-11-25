@@ -31,6 +31,7 @@ export function Pitch({
   onReplace,
   onMark,
   onPickRole,
+  hideMarks = false,
 }: {
   formation: Formation;
   players: PitchPlayer[];
@@ -42,6 +43,7 @@ export function Pitch({
   onReplace?: (playerId: string) => void;
   onMark?: (playerId: string, kind: "captain" | "vice") => void;
   onPickRole?: (role: PlayerRole) => void;
+  hideMarks?: boolean;
 }) {
   const byId = new Map(players.map((player) => [player.id, player]));
   return (
@@ -75,7 +77,7 @@ export function Pitch({
                     <strong>{shirtName(player.fullName)}</strong>
                     <span><TeamBadge teamName={player.clubShort} size={12} /> {player.clubShort}</span>
                   </button>
-                  {editable && onMark ? (
+                  {hideMarks ? null : editable && onMark ? (
                     <span className="shirt-actions">
                       <button className="chip" type="button" data-active={captainId === player.id} onClick={() => onMark(player.id, "captain")}>C</button>
                       <button

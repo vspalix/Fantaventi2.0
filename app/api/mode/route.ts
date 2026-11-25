@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { listLeaguesForUser } from "@/lib/server/leagues";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
 import { VIEW_COOKIE } from "@/lib/server/view-mode";
@@ -15,10 +14,8 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { mode?: string };
     const mode = body.mode === "host" ? "host" : "player";
     const platformAdmin = await isSuperAdmin(user.id);
-    const leagues = platformAdmin ? [] : await listLeaguesForUser(user.id).catch(() => []);
-    const leagueAdmin = leagues.some((league) => league.isManager);
-    if (mode === "host" && !platformAdmin && !leagueAdmin) {
-      return NextResponse.json({ error: "La vista admin è riservata a chi gestisce una lega o la piattaforma." }, { status: 403 });
+    if (mode === "host" && !platformAdmin) {
+      return NextResponse.json({ error: "La vista admin globale è riservata al super admin." }, { status: 403 });
     }
     const jar = await cookies();
     jar.set(VIEW_COOKIE, mode, {

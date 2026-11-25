@@ -30,6 +30,8 @@ export type AuditPlayer = {
   fantavoto: number | null;
   captain: boolean;
   source: "starter" | "substitute" | "bench";
+  slotKind: "starter" | "bench";
+  slotOrder: number;
   replacedId: string | null;
   replacedName: string | null;
 };
@@ -192,6 +194,12 @@ export function explainScore(input: {
     if (step.entrantId) replacedBy.set(step.entrantId, step.starterId);
   }
   const emptyUnit = definition.empty_slot_points ?? 0;
+  const placement = (playerId: string) => {
+    const original = slots.find((item) => item.playerId === playerId);
+    if (original?.benchOrder != null) return { slotKind: "bench" as const, slotOrder: original.benchOrder };
+    const index = slots.findIndex((item) => item.playerId === playerId);
+    return { slotKind: "starter" as const, slotOrder: index < 0 ? 0 : index };
+  };
   const players: AuditPlayer[] = played.xi.map((slot) => {
     const scored = byPlayed.get(slot.playerId);
     const stat = stats.get(slot.playerId);
@@ -218,6 +226,7 @@ export function explainScore(input: {
       fantavoto: scored?.playerPoints ?? null,
       captain: Boolean(scored?.isEffectiveCaptain),
       source: replacedId ? "substitute" : "starter",
+      ...placement(slot.playerId),
       replacedId,
       replacedName: replacedId ? nameOf(input.names, replacedId) : null,
     };
@@ -238,6 +247,7 @@ export function explainScore(input: {
       fantavoto: null,
       captain: false,
       source: "bench",
+      ...placement(slot.playerId),
       replacedId: null,
       replacedName: null,
     });

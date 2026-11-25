@@ -10,6 +10,7 @@ import {
   syncAvailability,
 } from "@/lib/server/availability";
 import { assertServiceEnv } from "@/lib/server/catalog";
+import { createAdminSupabase } from "@/lib/supabase/admin";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
 
@@ -22,7 +23,15 @@ export async function GET(request: Request) {
     const query = new URL(request.url).searchParams.get("q") ?? "";
     if (query) return NextResponse.json({ players: await searchPlayers(query) });
     const current = await readAvailabilitySettings();
-    return NextResponse.json(current);
+    const ids = [...new Set(current.settings.aliases.map((alias) => alias.playerId))];
+    const aliasNames: Record<string, string> = {};
+    if (ids.length > 0) {
+      const names = await createAdminSupabase().from("players").select("id, full_name").in("id", ids);
+      if (!names.error) {
+        for (const row of names.data ?? []) aliasNames[row.id as string] = row.full_name as string;
+      }
+    }
+    return NextResponse.json({ ...current, aliasNames });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }
@@ -34,7 +43,7 @@ export async function POST(request: Request) {
     await requireSuperAdmin();
     const body = await request.json() as {
       action?: string;
-      provider?: "api-football" | "external-json" | "manual";
+      provider?: "api-football" | "fantacalcio" | "external-json" | "manual";
       leagueId?: number;
       season?: number;
       jsonUrl?: string;

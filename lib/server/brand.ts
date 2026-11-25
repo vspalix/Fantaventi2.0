@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { accentOrDefault, DEFAULT_BRAND_ACCENT, type BrandSettings } from "@/lib/brand";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -27,7 +28,7 @@ function fromRow(row: Record<string, unknown> | null, ready: boolean): BrandSett
   };
 }
 
-export async function readBrand(): Promise<BrandSettings> {
+export const readBrand = cache(async (): Promise<BrandSettings> => {
   try {
     const admin = createAdminSupabase();
     const row = await admin.from("system_settings").select("brand_logo_url, brand_icon_192_url, brand_icon_512_url, brand_accent_color").eq("id", 1).maybeSingle();
@@ -41,7 +42,7 @@ export async function readBrand(): Promise<BrandSettings> {
     if (missing(message) || /SUPABASE_SERVICE_ROLE_KEY|fetch failed/i.test(message)) return FALLBACK;
     throw error;
   }
-}
+});
 
 function httpError(message: string, status: number) {
   const error = new Error(message) as Error & { status: number };

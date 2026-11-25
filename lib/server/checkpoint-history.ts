@@ -20,6 +20,7 @@ export async function loadCheckpointHistory(input: {
   participants: Person[];
   gameweeks: Week[];
   rules: LeagueRules;
+  knownPoints?: Map<string, number> | null;
 }): Promise<CheckpointHistory> {
   const ordered = [...input.checkpoints].sort((left, right) => left.afterMatchday - right.afterMatchday);
   const scored = input.gameweeks.filter((week) => week.status === "scored" || week.status === "final");
@@ -42,10 +43,14 @@ export async function loadCheckpointHistory(input: {
   const horizon = input.gameweeks.filter((week) => week.number <= through);
   const weeks = horizon.filter((week) => week.status === "scored" || week.status === "final");
   let weekPoints: Map<string, number> | null = null;
-  try {
-    weekPoints = await fantasyPointsForLeague(input.leagueId, input.seasonId, teamIds, weeks);
-  } catch {
-    weekPoints = null;
+  if (input.knownPoints !== undefined) {
+    weekPoints = input.knownPoints;
+  } else {
+    try {
+      weekPoints = await fantasyPointsForLeague(input.leagueId, input.seasonId, teamIds, weeks);
+    } catch {
+      weekPoints = null;
+    }
   }
 
   const stored = new Map<string, number>();

@@ -1,19 +1,25 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ClubPair } from "@/components/TeamBadge";
-import { CompactLineup, compactFromAudit, type CompactPlayer } from "@/components/lineups/CompactLineup";
-import type { ScoreAudit } from "@/lib/engine/score-audit";
+import { InfoTip } from "@/components/InfoTip";
+import { CompactLineup, type CompactPlayer, type LineBonuses } from "@/components/lineups/CompactLineup";
 import type { LeagueHubData, LiveLineupSheet, OpponentLineup } from "@/lib/types";
 
-const kickoff = new Intl.DateTimeFormat("it-IT", {
-  weekday: "short",
-  day: "numeric",
-  month: "short",
-  hour: "2-digit",
-  minute: "2-digit",
-  timeZone: "Europe/Rome",
-});
+type CalendarWeek = {
+  selectedGameweekId: string;
+  number: number;
+  opponents: OpponentLineup[];
+  partial: LeagueHubData["partial"];
+  selectedFixtures: LeagueHubData["home"]["selectedFixtures"];
+};
+
+type Sheet = {
+  fantasyTeamId: string;
+  total: number;
+  starters: CompactPlayer[];
+  bench: CompactPlayer[];
+  bonuses?: LineBonuses;
+};
 
 function points(value: number | null) {
   if (value == null) return "—";
@@ -29,6 +35,8 @@ function fromSlots(opponent: OpponentLineup): { starters: CompactPlayer[]; bench
     vote: null,
     fanta: null,
     captain: slot.isCaptain,
+    played: false,
+    entered: false,
     events: [],
   });
   return {
@@ -40,6 +48,8 @@ function fromSlots(opponent: OpponentLineup): { starters: CompactPlayer[]; bench
       club: player.clubShort,
       vote: null,
       fanta: null,
+      played: false,
+      entered: false,
       events: [],
     })),
   };
@@ -54,35 +64,75 @@ function fromLive(sheet: LiveLineupSheet): { starters: CompactPlayer[]; bench: C
     vote: row.voto,
     fanta: row.fantavoto,
     captain: row.isCaptain,
+    played: row.voto != null,
+    entered: false,
     events: [],
   });
   return { starters: sheet.starters.map(map), bench: sheet.bench.map(map) };
 }
 
-export function MatchdayResults({
-  hub,
-  pending,
-  onSelect,
-}: {
-  hub: LeagueHubData;
-  pending: boolean;
-  onSelect: (gameweekId: string) => void;
-}) {
+export function MatchdayResults({ hub }: { hub: LeagueHubData }) {
   const weeks = [...hub.gameweeks].sort((left, right) => left.number - right.number);
-  const index = Math.max(0, weeks.findIndex((week) => week.id === hub.selectedGameweekId));
-  const current = weeks[index] ?? null;
+  const [week, setWeek] = useState<CalendarWeek | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sheets, setSheets] = useState<Record<string, Sheet[]>>({});
+  const selectedId = week?.selectedGameweekId ?? hub.selectedGameweekId;
+  const index = Math.max(0, weeks.findIndex((item) => item.id === selectedId));
+  const current = weeks[index] ?? null;
+  const opponents = week?.opponents ?? hub.opponents;
+  const partial = week?.partial ?? hub.partial;
   const scored = current?.status === "scored" || current?.status === "final";
-  const pointsById = new Map(hub.partial.map((row) => [row.fantasyTeamId, row]));
-  const teams = [...hub.opponents].sort((left, right) => {
+  const pointsById = new Map(partial.map((row) => [row.fantasyTeamId, row]));
+  const teams = [...opponents].sort((left, right) => {
     const leftRank = pointsById.get(left.fantasyTeamId)?.rank ?? 99;
     const rightRank = pointsById.get(right.fantasyTeamId)?.rank ?? 99;
     return leftRank - rightRank || left.teamName.localeCompare(right.teamName, "it");
   });
+  const loaded = current ? sheets[current.id] : undefined;
+  const gameweekId = current?.id ?? "";
+  const mine = teams.find((team) => team.isMine) ?? null;
+  const mineStanding = mine ? pointsById.get(mine.fantasyTeamId) : undefined;
 
   useEffect(() => {
+    setWeek(null);
     setOpenId(null);
   }, [hub.selectedGameweekId]);
+
+  useEffect(() => {
+    if (!gameweekId || !scored || sheets[gameweekId]) return;
+    let cancel = false;
+    void (async () => {
+      try {
+        const response = await fetch(`/api/leagues/${hub.league.id}/matchday?gameweekId=${gameweekId}&scope=sheets`);
+        const body = await response.json() as { sheets?: Sheet[]; error?: string };
+        if (cancel) return;
+        if (!response.ok) throw new Error(body.error ?? "Voti non disponibili.");
+        setSheets((cache) => ({ ...cache, [gameweekId]: body.sheets ?? [] }));
+      } catch (reason) {
+        if (!cancel) setError(reason instanceof Error ? reason.message : "Voti non disponibili.");
+      }
+    })();
+    return () => { cancel = true; };
+  }, [gameweekId, scored, sheets, hub.league.id]);
+
+  async function choose(gameweekId: string) {
+    if (!gameweekId || gameweekId === selectedId || pending) return;
+    setPending(true);
+    setError(null);
+    setOpenId(null);
+    try {
+      const response = await fetch(`/api/leagues/${hub.league.id}/hub?gameweek=${gameweekId}&view=calendar`);
+      const body = await response.json() as { calendar?: CalendarWeek; error?: string };
+      if (!response.ok || !body.calendar) throw new Error(body.error ?? "Giornata non disponibile.");
+      setWeek(body.calendar);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Giornata non disponibile.");
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <section className="stack">
@@ -92,7 +142,7 @@ export function MatchdayResults({
           type="button"
           aria-label="Giornata precedente"
           disabled={pending || index <= 0}
-          onClick={() => { const week = weeks[index - 1]; if (week) onSelect(week.id); }}
+          onClick={() => { const previous = weeks[index - 1]; if (previous) void choose(previous.id); }}
         >
           ‹
         </button>
@@ -100,11 +150,11 @@ export function MatchdayResults({
           aria-label="Giornata"
           value={current?.id ?? ""}
           disabled={pending || weeks.length === 0}
-          onChange={(event) => onSelect(event.target.value)}
+          onChange={(event) => void choose(event.target.value)}
         >
-          {weeks.map((week) => (
-            <option key={week.id} value={week.id}>
-              Giornata {week.number}{week.id === hub.home.focusGameweekId ? " · in corso" : ""}
+          {weeks.map((item) => (
+            <option key={item.id} value={item.id}>
+              Giornata {item.number}{item.id === hub.home.focusGameweekId ? " · in corso" : ""}
             </option>
           ))}
         </select>
@@ -113,59 +163,55 @@ export function MatchdayResults({
           type="button"
           aria-label="Giornata successiva"
           disabled={pending || index >= weeks.length - 1}
-          onClick={() => { const week = weeks[index + 1]; if (week) onSelect(week.id); }}
+          onClick={() => { const next = weeks[index + 1]; if (next) void choose(next.id); }}
         >
           ›
         </button>
       </div>
+      {error ? <p className="banner">{error}</p> : null}
 
       <article className="card">
-        <h2>Serie A{current ? ` · giornata ${current.number}` : ""}</h2>
-        {hub.home.selectedFixtures.length === 0 ? (
-          <p className="small muted">Nessun incontro in questa giornata.</p>
-        ) : (
-          <div className="cal-matches">
-            {hub.home.selectedFixtures.map((fixture) => {
-              const hasScore = fixture.homeGoals != null && fixture.awayGoals != null;
-              return (
-                <p className="cal-match" key={fixture.id}>
-                  <ClubPair
-                    home={fixture.home}
-                    away={fixture.away}
-                    score={hasScore ? `${fixture.homeGoals}–${fixture.awayGoals}` : null}
-                  />
-                  <span className="small muted">{hasScore ? "Finale" : kickoff.format(new Date(fixture.kickoffAt))}</span>
-                </p>
-              );
-            })}
-          </div>
-        )}
-      </article>
-
-      <article className="card">
-        <h2>Squadre della lega</h2>
+        <h2>Risultati giornata{current ? ` ${current.number}` : ""}</h2>
+        <p className="small muted">Squadre della lega <InfoTip label="Risultati di giornata">Posizione e punti di questa giornata. La tua squadra resta in alto e anche al suo posto in elenco.</InfoTip></p>
         {teams.length === 0 ? <p className="small muted">Nessuna squadra iscritta.</p> : (
           <div className="cal-teams">
+            {mine ? (
+              <TeamRow
+                team={mine}
+                standing={mineStanding}
+                open={openId === mine.fantasyTeamId}
+                featured
+                onOpen={() => setOpenId(openId === mine.fantasyTeamId ? null : mine.fantasyTeamId)}
+              />
+            ) : null}
+            {mine && openId === mine.fantasyTeamId && current ? (
+              <TeamLineup
+                opponent={mine}
+                scored={Boolean(scored)}
+                sheet={loaded?.find((item) => item.fantasyTeamId === mine.fantasyTeamId) ?? null}
+                waiting={Boolean(scored && !loaded)}
+                live={hub.home.gameweekNumber === current.number ? hub.liveSheet : null}
+              />
+            ) : null}
             {teams.map((team) => {
               const standing = pointsById.get(team.fantasyTeamId);
               const open = openId === team.fantasyTeamId;
+              const sheet = loaded?.find((item) => item.fantasyTeamId === team.fantasyTeamId) ?? null;
               return (
                 <div key={team.fantasyTeamId}>
-                  <button className="cal-team" type="button" data-open={open} onClick={() => setOpenId(open ? null : team.fantasyTeamId)}>
-                    <span className="cal-rank">{standing?.points == null ? "–" : standing.rank}</span>
-                    <span className="cal-name">
-                      <strong>{team.teamName}</strong>
-                      <span>{team.displayName}{team.isMine ? " · la tua" : ""}</span>
-                    </span>
-                    <span className="cal-points">{points(standing?.points ?? null)}</span>
-                  </button>
-                  {open && current ? (
+                  <TeamRow
+                    team={team}
+                    standing={standing}
+                    open={open}
+                    onOpen={() => setOpenId(open ? null : team.fantasyTeamId)}
+                  />
+                  {open && current && !team.isMine ? (
                     <TeamLineup
-                      leagueId={hub.league.id}
-                      gameweekId={current.id}
                       opponent={team}
                       scored={Boolean(scored)}
-                      live={team.isMine && hub.home.gameweekNumber === current.number ? hub.liveSheet : null}
+                      sheet={sheet}
+                      waiting={Boolean(scored && !loaded)}
+                      live={null}
                     />
                   ) : null}
                 </div>
@@ -178,47 +224,51 @@ export function MatchdayResults({
   );
 }
 
+function TeamRow({
+  team,
+  standing,
+  open,
+  featured = false,
+  onOpen,
+}: {
+  team: OpponentLineup;
+  standing: { rank: number; points: number | null } | undefined;
+  open: boolean;
+  featured?: boolean;
+  onOpen: () => void;
+}) {
+  return (
+    <button className="cal-team" type="button" data-open={open} data-mine={team.isMine} data-featured={featured} onClick={onOpen}>
+      <span className="cal-rank">{standing?.points == null ? "–" : `${standing.rank}°`}</span>
+      <span className="cal-name">
+        <strong>{team.teamName}</strong>
+        <span>{[team.displayName, team.isMine ? "la tua" : ""].filter(Boolean).join(" · ")}</span>
+      </span>
+      <span className="cal-points">{points(standing?.points ?? null)}</span>
+    </button>
+  );
+}
+
 function TeamLineup({
-  leagueId,
-  gameweekId,
   opponent,
   scored,
+  sheet,
+  waiting,
   live,
 }: {
-  leagueId: string;
-  gameweekId: string;
   opponent: OpponentLineup;
   scored: boolean;
+  sheet: Sheet | null;
+  waiting: boolean;
   live: LiveLineupSheet | null;
 }) {
-  const [audit, setAudit] = useState<ScoreAudit | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!scored || !opponent.filed || !opponent.revealed) return;
-    let cancel = false;
-    void (async () => {
-      try {
-        const response = await fetch(`/api/leagues/${leagueId}/matchday?gameweekId=${gameweekId}&fantasyTeamId=${opponent.fantasyTeamId}`);
-        const body = await response.json() as ScoreAudit & { error?: string };
-        if (cancel) return;
-        if (!response.ok) throw new Error(body.error ?? "Formazione non disponibile.");
-        setAudit(body);
-      } catch (reason) {
-        if (!cancel) setError(reason instanceof Error ? reason.message : "Formazione non disponibile.");
-      }
-    })();
-    return () => { cancel = true; };
-  }, [scored, opponent.filed, opponent.revealed, opponent.fantasyTeamId, leagueId, gameweekId]);
-
   if (!opponent.filed) return <p className="small muted cal-note">Non ha schierato.</p>;
   if (!opponent.revealed) return <p className="small muted cal-note">La formazione si apre alla deadline.</p>;
-  if (audit) {
-    const rows = compactFromAudit(audit.players);
+  if (sheet) {
     return (
       <div className="cal-lineup">
-        <CompactLineup starters={rows.starters} bench={rows.bench} />
-        <p className="small muted">Fantapunti {points(audit.sum.total)}</p>
+        <CompactLineup starters={sheet.starters} bench={sheet.bench} bonuses={sheet.bonuses} />
+        <p className="small muted">Fantapunti {points(sheet.total)}</p>
       </div>
     );
   }
@@ -234,9 +284,8 @@ function TeamLineup({
   const rows = fromSlots(opponent);
   return (
     <div className="cal-lineup">
-      {error ? <p className="small muted">{error}</p> : null}
       <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
-      {scored && !error ? <p className="small muted">Carico i voti…</p> : null}
+      {waiting ? <p className="small muted">Carico i voti…</p> : null}
       {!scored ? <p className="small muted">I voti compaiono quando la giornata è calcolata.</p> : null}
     </div>
   );

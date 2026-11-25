@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { Announcement, AnnouncementKind } from "@/lib/announcements";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -40,7 +41,7 @@ function mapRow(row: {
   };
 }
 
-export async function loadActiveAnnouncements(): Promise<Announcement[]> {
+export const loadActiveAnnouncements = cache(async (): Promise<Announcement[]> => {
   try {
     const admin = createAdminSupabase();
     const rows = await admin
@@ -54,7 +55,7 @@ export async function loadActiveAnnouncements(): Promise<Announcement[]> {
   } catch {
     return [];
   }
-}
+});
 
 export async function listAnnouncements(): Promise<Announcement[]> {
   const admin = createAdminSupabase();

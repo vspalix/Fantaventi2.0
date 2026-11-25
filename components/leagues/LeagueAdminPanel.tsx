@@ -40,13 +40,22 @@ export function LeagueAdminPanel({
   const [startMatchday, setStartMatchday] = useState(league.startMatchday);
   const [endMatchday, setEndMatchday] = useState(league.endMatchday);
   const [rules, setRules] = useState<LeagueRules>(league.rules);
-  const [delegateId, setDelegateId] = useState("");
+  const [confirm, setConfirm] = useState<null | { kind: "remove" | "grant" | "revoke"; id: string; label: string }>(null);
   const taps = useTapGuard();
   const format = COMPETITION_FORMATS.find((item) => item.id === rules.format) ?? COMPETITION_FORMATS[0];
-  const candidates = league.participants.filter((participant) => (
-    participant.userId !== ""
-    && !league.delegates.some((delegate) => delegate.userId === participant.userId)
-  ));
+
+  function ask(kind: "remove" | "grant" | "revoke", id: string, label: string) {
+    setConfirm({ kind, id, label });
+  }
+
+  function commit() {
+    if (!confirm) return;
+    const next = confirm;
+    setConfirm(null);
+    if (next.kind === "remove") void onRemove(next.id);
+    if (next.kind === "grant") void onGrant(next.id);
+    if (next.kind === "revoke") void onRevoke(next.id);
+  }
 
   function setFormat(value: CompetitionFormat) {
     setRules((current) => ({
@@ -94,41 +103,63 @@ export function LeagueAdminPanel({
           </button>
         </div>
         <ul className="list">
-          {league.participants.map((participant) => (
-            <li className="person" key={participant.fantasyTeamId}>
-              <span className="person-main">
-                <strong>{participant.teamName}</strong>
-                <span className="small muted">{participant.displayName}</span>
-              </span>
-              <button className="text-button" type="button" disabled={pending} onClick={() => void onRemove(participant.fantasyTeamId)}>
-                Rimuovi
-              </button>
-            </li>
-          ))}
+          {league.participants.map((participant) => {
+            const role = participant.role ?? "member";
+            const handle = participant.displayName || participant.teamName;
+            return (
+              <li className="person" key={participant.fantasyTeamId}>
+                <span className="person-main">
+                  <strong>{participant.teamName}</strong>
+                  {participant.displayName ? <span className="small muted">{participant.displayName}</span> : null}
+                  {role === "owner" ? <span className="small muted">Amministratore</span> : null}
+                  {role === "admin" ? <span className="small muted">Admin di lega</span> : null}
+                </span>
+                <span className="row">
+                  {league.isOwner && role === "member" && participant.userId ? (
+                    <button className="text-button" type="button" disabled={pending} onClick={() => ask("grant", participant.userId, handle)}>
+                      Rendi admin
+                    </button>
+                  ) : null}
+                  {league.isOwner && role === "admin" ? (
+                    <button className="text-button" type="button" disabled={pending} onClick={() => ask("revoke", participant.userId, handle)}>
+                      Revoca admin
+                    </button>
+                  ) : null}
+                  {role !== "owner" ? (
+                    <button className="text-button" type="button" disabled={pending} onClick={() => ask("remove", participant.fantasyTeamId, participant.teamName)}>
+                      Rimuovi
+                    </button>
+                  ) : null}
+                </span>
+              </li>
+            );
+          })}
         </ul>
         {league.isOwner ? (
-          <div className="stack">
-            <h3>Admin delegati</h3>
-            <p className="small muted">Gestiscono inviti, partecipanti e regole di questa lega. Il Laboratorio globale resta solo del super admin.</p>
-            <ul className="list">
-              {league.delegates.length === 0 ? <li>Nessun admin delegato.</li> : league.delegates.map((delegate) => (
-                <li className="person" key={delegate.userId}>
-                  <span>{delegate.displayName}</span>
-                  <button className="text-button" type="button" disabled={pending} onClick={() => void onRevoke(delegate.userId)}>Revoca</button>
-                </li>
-              ))}
-            </ul>
-            <div className="row">
-              <select value={delegateId} onChange={(event) => setDelegateId(event.target.value)}>
-                <option value="">Scegli un partecipante</option>
-                {candidates.map((participant) => (
-                  <option key={participant.userId} value={participant.userId}>{participant.displayName}</option>
-                ))}
-              </select>
-              <button className="ghost" type="button" disabled={pending || delegateId === ""} onClick={() => void onGrant(delegateId)}>Nomina admin</button>
+          <p className="small muted">Un admin di lega gestisce inviti, partecipanti e regole. Il Laboratorio globale resta solo del super admin.</p>
+        ) : <p className="small muted">Sei admin di questa lega. Non hai accesso al Laboratorio globale.</p>}
+        {confirm ? (
+          <div className="modal-backdrop confirm-backdrop" role="presentation">
+            <div className="modal stack" role="dialog" aria-modal="true" aria-labelledby="member-confirm-title">
+              <h2 id="member-confirm-title">
+                {confirm.kind === "remove" ? "Togliere il partecipante?" : confirm.kind === "grant" ? "Nominare admin di lega?" : "Revocare l'admin?"}
+              </h2>
+              <p>
+                {confirm.kind === "remove"
+                  ? `${confirm.label} esce dalla lega. La scelta non parte finché non confermi.`
+                  : confirm.kind === "grant"
+                    ? `${confirm.label} potrà modificare regole e partecipanti di questa lega.`
+                    : `${confirm.label} torna partecipante e non modifica più le regole.`}
+              </p>
+              <div className="row">
+                <button className={confirm.kind === "remove" ? "danger solid" : "primary"} type="button" onClick={commit}>
+                  {confirm.kind === "remove" ? "Togli dalla lega" : confirm.kind === "grant" ? "Nomina admin" : "Revoca admin"}
+                </button>
+                <button className="ghost" type="button" onClick={() => setConfirm(null)}>Annulla</button>
+              </div>
             </div>
           </div>
-        ) : <p className="small muted">Sei admin delegato di questa lega. Non hai accesso al Laboratorio globale.</p>}
+        ) : null}
       </section>
 
       <form id="league-rules-form" className="card stack" data-pending={pending} onSubmit={(event) => { event.preventDefault(); if (taps.locked) return; void onSave({ name, startMatchday, endMatchday, rules }); }}>

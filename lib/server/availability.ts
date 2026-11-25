@@ -1,6 +1,6 @@
 import type { AvailabilityStatus } from "@/lib/availability-providers";
 import { providerFor } from "@/lib/availability-providers";
-import { matchAvailability, type AvailabilityAlias, type KnownPlayer } from "@/lib/availability-providers/match";
+import { fold, matchAvailability, type AvailabilityAlias, type KnownPlayer } from "@/lib/availability-providers/match";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { readSystemSettings } from "@/lib/server/system-settings";
 import type { CatalogPlayer } from "@/lib/types";
@@ -9,13 +9,13 @@ import { createAdminSupabase } from "@/lib/supabase/admin";
 const SETTINGS_KEY = "availability";
 
 export type AvailabilitySettings = {
-  provider: "api-football" | "external-json" | "manual";
+  provider: "api-football" | "fantacalcio" | "external-json" | "manual";
   leagueId: number;
   season: number;
   jsonUrl: string;
   lastSyncAt: string | null;
   lastSyncNote: string | null;
-  unmatched: { name: string; club: string; reason: string | null }[];
+  unmatched: { name: string; club: string; status: string; reason: string | null }[];
   aliases: AvailabilityAlias[];
 };
 
@@ -40,9 +40,16 @@ function httpError(message: string, status: number) {
   return error;
 }
 
+function providerFromSystem(value: string): AvailabilitySettings["provider"] {
+  if (value === "fantacalcio" || value === "external-json" || value === "manual") return value;
+  return "api-football";
+}
+
 function asSettings(value: unknown): AvailabilitySettings {
   const row = (value ?? {}) as Partial<AvailabilitySettings>;
-  const provider = row.provider === "external-json" || row.provider === "manual" ? row.provider : "api-football";
+  const provider = row.provider === "fantacalcio" || row.provider === "external-json" || row.provider === "manual"
+    ? row.provider
+    : "api-football";
   return {
     provider,
     leagueId: Number.isFinite(Number(row.leagueId)) ? Number(row.leagueId) : 135,
@@ -50,7 +57,11 @@ function asSettings(value: unknown): AvailabilitySettings {
     jsonUrl: typeof row.jsonUrl === "string" ? row.jsonUrl : "",
     lastSyncAt: typeof row.lastSyncAt === "string" ? row.lastSyncAt : null,
     lastSyncNote: typeof row.lastSyncNote === "string" ? row.lastSyncNote : null,
-    unmatched: Array.isArray(row.unmatched) ? row.unmatched.filter((item) => item && typeof item.name === "string") : [],
+    unmatched: Array.isArray(row.unmatched) ? row.unmatched.flatMap((item) => {
+      if (!item || typeof item.name !== "string") return [];
+      const status = typeof item.status === "string" ? item.status : "";
+      return [{ name: item.name, club: typeof item.club === "string" ? item.club : "", status, reason: typeof item.reason === "string" ? item.reason : null }];
+    }) : [],
     aliases: Array.isArray(row.aliases) ? row.aliases.filter((item) => item && typeof item.playerId === "string") : [],
   };
 }
@@ -65,11 +76,7 @@ export async function readAvailabilitySettings(): Promise<{ settings: Availabili
   const settings = asSettings(row.data?.value);
   const system = await readSystemSettings();
   if (!system.ready) return { settings, ready: true };
-  const provider = system.availabilityProvider === "manual"
-    ? "manual"
-    : system.availabilityProvider === "external-json"
-      ? "external-json"
-      : "api-football";
+  const provider = providerFromSystem(system.availabilityProvider);
   return {
     settings: {
       ...settings,
@@ -99,7 +106,18 @@ export async function saveAvailabilitySettings(patch: Partial<AvailabilitySettin
   if (!current.ready) throw httpError("Manca la tabella. Esegui player_availability.sql nell'editor SQL.", 503);
   const next = asSettings({ ...current.settings, ...patch, unmatched: current.settings.unmatched, aliases: patch.aliases ?? current.settings.aliases, lastSyncAt: current.settings.lastSyncAt, lastSyncNote: current.settings.lastSyncNote });
   await writeSettings(next);
+  await rememberProvider(next.provider);
   return next;
+}
+
+async function rememberProvider(provider: AvailabilitySettings["provider"]) {
+  const stored = provider === "api-football" ? "api-sports" : provider;
+  const admin = createAdminSupabase();
+  const saved = await admin.from("system_settings").update({
+    availability_provider: stored,
+    updated_at: new Date().toISOString(),
+  }).eq("id", 1);
+  if (saved.error && !missing(saved.error.message)) throw new Error(saved.error.message);
 }
 
 async function openMatchday() {
@@ -140,6 +158,15 @@ export async function syncAvailability(force = false) {
     season: settings.season,
     jsonUrl: settings.jsonUrl,
   });
+  return commitAvailability(settings, seasonId, open, rows);
+}
+
+async function commitAvailability(
+  settings: AvailabilitySettings,
+  seasonId: string,
+  open: { number: number; deadlineAt: string; status: string },
+  rows: { name: string; club: string; status: AvailabilityStatus; playProbability: number | null; reason: string | null }[],
+) {
   const known = await knownPlayers(seasonId, open.number);
   const { matched, unmatched } = matchAvailability(rows, known, settings.aliases);
   const savedRows = await upsertAutomatic(open.number, matched, settings.provider);
@@ -147,9 +174,17 @@ export async function syncAvailability(force = false) {
     ...settings,
     lastSyncAt: new Date().toISOString(),
     lastSyncNote: `Giornata ${open.number}: ${savedRows.written} aggiornati, ${savedRows.changed} variati, ${unmatched.length} non abbinati.`,
-    unmatched: unmatched.map((row) => ({ name: row.name, club: row.club, reason: row.reason })),
+    unmatched: unmatched.map((row) => ({ name: row.name, club: row.club, status: row.status, reason: row.reason })),
   };
   await writeSettings(next);
+  const { alertAvailabilityWrites, alertUnmatchedAvailability } = await import("@/lib/server/telegram-alert");
+  await alertAvailabilityWrites({
+    matchday: open.number,
+    written: savedRows.written,
+    changed: savedRows.changed,
+    samples: savedRows.samples,
+  });
+  await alertUnmatchedAvailability(unmatched.map((row) => ({ name: row.name, club: row.club, status: row.status })), open.number);
   return { skipped: false as const, reason: next.lastSyncNote, matchday: open.number, written: savedRows.written, unmatched: unmatched.length, changed: savedRows.changed, samples: savedRows.samples };
 }
 
@@ -284,9 +319,10 @@ export async function saveManualAvailability(input: {
 export async function saveAvailabilityAlias(alias: AvailabilityAlias) {
   const current = await readAvailabilitySettings();
   if (!current.ready) throw httpError("Manca la tabella. Esegui player_availability.sql nell'editor SQL.", 503);
-  const aliases = current.settings.aliases.filter((item) => !(item.name === alias.name && item.club === alias.club));
+  const aliases = current.settings.aliases.filter((item) => !(fold(item.name) === fold(alias.name) && fold(item.club) === fold(alias.club)));
   aliases.push(alias);
-  await writeSettings({ ...current.settings, aliases });
+  const unmatched = current.settings.unmatched.filter((item) => !(fold(item.name) === fold(alias.name) && fold(item.club) === fold(alias.club)));
+  await writeSettings({ ...current.settings, aliases, unmatched });
 }
 
 export async function importNamedAvailability(rows: { name: string; club: string; status: AvailabilityStatus; playProbability: number | null; reason: string | null }[]) {

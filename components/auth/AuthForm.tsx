@@ -21,6 +21,7 @@ export function AuthForm() {
   const [mode, setMode] = useState<"sign-in" | "sign-up" | "recover">("sign-in");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [emailConfirm, setEmailConfirm] = useState("");
@@ -74,6 +75,7 @@ export function AuthForm() {
         body: JSON.stringify({
           firstName,
           lastName,
+          username,
           phone,
           email,
           emailConfirm,
@@ -165,7 +167,7 @@ export function AuthForm() {
   return (
     <form className="stack" onSubmit={(event) => void signUp(event)}>
       <h1 className="section-title">Crea l&apos;account</h1>
-      <p className="lede">Nome, telefono e email restano sul tuo profilo.</p>
+      <p className="lede">Lo username è quello che vedono gli altri. Nome, telefono e email restano sul tuo profilo.</p>
       <label>
         Nome
         <input value={firstName} onChange={(event) => setFirstName(event.target.value)} autoComplete="given-name" required />
@@ -173,6 +175,10 @@ export function AuthForm() {
       <label>
         Cognome
         <input value={lastName} onChange={(event) => setLastName(event.target.value)} autoComplete="family-name" required />
+      </label>
+      <label>
+        Username
+        <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" minLength={3} maxLength={20} pattern="[A-Za-z0-9_.-]{3,20}" required />
       </label>
       <label>
         Telefono
@@ -196,10 +202,10 @@ export function AuthForm() {
       </label>
       <label className="check">
         <input type="checkbox" checked={acceptRules} onChange={(event) => setAcceptRules(event.target.checked)} required />
-        <span>Accetto il <Link href="/regolamento">regolamento</Link>, i <Link href="/termini">termini</Link> e l&apos;<Link href="/privacy">informativa privacy</Link>.</span>
+        <span>Accetto i <Link href="/termini">termini</Link>, l&apos;<Link href="/privacy">informativa privacy</Link> e il <Link href="/regolamento">regolamento</Link>.</span>
       </label>
       {error ? <p className="banner">{error}</p> : null}
-      <button className="primary" type="submit" disabled={pending}>Crea account</button>
+      <button className="primary" type="submit" disabled={pending || !acceptRules}>Crea account</button>
       <p>Hai già un account? <button className="text-button" type="button" onClick={() => switchMode("sign-in")}>Accedi</button></p>
       <LegalLinks />
     </form>

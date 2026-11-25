@@ -208,7 +208,8 @@ export function RosterBuilder({
     <header className="rosa-head">
       <div>
         <h1 className="section-title">{mode === "others" ? "Rose degli altri" : teamName || "Rosa"}</h1>
-        {mode === "rosa" ? <p className="small muted">{selected.length} / {rules.squadSize} calciatori{others ? ` · ${others.leagueName}` : ""}</p> : null}
+        {mode === "rosa" ? <p className="small muted">{selected.length}/{rules.squadSize}{others ? ` · ${others.leagueName}` : ""}</p> : null}
+        {mode === "checkpoint" ? <p className="checkpoint-pill" data-on="true">Checkpoint</p> : null}
         {mode === "others" && others ? <p className="small muted">{others.leagueName}</p> : null}
       </div>
       <button className="info-button" type="button" aria-expanded={info} aria-label="Come funziona la rosa" onClick={() => setInfo((current) => !current)}>i</button>
@@ -235,7 +236,7 @@ export function RosterBuilder({
         ) : others.squads.map((squad) => (
           <article className="card" key={squad.fantasyTeamId}>
             <h2>{squad.teamName}</h2>
-            <p className="small muted">{squad.displayName} · {squad.players.length} calciatori</p>
+            <p className="small muted">{[squad.displayName, `${squad.players.length} calciatori`].filter(Boolean).join(" · ")}</p>
             {squad.players.length === 0 ? <p className="small muted">Rosa non ancora salvata.</p> : (
               <div>
                 {(["GK", "DEF", "MID", "FWD"] as PlayerRole[]).map((role) => {
@@ -264,15 +265,14 @@ export function RosterBuilder({
         {head}
         {infoCard}
         <div className="rosa-actions">
-          <button className="primary" type="button" onClick={() => setMode("checkpoint")}>Checkpoint</button>
+          <button className="ghost" type="button" onClick={() => setMode("checkpoint")}>Checkpoint</button>
           <button className="ghost" type="button" onClick={() => setMode("others")}>Rose degli altri</button>
         </div>
-        {checkpointNote ? <p className="small muted">{checkpointNote}</p> : null}
         {error ? <p className="banner">{error}</p> : null}
         {market.message ? <p className="banner">{market.message}</p> : null}
         {selected.length === 0 ? (
           <EmptyState title="Rosa ancora vuota">
-            Apri Checkpoint e scegli un calciatore per club.
+            Apri Checkpoint per scegliere un calciatore per club.
           </EmptyState>
         ) : (["GK", "DEF", "MID", "FWD"] as PlayerRole[]).map((role) => {
           const rows = selected.filter((player) => player.role === role).sort((left, right) => left.fullName.localeCompare(right.fullName, "it"));

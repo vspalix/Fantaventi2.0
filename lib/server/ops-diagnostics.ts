@@ -1,3 +1,4 @@
+import { telegramChatIds } from "@/lib/server/telegram-alert";
 import { playedDayStillOpen } from "@/lib/server/vote-sync-window";
 import { readSyncLogs, readSystemSettings, type SyncLogRow } from "@/lib/server/system-settings";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -150,9 +151,10 @@ export async function readOpsDiagnostics(): Promise<OpsDiagnostics> {
   if (matchday.behind.length > 0) {
     anomalies.push(`Giornate precedenti ancora non calcolate: ${matchday.behind.join(", ")}.`);
   }
-  const telegramConfigured = Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && process.env.TELEGRAM_CHAT_ID?.trim());
+  const telegramChats = telegramChatIds();
+  const telegramConfigured = Boolean(process.env.TELEGRAM_BOT_TOKEN?.trim() && telegramChats.length > 0);
   if (!process.env.TELEGRAM_BOT_TOKEN?.trim()) anomalies.push("Manca TELEGRAM_BOT_TOKEN nell'ambiente del server.");
-  if (!process.env.TELEGRAM_CHAT_ID?.trim()) anomalies.push("Manca TELEGRAM_CHAT_ID nell'ambiente del server.");
+  if (telegramChats.length === 0) anomalies.push("Manca TELEGRAM_CHAT_ID nell'ambiente del server.");
   const admin = createAdminSupabase();
   const brand = await admin.from("system_settings").select("brand_logo_url, notify_on_sync_success").eq("id", 1).maybeSingle();
   if (brand.error && /brand_logo_url|notify_on_sync_success|schema cache|could not find|column/i.test(brand.error.message)) {

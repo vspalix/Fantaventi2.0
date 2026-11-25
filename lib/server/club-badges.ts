@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { SERIE_A_CLUBS, type ClubBadgeOverride } from "@/lib/club-colors";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 
@@ -12,7 +13,7 @@ export function defaultClubBadges(): ClubBadgeOverride[] {
   }));
 }
 
-export async function loadClubBadgeOverrides(): Promise<ClubBadgeOverride[]> {
+export const loadClubBadgeOverrides = cache(async (): Promise<ClubBadgeOverride[]> => {
   if (!hasServiceSupabaseEnv()) return [];
   try {
     const admin = createAdminSupabase();
@@ -31,7 +32,7 @@ export async function loadClubBadgeOverrides(): Promise<ClubBadgeOverride[]> {
   } catch {
     return [];
   }
-}
+});
 
 export function parseClubBadge(input: unknown): ClubBadgeOverride {
   const body = input as { code?: unknown; primary?: unknown; secondary?: unknown; logoUrl?: unknown };

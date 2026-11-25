@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { loadLeagueHub } from "@/lib/server/league-hub";
+import { loadCalendarWeek, loadLeagueHub } from "@/lib/server/league-hub";
 import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
@@ -10,7 +10,12 @@ export async function GET(request: Request, context: RouteContext) {
     assertServiceEnv();
     const user = await requireSessionUser();
     const { leagueId } = await context.params;
-    const gameweekId = new URL(request.url).searchParams.get("gameweek");
+    const url = new URL(request.url);
+    const gameweekId = url.searchParams.get("gameweek");
+    if (url.searchParams.get("view") === "calendar") {
+      if (!gameweekId) return NextResponse.json({ error: "Serve la giornata." }, { status: 400 });
+      return NextResponse.json({ calendar: await loadCalendarWeek(user.id, leagueId, gameweekId) });
+    }
     const hub = await loadLeagueHub(user.id, leagueId, gameweekId);
     return NextResponse.json({ hub });
   } catch (error) {

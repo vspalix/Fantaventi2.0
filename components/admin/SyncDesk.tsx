@@ -95,9 +95,9 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
     setResult(null);
     try {
       const response = await fetch("/api/admin/telegram-test", { method: "POST" });
-      const body = await response.json() as { ok?: boolean; error?: string };
+      const body = await response.json() as { ok?: boolean; error?: string; warning?: string | null };
       if (!response.ok || !body.ok) throw new Error(body.error ?? "Messaggio di prova non inviato.");
-      setNote("Messaggio di prova inviato su Telegram.");
+      setNote(body.warning ? `Messaggio di prova inviato. ${body.warning}` : "Messaggio di prova inviato su Telegram.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Messaggio di prova non inviato.");
     } finally {

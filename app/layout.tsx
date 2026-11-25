@@ -84,23 +84,28 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       redirect(code ? `/accesso/nuova-password?next=${encodeURIComponent(joinHref(code))}` : "/accesso/nuova-password");
     }
   }
-  const maintenance = hasServiceSupabaseEnv()
-    ? await readMaintenance().catch(() => ({ enabled: false, message: "", updatedAt: null }))
-    : { enabled: false, message: "", updatedAt: null };
-  let seasons: HeaderSeason[] = [];
+  const service = hasServiceSupabaseEnv();
+  const [maintenance, playable, badges, announcements, brand] = await Promise.all([
+    service
+      ? readMaintenance().catch(() => ({ enabled: false, message: "", updatedAt: null }))
+      : Promise.resolve({ enabled: false, message: "", updatedAt: null as string | null }),
+    service ? listPlayableSeasons(createAdminSupabase()).catch(() => []) : Promise.resolve([]),
+    loadClubBadgeOverrides(),
+    user ? loadActiveAnnouncements() : Promise.resolve([]),
+    readBrand(),
+  ]);
+  let seasons: HeaderSeason[] = playable.map((season) => ({
+    id: season.id,
+    label: `${season.competitionName} ${season.code}`,
+  }));
   let activeSeasonId: string | null = null;
   let squads: HeaderSquad[] = [];
   let activeLeagueId: string | null = null;
   let profileLabel = user?.email?.split("@")[0] ?? "";
-  if (hasServiceSupabaseEnv()) {
+  if (service && playable.length > 0) {
     try {
       const admin = createAdminSupabase();
-      const playable = await listPlayableSeasons(admin);
-      seasons = playable.map((season) => ({
-        id: season.id,
-        label: `${season.competitionName} ${season.code}`,
-      }));
-      if (playable.length > 0) activeSeasonId = (await getCurrentSeason(admin)).id;
+      activeSeasonId = (await getCurrentSeason(admin)).id;
       if (user && activeSeasonId) {
         const [team, leagues, profile] = await Promise.all([
           getFantasyTeam(admin, user.id, activeSeasonId),
@@ -121,9 +126,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       activeLeagueId = null;
     }
   }
-  const badges = await loadClubBadgeOverrides();
-  const announcements = user ? await loadActiveAnnouncements() : [];
-  const brand = await readBrand();
   const accent = accentOrDefault(brand.accentColor);
   const red = Number.parseInt(accent.slice(1, 3), 16);
   const green = Number.parseInt(accent.slice(3, 5), 16);

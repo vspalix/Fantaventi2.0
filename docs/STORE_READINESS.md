@@ -91,6 +91,6 @@ Il bridge (`lib/native/bridge.ts`) chiede il permesso, legge il token e lo manda
 
 ## Ambiente che non sta nel codice
 
-- `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` su Vercel, se vuoi gli avvisi dei cron in produzione. In locale possono già esserci. Non finiscono nel client.
+- `TELEGRAM_BOT_TOKEN` e `TELEGRAM_CHAT_ID` su Vercel, se vuoi gli avvisi dei cron in produzione. `TELEGRAM_CHAT_ID` accetta un id oppure più id separati da virgola. In locale possono già esserci. Non finiscono nel client.
 - `CRON_SECRET` resta solo su Vercel e GitHub Actions.
 - Non mettere una chiave `crons` in `vercel.json`.

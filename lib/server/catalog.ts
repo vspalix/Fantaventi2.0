@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { missingSandboxColumn, SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
@@ -112,7 +113,8 @@ async function cookieSeasonId() {
   }
 }
 
-export async function listPlayableSeasons(admin: SupabaseClient) {
+const playableSeasons = cache(async () => {
+  const admin = createAdminSupabase();
   const { data, error } = await admin
     .from("seasons")
     .select(SEASON_COLUMNS)
@@ -120,10 +122,21 @@ export async function listPlayableSeasons(admin: SupabaseClient) {
     .order("starts_on", { ascending: false });
   if (error) throw new Error(error.message);
   return ((data ?? []) as SeasonRow[]).map(mapSeason).filter((season) => season.code !== SANDBOX_SEASON_CODE);
+});
+
+export async function listPlayableSeasons(admin: SupabaseClient) {
+  void admin;
+  return playableSeasons();
 }
 
-export async function getCurrentSeason(admin: SupabaseClient, seasonId?: string | null) {
-  const requested = seasonId ?? await cookieSeasonId();
+const seasonForRequest = cache(async (key: string) => {
+  const explicit = key.startsWith("1:");
+  const requested = key.slice(2);
+  const admin = createAdminSupabase();
+  return readSeason(admin, requested || null, explicit);
+});
+
+async function readSeason(admin: SupabaseClient, requested: string | null, explicit: boolean) {
   if (requested) {
     const { data, error } = await admin
       .from("seasons")
@@ -133,8 +146,8 @@ export async function getCurrentSeason(admin: SupabaseClient, seasonId?: string 
     if (error) throw new Error(error.message);
     if (data) {
       const season = mapSeason(data as SeasonRow);
-      if (season.code !== SANDBOX_SEASON_CODE && (seasonId || season.status === "running" || season.status === "open")) return season;
-    } else if (seasonId) {
+      if (season.code !== SANDBOX_SEASON_CODE && (explicit || season.status === "running" || season.status === "open")) return season;
+    } else if (explicit) {
       const missing = new Error("Stagione non trovata.");
       (missing as Error & { status: number }).status = 404;
       throw missing;
@@ -149,6 +162,13 @@ export async function getCurrentSeason(admin: SupabaseClient, seasonId?: string 
     throw missing;
   }
   return season;
+}
+
+export async function getCurrentSeason(admin: SupabaseClient, seasonId?: string | null) {
+  void admin;
+  const explicit = seasonId != null && seasonId !== "";
+  const requested = explicit ? seasonId : await cookieSeasonId();
+  return seasonForRequest(`${explicit ? "1" : "0"}:${requested ?? ""}`);
 }
 
 export async function ensureProfile(admin: SupabaseClient, userId: string, email: string | undefined) {
@@ -207,7 +227,12 @@ export async function loadCatalog(seasonId?: string): Promise<CatalogResponse> {
   return { seasonId: season.id, seasonCode: season.code, clubs, players, rules: season.rules };
 }
 
-export async function getFantasyTeam(admin: SupabaseClient, userId: string, seasonId: string) {
+const teamForRequest = cache(async (userId: string, seasonId: string) => {
+  const admin = createAdminSupabase();
+  return readFantasyTeam(admin, userId, seasonId);
+});
+
+async function readFantasyTeam(admin: SupabaseClient, userId: string, seasonId: string) {
   const scoped = await admin
     .from("fantasy_teams")
     .select("id, name")
@@ -220,6 +245,11 @@ export async function getFantasyTeam(admin: SupabaseClient, userId: string, seas
     : scoped;
   if (plain.error) throw new Error(plain.error.message);
   return plain.data as { id: string; name: string } | null;
+}
+
+export async function getFantasyTeam(admin: SupabaseClient, userId: string, seasonId: string) {
+  void admin;
+  return teamForRequest(userId, seasonId);
 }
 
 export async function ensureFantasyTeam(

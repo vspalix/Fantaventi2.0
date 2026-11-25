@@ -10,7 +10,7 @@ export async function POST() {
     await requireSuperAdmin();
     const result = await sendSyncTestAlert();
     if (!result.sent) return NextResponse.json({ ok: false, error: result.reason }, { status: 502 });
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, warning: result.warning ?? null });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }

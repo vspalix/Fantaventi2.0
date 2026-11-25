@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { loadScoreAudit } from "@/lib/server/score-audit";
+import { loadCompactSheets, loadScoreAudit } from "@/lib/server/score-audit";
 import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
@@ -13,6 +13,10 @@ export async function GET(request: Request, context: RouteContext) {
     const url = new URL(request.url);
     const gameweekId = url.searchParams.get("gameweekId") ?? "";
     const fantasyTeamId = url.searchParams.get("fantasyTeamId") ?? "";
+    if (url.searchParams.get("scope") === "sheets") {
+      if (!gameweekId) return NextResponse.json({ error: "Serve la giornata." }, { status: 400 });
+      return NextResponse.json({ sheets: await loadCompactSheets(user.id, leagueId, gameweekId) });
+    }
     if (!gameweekId || !fantasyTeamId) {
       return NextResponse.json({ error: "Servono giornata e squadra." }, { status: 400 });
     }

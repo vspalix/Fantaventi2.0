@@ -15,7 +15,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return readAction<T>(response);
 }
 
-export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolean; hostMode?: boolean }) {
+export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: boolean }) {
   const router = useRouter();
   const [leagues, setLeagues] = useState<LeagueSummary[]>([]);
   const [publicLeagues, setPublicLeagues] = useState<LeagueSummary[]>([]);
@@ -319,9 +319,9 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
                 <Link href={`/leghe/${league.id}`}>
                   <span className="player-main">
                     <strong>{league.name}</strong>
-                    <span className="small muted">{hostMode && league.isManager ? `${league.isOwner ? "Amministratore" : "Admin delegato"} · ` : ""}{league.seasonCode}</span>
+                    <span className="small muted">{league.isManager ? `${league.isOwner ? "Amministratore" : "Admin delegato"} · ` : ""}{league.seasonCode}</span>
                   </span>
-                  <span className="code" style={{ fontSize: 14 }}>{hostMode && league.isManager ? league.joinCode : ""}</span>
+                  <span className="code" style={{ fontSize: 14 }}>{league.isManager ? league.joinCode : ""}</span>
                 </Link>
               </li>
             ))}

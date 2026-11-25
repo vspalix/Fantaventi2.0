@@ -1,8 +1,11 @@
+import { moderateText } from "@/lib/moderation";
+import { isPublicHandle } from "@/lib/public-name";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type RegistrationInput = {
   firstName?: string;
   lastName?: string;
+  username?: string;
   phone?: string;
   email?: string;
   emailConfirm?: string;
@@ -61,9 +64,18 @@ export async function registerAccount(input: RegistrationInput) {
   const password = input.password ?? "";
   if (password.length < 8 || password.length > 72) throw fail("La password deve avere almeno 8 caratteri.", 400);
   if (password !== input.passwordConfirm) throw fail("Le due password non coincidono.", 400);
-  if (input.acceptRules !== true) throw fail("Per registrarti accetta il regolamento.", 400);
+  const username = (input.username ?? "").trim();
+  if (!isPublicHandle(username)) throw fail("Lo username deve avere da 3 a 20 lettere, numeri, punti, trattini o underscore.", 400);
+  const rejected = moderateText(username);
+  if (rejected) throw fail(rejected, 400);
+  if (input.acceptRules !== true) throw fail("Per registrarti accetta i termini, la privacy e il regolamento.", 400);
 
   const admin = createAdminSupabase();
+  const pattern = username.replace(/[%_\\]/g, "\\$&");
+  const takenName = await admin.from("profiles").select("id").ilike("display_name", pattern).maybeSingle();
+  if (takenName.error && !missingProfileColumns(takenName.error.message)) throw new Error(takenName.error.message);
+  if (takenName.data) throw fail("Questo username è già in uso.", 409);
+
   const existing = await admin.from("profiles").select("id").ilike("email", email).maybeSingle();
   if (existing.error && !missingProfileColumns(existing.error.message)) throw new Error(existing.error.message);
   if (existing.data) throw fail("Questa email è già registrata. Accedi con la password.", 409);
@@ -87,7 +99,7 @@ export async function registerAccount(input: RegistrationInput) {
     first_name: firstName,
     last_name: lastName,
     phone,
-    display_name: `${firstName} ${lastName}`,
+    display_name: username,
     locale: "it",
   }, { onConflict: "id" });
   if (profile.error) {

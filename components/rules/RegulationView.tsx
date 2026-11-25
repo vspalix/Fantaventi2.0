@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { parseRegulation } from "@/lib/rules/regulation-blocks";
 
@@ -161,9 +160,8 @@ export function RegulationPanel({ leagueId }: { leagueId: string }) {
   return (
     <section className="card stack">
       <header>
-        <h2>Regolamento ufficiale</h2>
-        <p>{document.stored && when ? `Testo salvato il ${when}.` : "Testo ufficiale della lega."}</p>
-        <Link href="/regolamento">Regolamento generale</Link>
+        <h2>Regolamento</h2>
+        <p>{document.stored && when ? `Testo salvato il ${when}.` : "Testo della lega, con le regole attualmente configurate."}</p>
       </header>
       <DownloadRegulation leagueId={leagueId} />
       <RegulationView markdown={document.markdown} />

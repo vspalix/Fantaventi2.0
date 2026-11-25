@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "test:engine": "tsx scripts/ci-engine-suite.ts",
-    "test:matchday": "tsx scripts/test-matchday-lifecycle.ts"
+    "test:matchday": "tsx scripts/test-matchday-lifecycle.ts",
+    "test:subs": "tsx scripts/test-substitutions.ts"
   },
   "dependencies": {
     "@capacitor/android": "^8.6.2",
@@ -20,6 +21,7 @@
     "@supabase/supabase-js": "^2.81.1",
     "docx": "^9.15.3",
     "exceljs": "^4.4.0",
+    "jpeg-js": "^0.4.4",
     "next": "^15.5.6",
     "postgres": "^4.1.0",
     "react": "^19.1.1",

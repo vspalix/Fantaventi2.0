@@ -1,4 +1,6 @@
+import { cache } from "react";
 import { createJoinCode } from "@/lib/join-code";
+import { publicHandle } from "@/lib/public-name";
 import { parseLeagueRules, type LeagueRules } from "@/lib/league-rules";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -113,7 +115,7 @@ async function seasonCode(admin: ReturnType<typeof createAdminSupabase>, seasonI
   return (data?.code as string | undefined) ?? "";
 }
 
-export async function listLeaguesForUser(userId: string): Promise<LeagueSummary[]> {
+export const listLeaguesForUser = cache(async (userId: string): Promise<LeagueSummary[]> => {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
   const team = await getFantasyTeam(admin, userId, season.id);
@@ -168,7 +170,7 @@ export async function listLeaguesForUser(userId: string): Promise<LeagueSummary[
   ];
 
   return summaries.sort((a, b) => a.name.localeCompare(b.name, "it"));
-}
+});
 
 export async function createLeague(
   userId: string,
@@ -348,18 +350,23 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
     : { data: [], error: null };
   if (profilesError) throw new Error(profilesError.message);
 
-  const names = new Map((profiles ?? []).map((profile) => [profile.id as string, profile.display_name as string]));
-  const participants = (teams ?? []).map((row) => ({
-    fantasyTeamId: row.id as string,
-    userId: row.user_id as string,
-    teamName: row.name as string,
-    displayName: names.get(row.user_id as string) ?? "Allenatore",
-  })).sort((a, b) => a.teamName.localeCompare(b.teamName, "it"));
+  const names = new Map((profiles ?? []).map((profile) => [profile.id as string, publicHandle(profile.display_name as string)]));
+  const participants = (teams ?? []).map((row) => {
+    const userId = row.user_id as string;
+    const role = userId === league.owner_user_id ? "owner" : delegateIds.includes(userId) ? "admin" : "member";
+    return {
+      fantasyTeamId: row.id as string,
+      userId,
+      teamName: row.name as string,
+      displayName: names.get(userId) ?? "",
+      role,
+    } as const;
+  }).sort((a, b) => a.teamName.localeCompare(b.teamName, "it"));
   const delegates = delegateIds
     .filter((id) => id !== league.owner_user_id)
     .map((id) => ({
       userId: id,
-      displayName: names.get(id) ?? participants.find((participant) => participant.userId === id)?.displayName ?? "Allenatore",
+      displayName: names.get(id) || participants.find((participant) => participant.userId === id)?.displayName || "Admin",
     }));
 
   return {

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
+import { AppDrawer } from "@/components/AppDrawer";
 import { InboxBell } from "@/components/InboxBell";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { createBrowserSupabase, hasPublicSupabaseEnv } from "@/lib/supabase/browser";
+import { isHubTab, LEAGUE_TAB_EVENT, type HubTab } from "@/lib/hub-tabs";
 
 export type HeaderSeason = { id: string; label: string };
 export type HeaderSquad = { id: string; teamName: string; leagueName: string };
@@ -36,9 +38,10 @@ export function SiteHeader({
   const pathname = usePathname();
   const search = useSearchParams();
   const router = useRouter();
-  const leagueTab = search.get("tab");
-  const [open, setOpen] = useState<"squad" | "menu" | "profile" | null>(null);
+  const [leagueTab, setLeagueTab] = useState(search.get("tab"));
+  const [open, setOpen] = useState<"squad" | "menu" | "profile" | "more" | null>(null);
   const bar = useRef<HTMLElement>(null);
+  const clientTab = useRef<string | null>(null);
   const pathLeague = pathname.match(/^\/leghe\/([^/]+)/)?.[1];
   const current = squads.find((squad) => squad.id === pathLeague)
     ?? squads.find((squad) => squad.id === activeLeagueId)
@@ -46,16 +49,62 @@ export function SiteHeader({
     ?? null;
   const leagueHref = (tab: string) => current ? `/leghe/${current.id}?tab=${tab}` : "/leghe";
 
+  function openLeague(tab: HubTab, event?: { preventDefault: () => void }) {
+    setOpen(null);
+    if (!current || !pathname.startsWith(`/leghe/${current.id}`)) return;
+    event?.preventDefault();
+    window.history.replaceState(null, "", `/leghe/${current.id}?tab=${tab}`);
+    window.dispatchEvent(new CustomEvent(LEAGUE_TAB_EVENT, { detail: tab }));
+    clientTab.current = tab;
+    setLeagueTab(tab);
+  }
+
+  useEffect(() => {
+    if (clientTab.current) {
+      clientTab.current = null;
+      return;
+    }
+    setLeagueTab(search.get("tab"));
+  }, [pathname, search]);
+
   useEffect(() => {
     setOpen(null);
   }, [pathname, leagueTab]);
+
+  useEffect(() => {
+    function onTab(event: Event) {
+      const tab = (event as CustomEvent<string>).detail;
+      if (isHubTab(tab)) setLeagueTab(tab);
+    }
+    function onPop() {
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      setLeagueTab(tab);
+    }
+    window.addEventListener(LEAGUE_TAB_EVENT, onTab);
+    window.addEventListener("popstate", onPop);
+    return () => {
+      window.removeEventListener(LEAGUE_TAB_EVENT, onTab);
+      window.removeEventListener("popstate", onPop);
+    };
+  }, []);
+
+  useEffect(() => {
+    router.prefetch("/");
+    router.prefetch("/rosa");
+    router.prefetch("/calendario");
+    router.prefetch("/leghe");
+    if (!current) return;
+    router.prefetch(`/leghe/${current.id}?tab=risultati`);
+    router.prefetch(`/leghe/${current.id}?tab=classifica`);
+    router.prefetch(`/leghe/${current.id}?tab=formazione`);
+  }, [router, current?.id]);
 
   useEffect(() => {
     function close(event: PointerEvent) {
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (bar.current?.contains(target)) return;
-      if (target instanceof Element && target.closest(".tabbar, .drawer, .inbox")) return;
+      if (target instanceof Element && target.closest(".tabbar, .drawer, .inbox, .more-sheet")) return;
       setOpen(null);
     }
     document.addEventListener("pointerdown", close);
@@ -105,37 +154,29 @@ export function SiteHeader({
               <MenuIcon />
             </button>
             {open === "menu" ? (
-              <>
-                <button className="drawer-backdrop" type="button" aria-label="Chiudi menu" onClick={() => setOpen(null)} />
-                <nav className="drawer" aria-label="Menu">
-                  <button className="drawer-close" type="button" onClick={() => setOpen(null)}>Chiudi</button>
-                  <p className="drawer-kicker">Menu</p>
-                  <Link href={current ? `/leghe/${current.id}?tab=formazione` : "/rosa"} onClick={() => setOpen(null)}>Formazione</Link>
-                  <Link href="/rosa" onClick={() => setOpen(null)}>Mercato</Link>
-                  <Link href="/regolamento" onClick={() => setOpen(null)}>Regolamento</Link>
-                  {current ? <Link href={`/leghe/${current.id}?tab=regolamento`} onClick={() => setOpen(null)}>Regolamento lega</Link> : null}
-                  <Link href={current ? `/leghe/${current.id}?tab=lega` : "/leghe"} onClick={() => setOpen(null)}>Impostazioni lega</Link>
-                  {hostMode && canSwitch ? <Link href={current ? `/leghe/${current.id}?tab=gestione` : "/leghe"} onClick={() => setOpen(null)}>Gestione lega</Link> : null}
-                  <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
-                  <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
-                  {hostMode && platformAdmin ? <Link href="/admin" onClick={() => setOpen(null)}>Pannello admin</Link> : null}
-                  {seasons.length > 1 ? (
-                    <label>
-                      Stagione
-                      <select aria-label="Competizione e stagione" value={activeSeasonId ?? seasons[0].id} onChange={(event) => void chooseSeason(event.target.value)}>
-                        {seasons.map((season) => <option key={season.id} value={season.id}>{season.label}</option>)}
-                      </select>
-                    </label>
-                  ) : null}
-                  <p className="drawer-kicker">Profilo</p>
-                  <p className="profile-name">{profileLabel}</p>
-                  {canSwitch ? <div className="profile-mode"><ModeSwitch mode={hostMode ? "host" : "player"} /></div> : null}
-                  <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
-                  <Link href="/privacy" onClick={() => setOpen(null)}>Privacy</Link>
-                  <Link href="/termini" onClick={() => setOpen(null)}>Termini</Link>
-                  <button type="button" onClick={() => void signOut()}>Esci</button>
-                </nav>
-              </>
+              <AppDrawer onClose={() => setOpen(null)}>
+                <p className="drawer-kicker">Menu</p>
+                <Link href={current ? `/leghe/${current.id}?tab=formazione` : "/rosa"} onClick={(event) => openLeague("formazione", event)}>Formazione</Link>
+                <Link href={current ? `/leghe/${current.id}?tab=regolamento` : "/regolamento"} onClick={(event) => openLeague("regolamento", event)}>Regolamento</Link>
+                <Link href={current ? `/leghe/${current.id}?tab=lega` : "/leghe"} onClick={(event) => openLeague("lega", event)}>Impostazioni lega</Link>
+                <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
+                <Link href="/calendario" onClick={() => setOpen(null)}>Calendario Serie A</Link>
+                <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
+                {hostMode && platformAdmin ? <Link href="/admin" onClick={() => setOpen(null)}>Pannello admin</Link> : null}
+                {seasons.length > 1 ? (
+                  <label>
+                    Stagione
+                    <select aria-label="Competizione e stagione" value={activeSeasonId ?? seasons[0].id} onChange={(event) => void chooseSeason(event.target.value)}>
+                      {seasons.map((season) => <option key={season.id} value={season.id}>{season.label}</option>)}
+                    </select>
+                  </label>
+                ) : null}
+                <p className="drawer-kicker">Profilo</p>
+                <p className="profile-name">{profileLabel}</p>
+                {canSwitch ? <div className="profile-mode"><ModeSwitch mode={hostMode ? "host" : "player"} /></div> : null}
+                <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
+                <button type="button" onClick={() => void signOut()}>Esci</button>
+              </AppDrawer>
             ) : null}
           </div>
         ) : <span className="header-menu" />}
@@ -185,10 +226,21 @@ export function SiteHeader({
       <nav className="tabbar" aria-label="Principale">
         <Link href="/" data-active={pathname === "/"}><HomeIcon />Dashboard</Link>
         <Link href="/rosa" data-active={pathname.startsWith("/rosa")}><ShieldIcon />Squadra</Link>
-        <Link href={leagueHref("risultati")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "risultati")}><CalendarIcon />Calendario</Link>
-        <Link href={leagueHref("classifica")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "classifica")}><TrophyIcon />Classifica</Link>
-        <button type="button" data-active={open === "menu"} onClick={() => setOpen(open === "menu" ? null : "menu")}><MoreIcon />Altro</button>
+        <Link href={leagueHref("risultati")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "risultati")} onClick={(event) => openLeague("risultati", event)}><CalendarIcon />Calendario</Link>
+        <Link href={leagueHref("classifica")} data-active={Boolean(current && pathname.startsWith(`/leghe/${current.id}`) && leagueTab === "classifica")} onClick={(event) => openLeague("classifica", event)}><TrophyIcon />Classifica</Link>
+        <button type="button" data-active={open === "more"} onClick={() => setOpen(open === "more" ? null : "more")}><MoreIcon />Altro</button>
       </nav>
+    ) : null}
+    {email && open === "more" ? (
+      <div className="more-sheet" role="menu" aria-label="Altro">
+        <Link href={current ? `/leghe/${current.id}?tab=formazione` : "/rosa"} onClick={(event) => openLeague("formazione", event)}>Formazione</Link>
+        <Link href={current ? `/leghe/${current.id}?tab=regolamento` : "/regolamento"} onClick={(event) => openLeague("regolamento", event)}>Regolamento</Link>
+        {current ? <Link href={`/leghe/${current.id}?tab=lega`} onClick={(event) => openLeague("lega", event)}>Impostazioni lega</Link> : null}
+        <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
+        <Link href="/calendario" onClick={() => setOpen(null)}>Calendario Serie A</Link>
+        <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
+        <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
+      </div>
     ) : null}
   </>
   );

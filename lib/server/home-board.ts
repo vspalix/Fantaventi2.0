@@ -6,6 +6,8 @@ import { readLeagueSettings } from "@/lib/server/league-settings";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
+import { readSponsors } from "@/lib/server/sponsors";
+import { readTeamLook } from "@/lib/server/team-look";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type HomeFixture = {
@@ -20,8 +22,14 @@ export type HomeRoundDot = {
   number: number;
   points: number;
   average: number;
-  above: boolean;
+  tone: "up" | "mid" | "down";
   otherPoints: number | null;
+};
+
+export type HomeInsight = {
+  badge: string;
+  tone: "up" | "mid" | "down" | "rank" | "peak";
+  text: string;
 };
 
 export type HomeLeagueCard = {
@@ -36,12 +44,17 @@ export type HomeLeagueCard = {
   average: number | null;
   lastRound: { number: number; points: number; average: number; otherName: string | null; otherPoints: number | null } | null;
   recent: HomeRoundDot[];
-  insights: string[];
+  insights: HomeInsight[];
 };
 
 export type HomeBoard = {
   competitionName: string;
+  teamId: string | null;
   teamName: string;
+  teamPrimary: string;
+  teamSecondary: string;
+  teamLogoUrl: string;
+  sponsors: { scrollSeconds: number; items: { id: string; label: string; imageUrl: string; href: string }[] };
   deadlineAt: string | null;
   deadlineLabel: string | null;
   fixtures: HomeFixture[];
@@ -112,9 +125,16 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   }
 
   const focus = cards.find((card) => card.id === saved) ?? cards[0] ?? null;
+  const look = await readTeamLook(team?.id ?? null, team?.name ?? "La tua squadra");
+  const sponsors = await readSponsors();
   return {
     competitionName: season.competitionName,
-    teamName: team?.name ?? "La tua squadra",
+    teamId: team?.id ?? null,
+    teamName: look.name,
+    teamPrimary: look.primary,
+    teamSecondary: look.secondary,
+    teamLogoUrl: look.logoUrl,
+    sponsors,
     deadlineAt: nextWeek ? nextWeek.deadline_at as string : null,
     deadlineLabel: nextWeek ? `Giornata ${nextWeek.number}` : null,
     fixtures,
@@ -265,7 +285,7 @@ async function leagueCard(
         number: row.number,
         points: row.points,
         average: row.average,
-        above: row.points >= row.average,
+        tone: roundTone(row.points, row.average),
         otherPoints: row.otherPoints,
       })),
       insights,
@@ -279,30 +299,39 @@ function pointsText(value: number) {
   return value.toLocaleString("it-IT", { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 }
 
+function roundTone(points: number, average: number): "up" | "mid" | "down" {
+  if (Math.abs(points - average) < 1) return "mid";
+  return points > average ? "up" : "down";
+}
+
 function storyOf(
   rank: number | null,
   total: number | null,
   trail: { number: number; points: number; average: number; place: number }[],
   last: { number: number; points: number; average: number; place: number } | null,
   before: { place: number } | null,
-) {
-  const lines: string[] = [];
-  if (rank != null && total != null) lines.push(`Sei ${rank}° con ${pointsText(total)} punti.`);
+): HomeInsight[] {
+  const lines: HomeInsight[] = [];
+  if (rank != null && total != null) lines.push({ badge: "Classifica", tone: "rank", text: `Sei ${rank}° con ${pointsText(total)} punti.` });
   if (last && before && last.place < before.place) {
     const gained = before.place - last.place;
-    lines.push(`Nell'ultima giornata hai guadagnato ${gained} posizion${gained === 1 ? "e" : "i"}.`);
+    lines.push({ badge: "Salita", tone: "up", text: `Nell'ultima giornata hai guadagnato ${gained} posizion${gained === 1 ? "e" : "i"}.` });
   } else if (last && before && last.place > before.place) {
     const lost = last.place - before.place;
-    lines.push(`Nell'ultima giornata hai perso ${lost} posizion${lost === 1 ? "e" : "i"}.`);
+    lines.push({ badge: "Discesa", tone: "down", text: `Nell'ultima giornata hai perso ${lost} posizion${lost === 1 ? "e" : "i"}.` });
   }
-  if (last && last.points > last.average) {
-    lines.push(`Giornata ${last.number}: ${pointsText(last.points)} punti, sopra la media di giornata (${pointsText(last.average)}).`);
-  } else if (last && last.points < last.average) {
-    lines.push(`Giornata ${last.number}: ${pointsText(last.points)} punti, sotto la media di giornata (${pointsText(last.average)}).`);
+  if (last) {
+    const tone = roundTone(last.points, last.average);
+    const relation = tone === "up" ? "sopra la media" : tone === "down" ? "sotto la media" : "in linea con la media";
+    lines.push({
+      badge: tone === "up" ? "Sopra" : tone === "down" ? "Sotto" : "In media",
+      tone,
+      text: `Giornata ${last.number}: ${pointsText(last.points)} punti, ${relation} di giornata (${pointsText(last.average)}).`,
+    });
   }
   if (trail.length >= 2) {
     const peak = trail.reduce((best, row) => row.points > best.points ? row : best, trail[0]);
-    lines.push(`Il picco recente è ${pointsText(peak.points)} punti, giornata ${peak.number}.`);
+    lines.push({ badge: "Picco", tone: "peak", text: `Il picco recente è ${pointsText(peak.points)} punti, giornata ${peak.number}.` });
   }
   return lines.slice(0, 4);
 }

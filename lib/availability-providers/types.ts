@@ -15,7 +15,7 @@ export type ProviderContext = {
 };
 
 export type AvailabilityProvider = {
-  id: "api-football" | "external-json" | "manual";
+  id: "api-football" | "fantacalcio" | "external-json" | "manual";
   load(context: ProviderContext): Promise<ExternalAvailability[]>;
 };
 

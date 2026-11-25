@@ -69,6 +69,7 @@ export type LeagueParticipant = {
   userId: string;
   teamName: string;
   displayName: string;
+  role?: "owner" | "admin" | "member";
 };
 
 export type LeagueDelegate = {

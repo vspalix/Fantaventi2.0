@@ -371,3 +371,91 @@ async function writeMatchPatch(
   }
   if (update.error) throw new Error(schemaHint(update.error.message));
 }
+
+export type SerieAMatch = {
+  id: string;
+  home: string;
+  away: string;
+  kickoffAt: string;
+  homeGoals: number | null;
+  awayGoals: number | null;
+};
+
+export type SerieARound = {
+  number: number;
+  status: string;
+  matches: SerieAMatch[];
+};
+
+export async function loadSerieACalendar(): Promise<{ title: string; focus: number; rounds: SerieARound[] }> {
+  const admin = createAdminSupabase();
+  const season = await getCurrentSeason(admin);
+  const weeks = await admin
+    .from("gameweeks")
+    .select("id, number, status")
+    .eq("season_id", season.id)
+    .gte("number", 1)
+    .lte("number", 38)
+    .order("number", { ascending: true });
+  if (weeks.error) throw new Error(weeks.error.message);
+  const rows = weeks.data ?? [];
+  const ids = rows.map((week) => week.id as string);
+  const matches = ids.length === 0
+    ? { data: [], error: null }
+    : await admin
+      .from("real_matches")
+      .select("id, gameweek_id, kickoff_at, home_club_id, away_club_id, home_goals, away_goals")
+      .in("gameweek_id", ids)
+      .order("kickoff_at", { ascending: true });
+  const plain = matches.error && /home_goals|away_goals/i.test(matches.error.message)
+    ? await admin
+      .from("real_matches")
+      .select("id, gameweek_id, kickoff_at, home_club_id, away_club_id")
+      .in("gameweek_id", ids)
+      .order("kickoff_at", { ascending: true })
+    : matches;
+  if (plain.error) throw new Error(plain.error.message);
+  const clubIds = [...new Set((plain.data ?? []).flatMap((match) => [match.home_club_id as string, match.away_club_id as string]))];
+  const clubs = clubIds.length === 0
+    ? { data: [], error: null }
+    : await admin.from("clubs").select("id, code, club_translations(locale, short_name, name)").in("id", clubIds);
+  if (clubs.error) throw new Error(clubs.error.message);
+  const names = new Map((clubs.data ?? []).map((club) => {
+    const translations = club.club_translations as { locale?: string; short_name?: string; name?: string }[] | null;
+    const label = translations?.find((item) => item.locale === "it") ?? translations?.[0];
+    return [club.id as string, label?.short_name || label?.name || (club.code as string) || "Club"] as const;
+  }));
+  const byWeek = new Map<string, SerieAMatch[]>();
+  for (const match of plain.data ?? []) {
+    const record = match as {
+      id: string;
+      gameweek_id: string;
+      kickoff_at: string;
+      home_club_id: string;
+      away_club_id: string;
+      home_goals?: number | null;
+      away_goals?: number | null;
+    };
+    const list = byWeek.get(record.gameweek_id) ?? [];
+    list.push({
+      id: record.id,
+      home: names.get(record.home_club_id) ?? "Casa",
+      away: names.get(record.away_club_id) ?? "Trasferta",
+      kickoffAt: record.kickoff_at,
+      homeGoals: record.home_goals == null ? null : Number(record.home_goals),
+      awayGoals: record.away_goals == null ? null : Number(record.away_goals),
+    });
+    byWeek.set(record.gameweek_id, list);
+  }
+  const rounds = rows.map((week) => ({
+    number: Number(week.number),
+    status: week.status as string,
+    matches: byWeek.get(week.id as string) ?? [],
+  }));
+  const open = rounds.find((round) => round.status !== "scored" && round.status !== "final");
+  return {
+    title: season.competitionName,
+    focus: open?.number ?? rounds.at(-1)?.number ?? 1,
+    rounds,
+  };
+}

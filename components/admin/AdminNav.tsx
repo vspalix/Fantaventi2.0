@@ -14,6 +14,7 @@ const LINKS = [
   { href: "/admin/annunci", label: "Annunci" },
   { href: "/admin/comunicazioni", label: "Comunicazioni" },
   { href: "/admin/promo", label: "Banner" },
+  { href: "/admin/sponsor", label: "Sponsor" },
   { href: "/admin/import-listone", label: "Listone" },
   { href: "/admin/listone-view", label: "Listone caricato" },
   { href: "/admin/rules-editor", label: "Regolamento" },

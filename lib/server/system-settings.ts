@@ -161,7 +161,7 @@ export async function saveSystemSettings(input: Omit<SystemSettings, "ready">) {
     id: 1,
     votes_source_url: url,
     votes_provider: provider,
-    availability_provider: "api-sports",
+    availability_provider: current.availabilityProvider,
     api_sports_league_id: leagueId,
     api_sports_season: season,
     sync_window_post_match_min: postMin,
@@ -186,7 +186,7 @@ export async function saveSystemSettings(input: Omit<SystemSettings, "ready">) {
     settings: normalize({
     votes_source_url: url,
     votes_provider: provider,
-    availability_provider: "api-sports",
+    availability_provider: current.availabilityProvider,
     api_sports_league_id: leagueId,
     api_sports_season: season,
     sync_window_post_match_min: postMin,

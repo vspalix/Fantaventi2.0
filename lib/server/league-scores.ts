@@ -73,24 +73,62 @@ export async function fantasyPointsForLeague(
     slotsByLineup.set(lineupId, list);
   }
 
+  type RegistrationRow = {
+    player_id: string;
+    club_id: string;
+    role: PlayerRole;
+    effective_from_gameweek: number;
+    effective_to_gameweek: number | null;
+  };
+  const registrationRows = (registrations ?? []) as RegistrationRow[];
+  const roleCache = new Map<number, { roles: Map<string, PlayerRole>; clubs: Map<string, string> }>();
+  function rosterAt(number: number) {
+    const cached = roleCache.get(number);
+    if (cached) return cached;
+    const roles = new Map<string, PlayerRole>();
+    const clubs = new Map<string, string>();
+    for (const row of registrationRows) {
+      const from = Number(row.effective_from_gameweek);
+      const until = row.effective_to_gameweek == null ? null : Number(row.effective_to_gameweek);
+      if (from > number || (until !== null && until < number)) continue;
+      roles.set(row.player_id, row.role);
+      clubs.set(row.player_id, row.club_id);
+    }
+    const built = { roles, clubs };
+    roleCache.set(number, built);
+    return built;
+  }
+
+  type StatRow = {
+    gameweek_id: string;
+    player_id: string;
+    voto: number | string | null;
+    goals: number | null;
+    assists: number | null;
+    yellow_cards: number | null;
+    red_cards: number | null;
+    penalties_scored: number | null;
+    penalties_missed: number | null;
+    penalties_saved: number | null;
+    own_goals: number | null;
+    goals_conceded: number | null;
+  };
+  const statsByWeek = new Map<string, StatRow[]>();
+  for (const row of (statRows ?? []) as StatRow[]) {
+    const list = statsByWeek.get(row.gameweek_id) ?? [];
+    list.push(row);
+    statsByWeek.set(row.gameweek_id, list);
+  }
+
   const points = new Map<string, number>();
   for (const lineup of lineupRows ?? []) {
     const gameweekId = lineup.gameweek_id as string;
     const number = numberById.get(gameweekId);
     if (number === undefined) continue;
-    const roles = new Map<string, PlayerRole>();
-    const clubByPlayer = new Map<string, string>();
-    for (const row of registrations ?? []) {
-      const from = row.effective_from_gameweek as number;
-      const until = row.effective_to_gameweek as number | null;
-      if (from > number || (until !== null && until < number)) continue;
-      roles.set(row.player_id as string, row.role as PlayerRole);
-      clubByPlayer.set(row.player_id as string, row.club_id as string);
-    }
+    const { roles, clubs: clubByPlayer } = rosterAt(number);
     const stats = new Map<string, PlayerStat>();
-    for (const row of statRows ?? []) {
-      if (row.gameweek_id !== gameweekId) continue;
-      const playerId = row.player_id as string;
+    for (const row of statsByWeek.get(gameweekId) ?? []) {
+      const playerId = row.player_id;
       stats.set(playerId, {
         playerId,
         role: roles.get(playerId) ?? "MID",

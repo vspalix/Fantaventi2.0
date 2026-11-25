@@ -4,7 +4,7 @@ import { isHubTab } from "@/lib/hub-tabs";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadLeagueHub } from "@/lib/server/league-hub";
 import { errorMessage, getSessionUser } from "@/lib/server/session";
-import { readViewMode } from "@/lib/server/view-mode";
+import { hostAccess } from "@/lib/server/view-mode";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
@@ -30,10 +30,9 @@ export default async function LeaguePage({
   const requested = (await searchParams).tab;
   try {
     const hub = await loadLeagueHub(user.id, leagueId);
-    const hostMode = await readViewMode() === "host";
+    const hostMode = (await hostAccess(user.id)).hostMode;
     return (
       <LeagueHub
-        key={isHubTab(requested) ? requested : "home"}
         initial={hub}
         initialTab={isHubTab(requested) ? requested : "home"}
         hostMode={hostMode && (hub.league.isManager || hub.league.platformOverride)}

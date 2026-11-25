@@ -1,12 +1,13 @@
 import type { User } from "@supabase/supabase-js";
+import { cache } from "react";
 import { createServerSupabase, hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
-export async function getSessionUser(): Promise<User | null> {
+export const getSessionUser = cache(async (): Promise<User | null> => {
   if (!hasPublicSupabaseEnv()) return null;
   const supabase = await createServerSupabase();
   const { data } = await supabase.auth.getUser();
   return data.user;
-}
+});
 
 export async function requireSessionUser(): Promise<User> {
   const user = await getSessionUser();

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const DEFAULT_MESSAGE = "Manutenzione in corso. Puoi consultare la lega: formazioni e mercati restano chiusi fino alla fine del calcolo.";
@@ -12,7 +13,7 @@ function missing(message: string) {
   return /platform_maintenance|schema cache|could not find|relation|does not exist/i.test(message);
 }
 
-export async function readMaintenance(): Promise<MaintenanceState> {
+export const readMaintenance = cache(async (): Promise<MaintenanceState> => {
   const admin = createAdminSupabase();
   const row = await admin.from("platform_maintenance").select("enabled, message, updated_at").eq("id", 1).maybeSingle();
   if (row.error) {
@@ -24,7 +25,7 @@ export async function readMaintenance(): Promise<MaintenanceState> {
     message: (row.data?.message as string | undefined) || DEFAULT_MESSAGE,
     updatedAt: (row.data?.updated_at as string | null) ?? null,
   };
-}
+});
 
 export async function assertWritesOpen() {
   const state = await readMaintenance();

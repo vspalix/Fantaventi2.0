@@ -261,7 +261,8 @@ export async function loadLeagueHub(
     ? lineupSheet(lineup, roster, selectedPreview, team.id)
     : null;
 
-  const standings = await standingsFor(admin, league, league.participants, rows, now, inPlay);
+  const standingPack = await standingsFor(admin, league, league.participants, rows, now, inPlay);
+  const standings = standingPack.rows;
   const live = await liveStandingsFor(league.id, standings, livePreview);
   const checkpointHistory = await loadCheckpointHistory({
     leagueId: league.id,
@@ -275,6 +276,7 @@ export async function loadLeagueHub(
     })),
     gameweeks: rows.map((gameweek) => ({ id: gameweek.id, number: gameweek.number, status: gameweek.status })),
     rules: league.rules,
+    knownPoints: standingPack.weekPoints,
   });
   const season = await getCurrentSeason(admin, league.seasonId);
   const lastClosed = [...rows].reverse().find((gameweek) => isLocked(gameweek, now, inPlay)) ?? null;
@@ -401,6 +403,135 @@ async function fixturesFor(
       awayGoals: record.away_goals == null ? null : Number(record.away_goals),
     };
   });
+}
+
+export type CalendarWeek = {
+  selectedGameweekId: string;
+  number: number;
+  revealOpponents: boolean;
+  opponents: OpponentLineup[];
+  partial: PartialStanding[];
+  selectedFixtures: HubFixture[];
+};
+
+function oneRow<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function clubShortOf(translations: { locale?: string; name?: string; short_name?: string } | { locale?: string; name?: string; short_name?: string }[] | null, code: string) {
+  const list = Array.isArray(translations) ? translations : translations ? [translations] : [];
+  const label = list.find((item) => item.locale === "it") ?? list[0];
+  return { name: label?.name || code, shortName: label?.short_name || label?.name || code };
+}
+
+export async function loadCalendarWeek(userId: string, leagueId: string, gameweekId: string): Promise<CalendarWeek> {
+  const league = await getLeagueDetail(userId, leagueId);
+  const admin = createAdminSupabase();
+  const week = await admin
+    .from("gameweeks")
+    .select("id, number, deadline_at, status")
+    .eq("id", gameweekId)
+    .eq("season_id", league.seasonId)
+    .maybeSingle();
+  if (week.error) throw new Error(week.error.message);
+  if (!week.data) throw httpError("Giornata non trovata in questa stagione.", 404);
+  const row = week.data as GameweekRow;
+  const locked = CLOSED.has(row.status) || new Date(row.deadline_at).getTime() <= Date.now();
+  const team = await getFantasyTeam(admin, userId, league.seasonId);
+  const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
+  const lineupRows = teamIds.length ? await lineupsFor(admin, row.id, teamIds) : [];
+  const playerIds = [...new Set(lineupRows.flatMap((item) => slotsOf(item).map((slot) => slot.player_id)))];
+  const byId = new Map<string, CatalogPlayer>();
+  if (playerIds.length > 0) {
+    const [players, regs] = await Promise.all([
+      admin.from("players").select("id, full_name").in("id", playerIds),
+      admin.from("player_registrations")
+        .select("player_id, role, club_id, effective_from_gameweek, effective_to_gameweek")
+        .eq("season_id", league.seasonId)
+        .in("player_id", playerIds),
+    ]);
+    if (players.error) throw new Error(players.error.message);
+    if (regs.error) throw new Error(regs.error.message);
+    const names = new Map((players.data ?? []).map((item) => [item.id as string, item.full_name as string]));
+    const chosen = new Map<string, { role: PlayerRole; clubId: string; from: number }>();
+    for (const item of regs.data ?? []) {
+      const from = Number(item.effective_from_gameweek);
+      const until = item.effective_to_gameweek == null ? null : Number(item.effective_to_gameweek);
+      if (from > row.number || (until !== null && until < row.number)) continue;
+      const previous = chosen.get(item.player_id as string);
+      if (!previous || from >= previous.from) {
+        chosen.set(item.player_id as string, { role: item.role as PlayerRole, clubId: item.club_id as string, from });
+      }
+    }
+    const clubIds = [...new Set([...chosen.values()].map((item) => item.clubId))];
+    const clubs = clubIds.length
+      ? await admin.from("clubs").select("id, code, club_translations(locale, name, short_name)").in("id", clubIds)
+      : { data: [], error: null };
+    if (clubs.error) throw new Error(clubs.error.message);
+    const clubById = new Map((clubs.data ?? []).map((item) => {
+      const label = clubShortOf(item.club_translations as { locale?: string; short_name?: string; name?: string }[] | null, item.code as string);
+      return [item.id as string, { code: item.code as string, ...label }];
+    }));
+    for (const [playerId, registration] of chosen) {
+      const club = clubById.get(registration.clubId);
+      byId.set(playerId, {
+        id: playerId,
+        fullName: names.get(playerId) ?? "Calciatore",
+        role: registration.role,
+        clubId: registration.clubId,
+        clubCode: club?.code ?? "",
+        clubName: club?.name ?? "",
+        clubShort: club?.shortName ?? "",
+      });
+    }
+  }
+  const opponents: OpponentLineup[] = league.participants.map((participant) => {
+    const lineup = lineupRows.find((item) => item.fantasy_team_id === participant.fantasyTeamId);
+    const isMine = participant.fantasyTeamId === team?.id;
+    const revealed = isMine || locked;
+    const named = (slot: SlotRow) => {
+      const player = byId.get(slot.player_id);
+      return {
+        playerId: slot.player_id,
+        fullName: player?.fullName ?? "Calciatore",
+        role: player?.role ?? "MID" as const,
+        clubShort: player?.clubShort ?? "",
+        isCaptain: slot.is_captain,
+        isVice: slot.is_vice_captain,
+      };
+    };
+    const source = revealed && lineup ? slotsOf(lineup) : [];
+    return {
+      fantasyTeamId: participant.fantasyTeamId,
+      teamName: participant.teamName,
+      displayName: participant.displayName,
+      isMine,
+      filed: Boolean(lineup),
+      revealed,
+      slots: source.filter((slot) => slot.is_starter !== false).map(named).sort((left, right) => ROLE_ORDER[left.role] - ROLE_ORDER[right.role] || left.fullName.localeCompare(right.fullName, "it")),
+      bench: source.filter((slot) => slot.is_starter === false).sort((left, right) => (left.slot_order ?? 0) - (right.slot_order ?? 0)).map(named),
+    };
+  });
+  const partial = await partialStandings(admin, league.participants, row.id, opponents);
+  const seasonClubs = await admin
+    .from("season_clubs")
+    .select("club_id, clubs(code, club_translations(locale, name, short_name))")
+    .eq("season_id", league.seasonId);
+  if (seasonClubs.error) throw new Error(seasonClubs.error.message);
+  const clubs = (seasonClubs.data ?? []).map((item) => {
+    const club = oneRow(item.clubs as { code?: string; club_translations?: { locale?: string; name?: string; short_name?: string }[] } | { code?: string; club_translations?: { locale?: string; name?: string; short_name?: string }[] }[] | null);
+    const label = clubShortOf(club?.club_translations ?? null, club?.code ?? "Club");
+    return { id: item.club_id as string, name: label.name, shortName: label.shortName };
+  });
+  return {
+    selectedGameweekId: row.id,
+    number: row.number,
+    revealOpponents: locked,
+    opponents,
+    partial,
+    selectedFixtures: await fixturesFor(admin, row.id, clubs),
+  };
 }
 
 export async function loadLeagueRosters(
@@ -738,11 +869,11 @@ async function standingsFor(
   gameweeks: GameweekRow[],
   now: number,
   inPlay: Set<number>,
-): Promise<StandingRow[]> {
+): Promise<{ rows: StandingRow[]; weekPoints: Map<string, number> | null }> {
   const settings = await readLeagueSettings(admin, league.id);
   if (!settings.ready) {
     const fromDatabase = await standingsFromDatabase(admin, league.id, participants);
-    if (fromDatabase) return fromDatabase;
+    if (fromDatabase) return { rows: fromDatabase, weekPoints: null };
   }
   let weekPoints: Map<string, number> | null = null;
   if (settings.ready) {
@@ -758,7 +889,7 @@ async function standingsFor(
       weekPoints = null;
     }
   }
-  return standingsInApp(admin, league.startMatchday, participants, gameweeks, now, inPlay, {
+  const rows = await standingsInApp(admin, league.startMatchday, participants, gameweeks, now, inPlay, {
     allowLateEntry: settings.rules.enrollment !== "closed",
     phases: settings.rules.phases,
     goalBands: settings.rules.goalBands,
@@ -767,6 +898,7 @@ async function standingsFor(
       ? await postponedWeekIds(admin, gameweeks.map((gameweek) => gameweek.id))
       : new Set(),
   });
+  return { rows, weekPoints };
 }
 
 async function postponedWeekIds(

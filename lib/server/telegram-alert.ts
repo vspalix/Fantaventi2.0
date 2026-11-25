@@ -1,13 +1,17 @@
 import { inspectVoteSyncWindow, playedDayStillOpen } from "@/lib/server/vote-sync-window";
 import { readSystemSettings, type SyncLogEntry } from "@/lib/server/system-settings";
 
-export type TelegramResult = { sent: true } | { sent: false; reason: string };
+export type TelegramResult = { sent: true; warning?: string } | { sent: false; reason: string };
+
+export function telegramChatIds(raw = process.env.TELEGRAM_CHAT_ID ?? "") {
+  return raw.split(",").map((part) => part.trim()).filter((part) => part.length > 0);
+}
 
 function credentials() {
   const token = process.env.TELEGRAM_BOT_TOKEN?.trim() ?? "";
-  const chatId = process.env.TELEGRAM_CHAT_ID?.trim() ?? "";
-  if (!token || !chatId) return null;
-  return { token, chatId };
+  const chatIds = telegramChatIds();
+  if (!token || chatIds.length === 0) return null;
+  return { token, chatIds };
 }
 
 function romeStamp(now = new Date()) {
@@ -30,18 +34,18 @@ function quiet(reason: string) {
   console.info(`Alert Telegram non inviato: ${safe}`);
 }
 
-export async function sendTelegramMessage(text: string): Promise<TelegramResult> {
-  const keys = credentials();
-  if (!keys) {
-    quiet("Mancano TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID.");
-    return { sent: false, reason: "Mancano TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID." };
-  }
+function safeDetail(value: string) {
+  if (value.includes("://") || value.includes("api.telegram.org")) return "Telegram ha rifiutato il messaggio.";
+  return value.slice(0, 160);
+}
+
+async function postToChat(token: string, chatId: string, text: string) {
   try {
-    const response = await fetch(`https://api.telegram.org/bot${keys.token}/sendMessage`, {
+    const response = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        chat_id: keys.chatId,
+        chat_id: chatId,
         text,
         parse_mode: "HTML",
       }),
@@ -49,15 +53,30 @@ export async function sendTelegramMessage(text: string): Promise<TelegramResult>
     });
     const body = await response.json().catch(() => null) as { ok?: boolean; description?: string } | null;
     if (!response.ok || !body?.ok) {
-      const reason = body?.description || "Telegram ha rifiutato il messaggio.";
+      const reason = `Chat ${chatId}: ${safeDetail(body?.description || "Telegram ha rifiutato il messaggio.")}`;
       quiet(reason);
-      return { sent: false, reason };
+      return reason;
     }
-    return { sent: true };
+    return null;
   } catch {
-    quiet("Invio Telegram non riuscito.");
-    return { sent: false, reason: "Invio Telegram non riuscito." };
+    const reason = `Chat ${chatId}: invio non riuscito.`;
+    quiet(reason);
+    return reason;
   }
+}
+
+export async function sendTelegramMessage(text: string): Promise<TelegramResult> {
+  const keys = credentials();
+  if (!keys) {
+    quiet("Mancano TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID.");
+    return { sent: false, reason: "Mancano TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID." };
+  }
+  const failures = (await Promise.all(keys.chatIds.map((chatId) => postToChat(keys.token, chatId, text)))).filter((reason): reason is string => reason !== null);
+  if (failures.length === keys.chatIds.length) {
+    return { sent: false, reason: failures.join(" ") };
+  }
+  if (failures.length > 0) return { sent: true, warning: failures.join(" ") };
+  return { sent: true };
 }
 
 function jobLabel(job: SyncLogEntry["jobType"]) {
@@ -120,6 +139,55 @@ export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = n
       "Job: Voti",
       `Quando: ${escapeHtml(romeStamp(now))}`,
       "La finestra mattutina si è chiusa senza voti scritti, ma ci sono ancora partite della giornata da calcolare.",
+    ].join("\n"));
+  } catch {
+    quiet("Controllo allerta non riuscito.");
+  }
+}
+
+const AVAILABILITY_LABEL: Record<string, string> = {
+  injured: "infortunato",
+  suspended: "squalificato",
+  doubt: "dubbio",
+};
+
+export async function alertUnmatchedAvailability(
+  rows: { name: string; club: string; status: string }[],
+  matchday: number,
+) {
+  try {
+    if (rows.length === 0) return;
+    const shown = rows.slice(0, 30).map((row) => {
+      const status = AVAILABILITY_LABEL[row.status] ?? row.status;
+      return `• ${escapeHtml(row.name)} · ${escapeHtml(row.club)} · ${escapeHtml(status)}`;
+    });
+    const rest = rows.length > shown.length ? [`… e altri ${rows.length - shown.length}`] : [];
+    await sendTelegramMessage([
+      "<b>Fantaventi — indisponibili non abbinati</b>",
+      `Giornata ${matchday}: ${rows.length} da associare nel Laboratorio.`,
+      ...shown,
+      ...rest,
+    ].join("\n"));
+  } catch {
+    quiet("Controllo allerta non riuscito.");
+  }
+}
+
+export async function alertAvailabilityWrites(input: {
+  matchday: number;
+  written: number;
+  changed: number;
+  samples: string[];
+}) {
+  try {
+    if (input.changed <= 0) return;
+    const shown = input.samples.slice(0, 5).map((sample) => `• ${escapeHtml(sample)}`);
+    await sendTelegramMessage([
+      "<b>Fantaventi — indisponibili aggiornati</b>",
+      `Giornata ${input.matchday}`,
+      `Righe scritte: ${input.written}`,
+      `Variate: ${input.changed}`,
+      ...shown,
     ].join("\n"));
   } catch {
     quiet("Controllo allerta non riuscito.");

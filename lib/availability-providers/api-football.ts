@@ -6,6 +6,23 @@ type InjuryRow = {
   fixture?: { date?: string };
 };
 
+export function apiFootballFailure(errors: unknown) {
+  if (!errors) return null;
+  if (typeof errors === "string") return errors.trim() || null;
+  if (Array.isArray(errors)) {
+    const text = errors.map((item) => String(item).trim()).filter(Boolean);
+    return text.length ? text.join(" ") : null;
+  }
+  if (typeof errors === "object") {
+    const parts = Object.entries(errors as Record<string, unknown>).flatMap(([key, value]) => {
+      if (value == null || value === "" || (Array.isArray(value) && value.length === 0)) return [];
+      return [`${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`];
+    });
+    return parts.length ? parts.join(" ") : null;
+  }
+  return null;
+}
+
 export const apiFootballProvider: AvailabilityProvider = {
   id: "api-football",
   async load(context) {
@@ -22,7 +39,9 @@ export const apiFootballProvider: AvailabilityProvider = {
       signal: AbortSignal.timeout(20000),
     });
     if (!response.ok) throw new Error(`API-Football ha risposto ${response.status}.`);
-    const body = await response.json() as { response?: InjuryRow[] };
+    const body = await response.json() as { response?: InjuryRow[]; errors?: unknown };
+    const failure = apiFootballFailure(body.errors);
+    if (failure) throw new Error(`API-Football ha rifiutato la richiesta (${failure}). Nessun aggiornamento.`);
     const rows = Array.isArray(body.response) ? body.response : [];
     const seen = new Map<string, ExternalAvailability>();
     for (const row of rows) {

@@ -17,15 +17,17 @@ export function DeadlineCountdown({ deadlineAt, label, compact = false }: { dead
   const hours = Math.floor((total % 86400000) / 3600000);
   const minutes = Math.floor((total % 3600000) / 60000);
   const seconds = Math.floor((total % 60000) / 1000);
-  const clock = ended
-    ? "Chiusa"
-    : days > 0
-      ? `${days}g ${hours}h`
-      : hours > 0
-        ? `${hours}h ${String(minutes).padStart(2, "0")}`
-        : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  const tick = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  const clock = ended ? "Chiusa" : days > 0 ? `${days}g ${hours}h` : hours > 0 ? `${hours}h` : tick;
 
-  if (compact) return <p className="clock-pill">{clock}</p>;
+  if (compact) {
+    return (
+      <p className="clock-pill">
+        <span>{clock}</span>
+        {ended || (hours === 0 && days === 0) ? null : <span className="clock-tick">{tick}</span>}
+      </p>
+    );
+  }
 
   return (
     <div>

@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 
 type Settings = {
-  provider: "api-football" | "external-json" | "manual";
+  provider: "api-football" | "fantacalcio" | "external-json" | "manual";
   leagueId: number;
   season: number;
   jsonUrl: string;
   lastSyncAt: string | null;
   lastSyncNote: string | null;
-  unmatched: { name: string; club: string; reason: string | null }[];
+  unmatched: { name: string; club: string; status?: string; reason: string | null }[];
+  aliases: { name: string; club: string; playerId: string }[];
 };
 
 type Found = { id: string; fullName: string; club: string };
@@ -23,6 +24,8 @@ export function AvailabilityDesk() {
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [unmatched, setUnmatched] = useState<Settings["unmatched"]>([]);
+  const [aliases, setAliases] = useState<Settings["aliases"]>([]);
+  const [aliasNames, setAliasNames] = useState<Record<string, string>>({});
   const [query, setQuery] = useState("");
   const [found, setFound] = useState<Found[]>([]);
   const [picked, setPicked] = useState<Found | null>(null);
@@ -40,14 +43,16 @@ export function AvailabilityDesk() {
     setLastSyncAt(settings.lastSyncAt);
     setNote(settings.lastSyncNote);
     setUnmatched(settings.unmatched);
+    setAliases(settings.aliases ?? []);
   }
 
   useEffect(() => {
     void fetch("/api/admin/availability")
       .then(async (response) => {
-        const body = await response.json() as { settings?: Settings; ready?: boolean; error?: string };
+        const body = await response.json() as { settings?: Settings; ready?: boolean; aliasNames?: Record<string, string>; error?: string };
         if (!response.ok) throw new Error(body.error ?? "Pannello non disponibile.");
         setReady(body.ready !== false);
+        if (body.aliasNames) setAliasNames(body.aliasNames);
         if (body.settings) apply(body.settings);
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Pannello non disponibile."));
@@ -85,7 +90,8 @@ export function AvailabilityDesk() {
       if (!response.ok) throw new Error(body.error ?? "Sync non riuscito.");
       setNote(body.reason ?? "Fatto.");
       const fresh = await fetch("/api/admin/availability");
-      const loaded = await fresh.json() as { settings?: Settings };
+      const loaded = await fresh.json() as { settings?: Settings; aliasNames?: Record<string, string> };
+      if (loaded.aliasNames) setAliasNames(loaded.aliasNames);
       if (loaded.settings) apply(loaded.settings);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Sync non riuscito.");
@@ -132,13 +138,20 @@ export function AvailabilityDesk() {
   }
 
   async function associate(item: Settings["unmatched"][number], player: Found) {
-    await fetch("/api/admin/availability", {
+    const response = await fetch("/api/admin/availability", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "alias", name: item.name, club: item.club, playerId: player.id }),
     });
+    const body = await response.json() as { error?: string };
+    if (!response.ok) {
+      setError(body.error ?? "Alias non salvato.");
+      return;
+    }
     setUnmatched((list) => list.filter((row) => row !== item));
-    setNote(`${item.name} abbinato a ${player.fullName}. Al prossimo sync entra da solo.`);
+    setAliases((list) => [...list.filter((alias) => !(alias.name === item.name && alias.club === item.club)), { name: item.name, club: item.club, playerId: player.id }]);
+    setAliasNames((names) => ({ ...names, [player.id]: player.fullName }));
+    setNote(`${item.name} resta abbinato a ${player.fullName} anche nelle giornate successive. Il prossimo sync lo scrive da solo.`);
   }
 
   async function onFile(file: File | undefined) {
@@ -179,6 +192,7 @@ export function AvailabilityDesk() {
         <label>
           Provider
           <select value={provider} onChange={(event) => setProvider(event.target.value as Settings["provider"])}>
+            <option value="fantacalcio">Fantacalcio indisponibili</option>
             <option value="api-football">API-Football</option>
             <option value="external-json">URL JSON custom</option>
             <option value="manual">Solo manuale</option>
@@ -199,6 +213,13 @@ export function AvailabilityDesk() {
         <h2>Non abbinati</h2>
         {unmatched.length === 0 ? <p>Nessuno.</p> : unmatched.map((item) => (
           <Unmatched key={`${item.name}-${item.club}`} item={item} onPick={(player) => void associate(item, player)} />
+        ))}
+      </section>
+      <section className="card stack">
+        <h2>Alias salvati</h2>
+        <p className="small muted">Restano nel database e valgono a ogni sync, su ogni giornata, finché quel calciatore è nel listone.</p>
+        {aliases.length === 0 ? <p>Nessuno.</p> : aliases.map((alias) => (
+          <p key={`${alias.name}-${alias.club}-${alias.playerId}`}>{alias.name} · {alias.club} → {aliasNames[alias.playerId] ?? "calciatore collegato"}</p>
         ))}
       </section>
       <section className="card stack">
@@ -232,11 +253,18 @@ export function AvailabilityDesk() {
   );
 }
 
-function Unmatched({ item, onPick }: { item: { name: string; club: string; reason: string | null }; onPick: (player: Found) => void }) {
+function statusLabel(status: string | undefined) {
+  if (status === "suspended") return "squalificato";
+  if (status === "injured") return "infortunato";
+  if (status === "doubt") return "dubbio";
+  return status || "";
+}
+
+function Unmatched({ item, onPick }: { item: { name: string; club: string; status?: string; reason: string | null }; onPick: (player: Found) => void }) {
   const [found, setFound] = useState<Found[]>([]);
   return (
     <div className="stack">
-      <strong>{item.name} · {item.club}</strong>
+      <strong>{item.name} · {item.club}{item.status ? ` · ${statusLabel(item.status)}` : ""}</strong>
       <input placeholder="Cerca nel listone" onChange={(event) => {
         const value = event.target.value;
         if (value.trim().length < 2) return;

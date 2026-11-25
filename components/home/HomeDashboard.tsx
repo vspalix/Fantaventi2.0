@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
 import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
+import { TeamSettings } from "@/components/home/TeamSettings";
 import type { HomeBoard } from "@/lib/server/home-board";
 
 function points(value: number | null) {
@@ -13,11 +14,13 @@ function place(rank: number | null) {
   return `${rank}ª`;
 }
 
-function Jersey({ letter }: { letter: string }) {
+function Crest({ name, primary, secondary, logoUrl }: { name: string; primary: string; secondary: string; logoUrl: string }) {
+  if (logoUrl) return <img className="team-crest" src={logoUrl} alt="" />;
+  const letter = (name.trim()[0] ?? "F").toUpperCase();
   return (
     <svg className="jersey" viewBox="0 0 64 76" aria-hidden="true">
-      <path d="M16 18c4-8 8-10 16-10s12 2 16 10l10 8-8 10h-6v32H20V36h-6L6 26z" fill="#c6f531" />
-      <path d="M32 8c6 0 10 2 14 10l10 8-8 10h-6v32H32z" fill="#f4f4f5" />
+      <path d="M16 18c4-8 8-10 16-10s12 2 16 10l10 8-8 10h-6v32H20V36h-6L6 26z" fill={primary} />
+      <path d="M32 8c6 0 10 2 14 10l10 8-8 10h-6v32H32z" fill={secondary} />
       <path d="M26 10h12l-6 9z" fill="#09090b" />
       <text x="32" y="48" textAnchor="middle" fontSize="16" fontWeight="700" fill="#09090b">{letter}</text>
     </svg>
@@ -28,23 +31,27 @@ function Mark({ letter }: { letter: string }) {
   return <span className="face-mark" aria-hidden="true">{letter.slice(0, 1).toUpperCase()}</span>;
 }
 
-export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoUrl?: string }) {
+export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string }) {
   const focus = board.focus;
   const leagueId = focus?.id ?? null;
   const formazione = leagueId ? `/leghe/${leagueId}?tab=formazione` : "/rosa";
-  const voti = leagueId ? `/leghe/${leagueId}?tab=risultati` : "/leghe";
-  const impostazioni = leagueId ? `/leghe/${leagueId}?tab=lega` : "/leghe";
+  const voti = leagueId ? `/leghe/${leagueId}?tab=pagelle` : "/leghe";
   const initial = (board.teamName.trim()[0] ?? "F").toUpperCase();
   const last = focus?.lastRound ?? null;
   const duel = Boolean(last?.otherName);
+  const crest = (
+    <Crest name={board.teamName} primary={board.teamPrimary} secondary={board.teamSecondary} logoUrl={board.teamLogoUrl} />
+  );
 
   if (!focus) {
     return (
       <section className="home-dash">
         <article className="hero-card">
-          <p className="hero-kicker">{board.competitionName}</p>
-          <Jersey letter={initial} />
-          <h1>{board.teamName}</h1>
+          {crest}
+          <div className="hero-copy">
+            <p className="hero-kicker">{board.competitionName}</p>
+            <h1>{board.teamName}</h1>
+          </div>
         </article>
         <LeagueOnboarding variant="card" />
       </section>
@@ -54,18 +61,19 @@ export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoU
   return (
     <section className="home-dash">
       <article className="hero-card">
-        <p className="hero-kicker">{focus.name}</p>
-        <h1>{board.teamName}</h1>
-        <Jersey letter={initial} />
-        <div className="hero-tools">
-          <Link href="/rosa" aria-label="Rosa"><ShirtIcon /></Link>
-          <Link href={impostazioni} aria-label="Impostazioni"><GearIcon /></Link>
+        {crest}
+        <div className="hero-copy">
+          <p className="hero-kicker">{focus.name}</p>
+          <h1>{board.teamName}</h1>
         </div>
+        {board.teamId ? (
+          <TeamSettings look={{ teamId: board.teamId, name: board.teamName, primary: board.teamPrimary, secondary: board.teamSecondary, logoUrl: board.teamLogoUrl }} />
+        ) : null}
       </article>
 
       <div className="stat-strip">
         <article><strong>{place(focus.rank)}</strong><span>Posizione</span></article>
-        <article><strong>{points(focus.average)}</strong><span>Media</span></article>
+        <article><strong>{points(last?.points ?? null)}</strong><span>{last ? `G${last.number}` : "Ultima"}</span></article>
         <article><strong>{focus.played}</strong><span>Giornate</span></article>
         <article><strong>{points(focus.total)}</strong><span>Pt. totali</span></article>
       </div>
@@ -92,7 +100,7 @@ export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoU
         ) : last ? (
           <div className="total-round">
             <strong>{points(last.points)}</strong>
-            <p>Giornata {last.number} · {last.points >= last.average ? "sopra" : "sotto"} la media di lega ({points(last.average)})</p>
+            <p>Giornata {last.number} · {Math.abs(last.points - last.average) < 1 ? "in linea con" : last.points > last.average ? "sopra" : "sotto"} la media di lega ({points(last.average)})</p>
           </div>
         ) : <p>Nessuna giornata calcolata.</p>}
         <div className="round-foot">
@@ -103,7 +111,6 @@ export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoU
       <article className="card dash-block current-round">
         <div className="dash-block-head">
           <h2>Giornata corrente</h2>
-          {logoUrl ? <img className="round-logo" src={logoUrl} alt="" /> : null}
           <span>{[board.deadlineLabel, focus.nextRival ? "scontro diretto" : "sul totale"].filter(Boolean).join(" · ")}</span>
         </div>
         {focus.nextRival ? (
@@ -139,7 +146,7 @@ export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoU
           <h2>Ultime giornate</h2>
           <div className="recent-row">
             {focus.recent.map((dot) => (
-              <div key={dot.number} className="recent-dot" data-up={dot.above}>
+              <div key={dot.number} className="recent-dot" data-tone={dot.tone}>
                 <span className="recent-mark">{dot.number}</span>
                 <strong>{dot.otherPoints != null ? `${points(dot.points)}–${points(dot.otherPoints)}` : points(dot.points)}</strong>
               </div>
@@ -153,28 +160,36 @@ export function HomeDashboard({ board, logoUrl = "" }: { board: HomeBoard; logoU
           <h2>La tua sala stampa</h2>
           <div className="press-row">
             {focus.insights.map((line) => (
-              <p className="press-card" key={line}>{line}</p>
+              <p className="press-card" data-tone={line.tone} key={line.text}>
+                <span className="press-badge">{line.badge}</span>
+                {line.text}
+              </p>
             ))}
           </div>
         </article>
       ) : null}
+
+      {board.sponsors.items.length > 0 ? (
+        <section className="sponsor-block" aria-label="Sponsor">
+          <h2>Sponsor</h2>
+          <div className="sponsor-rail" style={{ ["--sponsor-seconds" as string]: `${board.sponsors.scrollSeconds}s` }}>
+            <div className="sponsor-track">
+              {[0, 1].map((copy) => (
+                <div className="sponsor-set" key={copy}>
+                  {board.sponsors.items.map((item) => {
+                    const body = item.imageUrl
+                      ? <img src={item.imageUrl} alt={item.label} />
+                      : <span>Sponsored by {item.label}</span>;
+                    return item.href ? (
+                      <a key={`${copy}-${item.id}`} href={item.href} target="_blank" rel="noreferrer">{body}</a>
+                    ) : <span key={`${copy}-${item.id}`}>{body}</span>;
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
     </section>
-  );
-}
-
-function ShirtIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M8 5.5 12 8l4-2.5 4 3-2.2 3.2H16V20H8V9.2H6.2L4 8.5z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function GearIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      <path d="M12 3.5v2.2M12 18.3v2.2M3.5 12h2.2M18.3 12h2.2M6 6l1.6 1.6M16.4 16.4 18 18M18 6l-1.6 1.6M7.6 16.4 6 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-    </svg>
   );
 }

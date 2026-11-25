@@ -1,3 +1,4 @@
+import { publicHandle } from "@/lib/public-name";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type PodiumPlace = {
@@ -115,7 +116,7 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
     const profiles = await admin.from("profiles").select("id, display_name").in("id", userIds);
     if (!profiles.error) {
       for (const profile of profiles.data ?? []) {
-        names.set(profile.id as string, (profile.display_name as string) || "Giocatore");
+        names.set(profile.id as string, publicHandle(profile.display_name as string));
       }
     }
   }
@@ -163,7 +164,7 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
     const ranked = roster
       .map((member) => ({
         teamName: member.teamName,
-        displayName: names.get(member.userId) || "Giocatore",
+        displayName: names.get(member.userId) || "",
         points: totals.get(member.teamId) ?? 0,
       }))
       .sort((left, right) => right.points - left.points || left.teamName.localeCompare(right.teamName, "it"));

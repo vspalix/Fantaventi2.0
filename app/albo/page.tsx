@@ -56,7 +56,7 @@ export default async function HallOfFamePage() {
                       <li key={`${league.leagueId}-${place.rank}`}>
                         <span className="player-main">
                           <strong>{place.rank}° {place.teamName}</strong>
-                          <span className="small muted">{place.displayName}</span>
+                          {place.displayName ? <span className="small muted">{place.displayName}</span> : null}
                         </span>
                         <span>{points.format(place.points)} fantapunti</span>
                       </li>

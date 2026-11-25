@@ -1,4 +1,5 @@
 import { explainScore, type ScoreAudit } from "@/lib/engine/score-audit";
+import { compactFromAudit, type CompactPlayer } from "@/lib/lineups/compact-sheet";
 import { weekScoreMode } from "@/lib/league-rules";
 import { projectLiveScore, scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
 import { overlayPublishedVotes } from "@/lib/server/live-projection";
@@ -27,19 +28,17 @@ function one<T>(value: T | T[] | null): T | null {
   return value;
 }
 
-export async function loadScoreAudit(
+async function openWeekAudit(
   userId: string,
   leagueId: string,
   gameweekId: string,
-  fantasyTeamId: string,
   access: "owner" | "member" = "owner",
-): Promise<ScoreAudit> {
+) {
   const league = await getLeagueDetail(userId, leagueId);
   if (access === "owner" && !league.isManager && !league.platformOverride) {
     throw httpError("L'audit è riservato all'admin della lega.", 403);
   }
   const namesByTeam = new Map(league.participants.map((team) => [team.fantasyTeamId, team.teamName]));
-  if (!namesByTeam.has(fantasyTeamId)) throw httpError("Squadra non trovata in questa lega.", 404);
 
   const admin = createAdminSupabase();
   const week = await admin
@@ -176,8 +175,6 @@ export async function loadScoreAudit(
   }));
 
   const lineupByTeam = new Map((lineupRows ?? []).map((row) => [row.fantasy_team_id as string, row.id as string]));
-  if (!lineupByTeam.has(fantasyTeamId)) throw httpError("Questa squadra non ha una formazione per la giornata.", 404);
-
   const mode = official ? "official" as const : "provisional" as const;
   const totalOf = (teamId: string) => {
     const lineupId = lineupByTeam.get(teamId);
@@ -193,23 +190,7 @@ export async function loadScoreAudit(
     teamName: namesByTeam.get(teamId) ?? "Squadra",
     total: totalOf(teamId),
   }));
-
-  const stored = await admin
-    .from("team_gameweek_scores")
-    .select("total, provisional_total, is_live")
-    .eq("gameweek_id", gameweekId)
-    .eq("fantasy_team_id", fantasyTeamId)
-    .maybeSingle();
-  const storedRow = stored.error && /provisional_total|is_live/i.test(stored.error.message)
-    ? await admin.from("team_gameweek_scores").select("total").eq("gameweek_id", gameweekId).eq("fantasy_team_id", fantasyTeamId).maybeSingle()
-    : stored;
-  const saved = storedRow.data as { total?: number | string | null; provisional_total?: number | string | null; is_live?: boolean } | null;
-  const savedNumber = official
-    ? saved?.total
-    : saved?.is_live ? saved.provisional_total : null;
-  const storedTotal = savedNumber == null || !Number.isFinite(Number(savedNumber)) ? null : Number(savedNumber);
-
-  const playerIds = slotsOf(lineupByTeam.get(fantasyTeamId) ?? "").map((slot) => slot.playerId);
+  const playerIds = [...new Set([...slotsByLineup.values()].flatMap((slots) => slots.map((slot) => slot.player_id)))];
   const listed = playerIds.length
     ? await admin.from("players").select("id, full_name").in("id", playerIds)
     : { data: [], error: null };
@@ -227,21 +208,90 @@ export async function loadScoreAudit(
       }
     }
   }
+  const stored = await admin
+    .from("team_gameweek_scores")
+    .select("fantasy_team_id, total, provisional_total, is_live")
+    .eq("gameweek_id", gameweekId)
+    .in("fantasy_team_id", teamIds);
+  const storedRows = stored.error && /provisional_total|is_live/i.test(stored.error.message)
+    ? await admin.from("team_gameweek_scores").select("fantasy_team_id, total").eq("gameweek_id", gameweekId).in("fantasy_team_id", teamIds)
+    : stored;
+  if (storedRows.error) throw new Error(storedRows.error.message);
+  const storedByTeam = new Map<string, number | null>();
+  for (const row of storedRows.data ?? []) {
+    const saved = row as { fantasy_team_id?: string; total?: number | string | null; provisional_total?: number | string | null; is_live?: boolean };
+    const savedNumber = official ? saved.total : saved.is_live ? saved.provisional_total : null;
+    storedByTeam.set(saved.fantasy_team_id ?? "", savedNumber == null || !Number.isFinite(Number(savedNumber)) ? null : Number(savedNumber));
+  }
+  const ranking = weekScoreMode(rules, gameweekNumber) === "sum" ? "sum" as const : "head_to_head" as const;
+  const goalBands = ranking === "sum" ? [] : rules.goalBands;
+  const explainTeam = (teamId: string) => {
+    const slots = slotsOf(lineupByTeam.get(teamId) ?? "");
+    const mine = new Set(slots.map((slot) => slot.playerId));
+    return explainScore({
+      fantasyTeamId: teamId,
+      teamName: namesByTeam.get(teamId) ?? "Squadra",
+      gameweekNumber,
+      slots,
+      stats: mode === "provisional" ? auditStats : stats,
+      definition,
+      names: new Map([...names].filter(([id]) => mine.has(id))),
+      clubs: new Map([...clubCodes].filter(([id]) => mine.has(id))),
+      mode,
+      matchFinished,
+      ranking,
+      goalBands,
+      totals,
+      storedTotal: storedByTeam.get(teamId) ?? null,
+    });
+  };
+  return { namesByTeam, lineupByTeam, explainTeam };
+}
 
-  return explainScore({
-    fantasyTeamId,
-    teamName: namesByTeam.get(fantasyTeamId) ?? "Squadra",
-    gameweekNumber,
-    slots: slotsOf(lineupByTeam.get(fantasyTeamId) ?? ""),
-    stats: mode === "provisional" ? auditStats : stats,
-    definition,
-    names,
-    clubs: clubCodes,
-    mode,
-    matchFinished,
-    ranking: weekScoreMode(rules, gameweekNumber) === "sum" ? "sum" : "head_to_head",
-    goalBands: weekScoreMode(rules, gameweekNumber) === "sum" ? [] : rules.goalBands,
-    totals,
-    storedTotal: storedTotal != null && Number.isFinite(storedTotal) ? storedTotal : null,
-  });
+export async function loadScoreAudit(
+  userId: string,
+  leagueId: string,
+  gameweekId: string,
+  fantasyTeamId: string,
+  access: "owner" | "member" = "owner",
+): Promise<ScoreAudit> {
+  const opened = await openWeekAudit(userId, leagueId, gameweekId, access);
+  if (!opened.namesByTeam.has(fantasyTeamId)) throw httpError("Squadra non trovata in questa lega.", 404);
+  if (!opened.lineupByTeam.has(fantasyTeamId)) throw httpError("Questa squadra non ha una formazione per la giornata.", 404);
+  return opened.explainTeam(fantasyTeamId);
+}
+
+export type CompactSheet = {
+  fantasyTeamId: string;
+  total: number;
+  starters: CompactPlayer[];
+  bench: CompactPlayer[];
+  bonuses: {
+    captain: number;
+    fairPlay: number;
+    defense: number;
+    defenseOn: boolean;
+  };
+};
+
+export async function loadCompactSheets(userId: string, leagueId: string, gameweekId: string): Promise<CompactSheet[]> {
+  const opened = await openWeekAudit(userId, leagueId, gameweekId, "member");
+  const sheets: CompactSheet[] = [];
+  for (const teamId of opened.lineupByTeam.keys()) {
+    const audit = opened.explainTeam(teamId);
+    const rows = compactFromAudit(audit.players);
+    sheets.push({
+      fantasyTeamId: teamId,
+      total: audit.sum.total,
+      starters: rows.starters,
+      bench: rows.bench,
+      bonuses: {
+        captain: audit.sum.captain,
+        fairPlay: audit.sum.fairPlay,
+        defense: audit.sum.defense,
+        defenseOn: audit.modifiers.defense.enabled,
+      },
+    });
+  }
+  return sheets;
 }

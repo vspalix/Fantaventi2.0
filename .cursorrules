@@ -1,0 +1,39 @@
+# Fantaventi
+
+App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.css` (niente Tailwind): canvas `#09090b`, card `#141416`, lime `#c6f531` solo su tab attivi, punteggi, countdown e CTA primarie.
+
+## Stack
+
+- Next.js 15 App Router, React 19, TypeScript.
+- CSS custom properties, mobile-first.
+- Supabase: il client browser fa solo auth. Letture e scritture dati passano da `createAdminSupabase()` (service role, bypassa RLS). Le policy restano nel SQL che l'utente esegue a mano nell'editor Supabase.
+- GitHub Actions per i cron. Vercel Hobby solo per il deploy web.
+- `vercel.json` resta `{}`. Non aggiungere mai una chiave `crons`: Vercel Hobby non regge job sub-giornalieri e un cron lì cancellerebbe o duplicherebbe la pianificazione su GitHub.
+
+## Cartelle
+
+- `app/` — pagine e route API (App Router).
+- `app/admin/laboratorio/` — Laboratorio, solo super admin.
+- `components/admin/` — desk del Laboratorio (client component).
+- `lib/server/` — logica server: voti, indisponibilità, finestre, settings, log.
+- `scripts/` — suite motore (`npm run test:engine`, anche in `prebuild`) e probe cron.
+- `supabase/` — SQL da incollare nell'editor Supabase. Non eseguirlo da qui.
+- `.github/workflows/` — `sync-votes.yml` ogni 15 minuti, `sync-availability.yml` alle 11:00 e 20:00 UTC.
+
+## Cron chirurgici
+
+- Auth: `Authorization: Bearer CRON_SECRET` oppure `x-cron-secret`. Segreto solo in env (Vercel, GitHub Actions, `.env.local`). Mai nel codice, nei log o nel browser.
+- `system_settings` (riga `id = 1`) è la fonte di URL voti, league/season API-Sports, finestre e `auto_sync_enabled`. Se la tabella manca, si usano i default.
+- Ogni esito (`success`, `skipped`, `error`) va in `sync_logs`. Un 401 non si logga.
+- Voti: chiamata esterna solo su una giornata di Serie A non final, dentro una finestra letta da `system_settings` in Europe/Rome (default: 125–150 minuti dopo il calcio d'inizio se la partita non è `finished`; rilettura 23:15–23:45 il giorno delle partite; 09:15–09:45 il giorno dopo). Fuori finestra: 200 `{ skipped: true }` senza richiesta a Fantacalcio.
+- Indisponibili: se la giornata aperta ha deadline passata e non è ancora calcolata, skip senza chiamata API-Sports.
+- `POST { "force": true }` (segreto cron o sessione super admin) salta finestre e guardia indisponibili e scrive. Origine log: `manual`. Il cron GitHub, senza body, è `cron`.
+- Non mettere `/api/cron/process-matchday` in schedule. Non chiamare `refreshSerieAKickoffs` da lì.
+- Non lanciare sync di scrittura (Forza sync, `force: true`) mentre una giornata di Serie A è in corso.
+
+## Convenzioni
+
+- Ogni route e pagina sotto `/admin` passa da `requireSuperAdmin()`. Il cookie `fv-view` non è autorizzazione.
+- Non hardcodare id di profilo, lega o segreti.
+- Non committare `.env`, `.env.local`, `.vercel/`, `node_modules/`, `.next/`, `data/`.
+- Commit e push solo se chiesto. Non modificare `git config`. Non fare force push su `main`.

@@ -1,4 +1,5 @@
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { clockMinutes, readSystemSettings } from "@/lib/server/system-settings";
 
 export const VOTE_SYNC_SKIP_REASON = "Outside surgical sync windows";
 
@@ -8,6 +9,24 @@ const MORNING_START = 9 * 60 + 15;
 const MORNING_END = 9 * 60 + 45;
 const EVENING_START = 23 * 60 + 15;
 const EVENING_END = 23 * 60 + 45;
+
+export type VoteWindowBounds = {
+  freshMinMs: number;
+  freshMaxMs: number;
+  morningStart: number;
+  morningEnd: number;
+  eveningStart: number;
+  eveningEnd: number;
+};
+
+const DEFAULT_BOUNDS: VoteWindowBounds = {
+  freshMinMs: FRESH_MIN_MS,
+  freshMaxMs: FRESH_MAX_MS,
+  morningStart: MORNING_START,
+  morningEnd: MORNING_END,
+  eveningStart: EVENING_START,
+  eveningEnd: EVENING_END,
+};
 
 export type VoteWindow = {
   open: boolean;
@@ -52,24 +71,37 @@ function romeDate(kickoffAt: string) {
   return romeClock(new Date(time)).date;
 }
 
-export function voteWindowForMatches(now: Date, matches: WindowMatch[]): VoteWindow {
+export function voteWindowForMatches(now: Date, matches: WindowMatch[], bounds: VoteWindowBounds = DEFAULT_BOUNDS): VoteWindow {
   const clock = romeClock(now);
   const yesterday = shiftRomeDate(clock.date, -1);
   const fresh = matches.some((match) => {
     const kickoff = new Date(match.kickoffAt).getTime();
     if (!Number.isFinite(kickoff) || match.votesFetched) return false;
     const age = now.getTime() - kickoff;
-    return age >= FRESH_MIN_MS && age <= FRESH_MAX_MS;
+    return age >= bounds.freshMinMs && age <= bounds.freshMaxMs;
   });
   const playedToday = matches.some((match) => romeDate(match.kickoffAt) === clock.date);
   const playedYesterday = matches.some((match) => romeDate(match.kickoffAt) === yesterday);
-  const evening = clock.minutes >= EVENING_START && clock.minutes <= EVENING_END && playedToday;
-  const morning = clock.minutes >= MORNING_START && clock.minutes <= MORNING_END && playedYesterday;
+  const evening = clock.minutes >= bounds.eveningStart && clock.minutes <= bounds.eveningEnd && playedToday;
+  const morning = clock.minutes >= bounds.morningStart && clock.minutes <= bounds.morningEnd && playedYesterday;
   return { open: fresh || evening || morning, fresh, evening, morning, date: clock.date };
+}
+
+async function windowBounds(): Promise<VoteWindowBounds> {
+  const settings = await readSystemSettings();
+  return {
+    freshMinMs: settings.syncWindowPostMatchMin * 60 * 1000,
+    freshMaxMs: settings.syncWindowPostMatchMax * 60 * 1000,
+    morningStart: clockMinutes(settings.syncWindowMorningStart, MORNING_START),
+    morningEnd: clockMinutes(settings.syncWindowMorningEnd, MORNING_END),
+    eveningStart: clockMinutes(settings.syncWindowEveningStart, EVENING_START),
+    eveningEnd: clockMinutes(settings.syncWindowEveningEnd, EVENING_END),
+  };
 }
 
 export async function inspectVoteSyncWindow(now = new Date()): Promise<VoteWindow> {
   const closed: VoteWindow = { open: false, fresh: false, evening: false, morning: false, date: romeClock(now).date };
+  const bounds = await windowBounds();
   const admin = createAdminSupabase();
   const seasons = await admin.from("seasons").select("id, competitions!inner(code)");
   if (seasons.error) throw new Error(seasons.error.message);
@@ -87,5 +119,5 @@ export async function inspectVoteSyncWindow(now = new Date()): Promise<VoteWindo
   return voteWindowForMatches(now, (matches.data ?? []).map((match) => ({
     kickoffAt: String(match.kickoff_at),
     votesFetched: match.status === "finished",
-  })));
+  })), bounds);
 }

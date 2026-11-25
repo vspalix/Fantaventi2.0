@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { assertServiceEnv } from "@/lib/server/catalog";
+import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
-import { syncScheduledVotes } from "@/lib/server/sync-match-votes";
+import { readSystemSettings, writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
+import { syncScheduledVotes, type MatchVoteSyncResult } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
 
-function authorized(request: Request) {
+function cronAuthorized(request: Request) {
   const internal = request.headers.get("x-fantaventi-job") ?? "";
   const expected = (globalThis as { __fantaventiVoteSyncToken?: string }).__fantaventiVoteSyncToken;
   if (internal && expected && internal === expected) return true;
@@ -16,15 +18,71 @@ function authorized(request: Request) {
   return bearer === secret || alternate === secret;
 }
 
-async function run(request: Request) {
+async function authorized(request: Request) {
+  if (cronAuthorized(request)) return true;
   try {
-    if (!authorized(request)) {
+    await requireSuperAdmin();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function requestedForce(request: Request) {
+  if (request.method !== "POST") return false;
+  const text = await request.text();
+  if (!text.trim()) return false;
+  try {
+    const body = JSON.parse(text) as { force?: unknown };
+    return body?.force === true;
+  } catch {
+    return false;
+  }
+}
+
+function voteLog(result: MatchVoteSyncResult | { skipped: true; reason: string }, triggerSource: SyncLogEntry["triggerSource"]): SyncLogEntry {
+  if ("reason" in result && result.skipped === true) {
+    return { jobType: "votes", triggerSource, status: "skipped", recordsWritten: 0, message: result.reason };
+  }
+  const sync = result as MatchVoteSyncResult;
+  const recordsWritten = sync.synced.reduce((sum, item) => sum + item.players, 0);
+  if (sync.errors.length > 0 && recordsWritten === 0 && sync.scored.length === 0) {
+    return {
+      jobType: "votes",
+      triggerSource,
+      status: "error",
+      recordsWritten: 0,
+      message: sync.errors.map((item) => item.message).join(" ") || "Sincronizzazione voti non riuscita.",
+    };
+  }
+  return { jobType: "votes", triggerSource, status: "success", recordsWritten, message: `Aggiornati ${recordsWritten} voti.` };
+}
+
+async function run(request: Request) {
+  const force = await requestedForce(request);
+  const triggerSource = force ? "manual" : "cron";
+  try {
+    if (!(await authorized(request))) {
       return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401 });
     }
     assertServiceEnv();
-    const result = await meter("vote-fetch", () => syncScheduledVotes());
+    const settings = await readSystemSettings();
+    if (!force && !settings.autoSyncEnabled) {
+      const message = "Sincronizzazione automatica disattivata.";
+      await writeSyncLog({ jobType: "votes", triggerSource, status: "skipped", recordsWritten: 0, message });
+      return NextResponse.json({ skipped: true, reason: message });
+    }
+    const result = await meter("vote-fetch", () => syncScheduledVotes(new Date(), force));
+    await writeSyncLog(voteLog(result, triggerSource));
     return NextResponse.json(result);
   } catch (error) {
+    await writeSyncLog({
+      jobType: "votes",
+      triggerSource,
+      status: "error",
+      recordsWritten: 0,
+      message: errorMessage(error),
+    });
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }
 }

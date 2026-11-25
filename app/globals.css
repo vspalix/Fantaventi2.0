@@ -438,6 +438,22 @@ input, select, textarea {
 }
 .banner { border-radius: 16px; padding: 12px 14px; background: var(--danger-soft); color: var(--danger); }
 .banner.ok { background: var(--ok-soft); color: var(--ok); }
+label.check-line { display: flex; align-items: center; gap: 10px; color: var(--text); }
+.sync-log { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.sync-log li { border-top: 1px solid var(--line); padding-top: 12px; }
+.sync-log li p { margin: 6px 0 0; }
+.sync-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.sync-badge[data-status="success"] { color: var(--ok); background: var(--ok-soft); }
+.sync-badge[data-status="skipped"] { color: var(--muted); background: rgba(255, 255, 255, 0.06); }
+.sync-badge[data-status="error"] { color: var(--danger); background: var(--danger-soft); }
 .lock-badge {
   display: inline-flex;
   align-items: center;

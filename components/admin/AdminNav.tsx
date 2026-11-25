@@ -20,6 +20,7 @@ const LINKS = [
   { href: "/admin/laboratorio", label: "Collaudo" },
   { href: "/admin/laboratorio/colori", label: "Colori" },
   { href: "/admin/laboratorio/indisponibili", label: "Indisponibili" },
+  { href: "/admin/laboratorio/sincronizzazioni", label: "Sincronizzazioni" },
 ];
 
 export function AdminNav() {

@@ -162,7 +162,10 @@ export function readVotePage(status: number, body: unknown) {
 }
 
 export async function fetchFantacalcioMatchweek(seasonCode: string, gameweekNumber: number) {
-  const url = `${SOURCE}/serie-a/voti/${encodeURIComponent(seasonCode)}/${gameweekNumber}`;
+  const { readSystemSettings, DEFAULT_VOTES_SOURCE_URL } = await import("@/lib/server/system-settings");
+  const settings = await readSystemSettings();
+  const base = (settings.votesSourceUrl || DEFAULT_VOTES_SOURCE_URL).replace(/\/$/, "");
+  const url = `${base}/${encodeURIComponent(seasonCode)}/${gameweekNumber}`;
   let response: Response;
   try {
     response = await fetch(url, {

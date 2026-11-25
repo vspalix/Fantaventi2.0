@@ -2,6 +2,7 @@ import type { AvailabilityStatus } from "@/lib/availability-providers";
 import { providerFor } from "@/lib/availability-providers";
 import { matchAvailability, type AvailabilityAlias, type KnownPlayer } from "@/lib/availability-providers/match";
 import { getCurrentSeason } from "@/lib/server/catalog";
+import { readSystemSettings } from "@/lib/server/system-settings";
 import type { CatalogPlayer } from "@/lib/types";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -61,7 +62,23 @@ export async function readAvailabilitySettings(): Promise<{ settings: Availabili
     if (missing(row.error.message)) return { settings: DEFAULTS, ready: false };
     throw new Error(row.error.message);
   }
-  return { settings: asSettings(row.data?.value), ready: true };
+  const settings = asSettings(row.data?.value);
+  const system = await readSystemSettings();
+  if (!system.ready) return { settings, ready: true };
+  const provider = system.availabilityProvider === "manual"
+    ? "manual"
+    : system.availabilityProvider === "external-json"
+      ? "external-json"
+      : "api-football";
+  return {
+    settings: {
+      ...settings,
+      provider,
+      leagueId: system.apiSportsLeagueId,
+      season: system.apiSportsSeason,
+    },
+    ready: true,
+  };
 }
 
 async function writeSettings(settings: AvailabilitySettings) {

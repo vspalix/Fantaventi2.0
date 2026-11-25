@@ -82,10 +82,10 @@ function sameStat(stored: StoredStat, vote: FantacalcioPlayerVote) {
     && stored.goals_conceded === vote.goalsConceded;
 }
 
-export async function syncScheduledVotes(now = new Date()): Promise<MatchVoteSyncResult | { skipped: true; reason: string }> {
+export async function syncScheduledVotes(now = new Date(), force = false): Promise<MatchVoteSyncResult | { skipped: true; reason: string }> {
   const gate = await inspectVoteSyncWindow(now);
-  if (!gate.open) return { skipped: true, reason: VOTE_SYNC_SKIP_REASON };
-  if (gate.evening || gate.morning) {
+  if (!force && !gate.open) return { skipped: true, reason: VOTE_SYNC_SKIP_REASON };
+  if (!force && (gate.evening || gate.morning)) {
     const target = gate.morning ? shiftRomeDate(gate.date, -1) : gate.date;
     return refreshPlayedDay(target);
   }

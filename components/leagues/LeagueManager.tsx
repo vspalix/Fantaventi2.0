@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { BusyLabel } from "@/components/BusyLabel";
+import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { EmptyState } from "@/components/EmptyState";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -113,6 +114,7 @@ export function LeagueManager({ signedIn, hostMode = false }: { signedIn: boolea
           ) : null}
           <div className="code">{created.joinCode}</div>
           <div className="row" style={{ marginTop: 12 }}>
+            <CopyInviteLink code={created.joinCode} />
             <Link className="primary" href={`/leghe/${created.id}`}>Apri amministrazione</Link>
           </div>
         </section>

@@ -3,7 +3,7 @@ import { SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
-const APPEAL_MS = 24 * 60 * 60 * 1000;
+export const APPEAL_MS = 24 * 60 * 60 * 1000;
 const MATCH_WINDOW_MS = MATCH_CLOSE_MS;
 
 type GameweekRow = {
@@ -36,9 +36,12 @@ export async function processGameweekLifecycle(now = new Date(), options?: { fin
   for (const gameweek of gameweeks) {
     const kickoff = await firstKickoff(admin, gameweek.id);
     const started = kickoff !== null && kickoff <= now.getTime();
-    const deadlinePassed = new Date(gameweek.deadline_at).getTime() <= now.getTime();
-    const heldOpen = gameweek.status === "open" && !deadlinePassed;
-    if (!heldOpen && (gameweek.status === "scheduled" || gameweek.status === "open") && (started || deadlinePassed)) {
+    if (gameweekShouldLock({
+      status: gameweek.status,
+      deadlineAt: new Date(gameweek.deadline_at).getTime(),
+      firstKickoff: kickoff,
+      now: now.getTime(),
+    })) {
       if (started) await lockMatches(admin, gameweek.id, now);
       const { error: statusError } = await admin.from("gameweeks").update({ status: "locked" }).eq("id", gameweek.id);
       if (statusError) throw new Error(schemaHint(statusError.message));
@@ -108,6 +111,20 @@ export async function processGameweekLifecycle(now = new Date(), options?: { fin
   }
 
   return { locked, scored, finalized, skipped, matches };
+}
+
+export function gameweekShouldLock(input: {
+  status: string;
+  deadlineAt: number;
+  firstKickoff: number | null;
+  now: number;
+}) {
+  const started = input.firstKickoff !== null && input.firstKickoff <= input.now;
+  const deadlinePassed = input.deadlineAt <= input.now;
+  const heldOpen = input.status === "open" && !deadlinePassed;
+  return !heldOpen
+    && (input.status === "scheduled" || input.status === "open")
+    && (started || deadlinePassed);
 }
 
 async function advanceMatchStates(

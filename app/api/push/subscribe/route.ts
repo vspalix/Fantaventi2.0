@@ -21,6 +21,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Iscrizione push incompleta." }, { status: 400 });
     }
     const admin = createAdminSupabase();
+    const existing = await admin
+      .from("push_subscriptions")
+      .select("user_id")
+      .eq("endpoint", body.endpoint)
+      .maybeSingle();
+    if (existing.error) {
+      if (/push_subscriptions|schema cache|could not find|relation/i.test(existing.error.message)) {
+        return NextResponse.json({ error: "Per le notifiche esegui engagement.sql nell'editor SQL di Supabase." }, { status: 409 });
+      }
+      throw new Error(existing.error.message);
+    }
+    if (existing.data && existing.data.user_id !== user.id) {
+      return NextResponse.json({ error: "Questo dispositivo è già collegato a un altro account." }, { status: 409 });
+    }
     const saved = await admin.from("push_subscriptions").upsert({
       endpoint: body.endpoint,
       user_id: user.id,

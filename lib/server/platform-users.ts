@@ -168,3 +168,62 @@ export async function deletePlatformUser(userId: string) {
   const removed = await admin.auth.admin.deleteUser(userId);
   if (removed.error) throw new Error(removed.error.message);
 }
+
+export async function deleteOwnAccount(userId: string) {
+  const admin = createAdminSupabase();
+  const owned = await admin.from("private_leagues").select("id, name").eq("owner_user_id", userId);
+  if (owned.error && !missing(owned.error.message)) throw new Error(owned.error.message);
+
+  const blocked: string[] = [];
+  const solo: string[] = [];
+  for (const league of owned.data ?? []) {
+    const leagueId = league.id as string;
+    const members = await admin
+      .from("private_league_members")
+      .select("fantasy_team_id, fantasy_teams(user_id)")
+      .eq("private_league_id", leagueId);
+    if (members.error && !missing(members.error.message)) throw new Error(members.error.message);
+    const others = (members.data ?? []).some((row) => {
+      const team = Array.isArray(row.fantasy_teams) ? row.fantasy_teams[0] : row.fantasy_teams;
+      const owner = (team as { user_id?: string } | null)?.user_id ?? "";
+      return Boolean(owner) && owner !== userId;
+    });
+    if (others) blocked.push(String(league.name));
+    else solo.push(leagueId);
+  }
+  if (blocked.length > 0) {
+    const names = blocked.map((name) => `«${name}»`).join(", ");
+    throw fail(`Sei presidente di ${names}. Trasferisci il ruolo di presidente o sciogli la lega prima di eliminare l'account.`, 409);
+  }
+
+  for (const leagueId of solo) {
+    for (const table of ["league_delegates", "league_regulations", "league_feed", "league_badges", "live_rank_snapshots", "private_league_members"]) {
+      await quietDelete(admin, table, table === "private_league_members" ? "private_league_id" : "league_id", leagueId);
+    }
+    await quietDelete(admin, "private_leagues", "id", leagueId);
+  }
+
+  const clearedGrant = await admin.from("league_delegates").update({ granted_by: null }).eq("granted_by", userId);
+  if (clearedGrant.error && !missing(clearedGrant.error.message)) throw new Error(clearedGrant.error.message);
+  await quietDelete(admin, "league_delegates", "user_id", userId);
+  const clearedRegulation = await admin.from("league_regulations").update({ updated_by: null }).eq("updated_by", userId);
+  if (clearedRegulation.error && !missing(clearedRegulation.error.message)) throw new Error(clearedRegulation.error.message);
+
+  for (const teamId of await teamIdsOf(admin, userId)) await deleteTeam(admin, teamId);
+  await quietDelete(admin, "user_notices", "user_id", userId);
+  await quietDelete(admin, "push_subscriptions", "user_id", userId);
+  await quietDelete(admin, "device_push_tokens", "user_id", userId);
+  await quietDelete(admin, "admin_audit_logs", "admin_id", userId);
+
+  const anonymized = await admin.from("profiles").update({
+    email: null,
+    first_name: null,
+    last_name: null,
+    phone: null,
+    display_name: "Account eliminato",
+  }).eq("id", userId);
+  if (anonymized.error && !missing(anonymized.error.message)) throw new Error(anonymized.error.message);
+
+  const removed = await admin.auth.admin.deleteUser(userId);
+  if (removed.error) throw new Error(removed.error.message);
+}

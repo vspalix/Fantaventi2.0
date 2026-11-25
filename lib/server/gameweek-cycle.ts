@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-const OPEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+export const OPEN_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const LATER_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 type WeekRow = {
@@ -59,10 +59,28 @@ export async function activateSeasonGameweek(admin: SupabaseClient, seasonId: st
   return opened;
 }
 
-export async function openFollowingGameweek(admin: SupabaseClient, seasonId: string, closedNumber: number, now = Date.now()) {
-  const weeks = await loadSeasonWeeks(admin, seasonId);
+export function planFollowingGameweek(
+  weeks: { id: string; number: number; status: string }[],
+  closedNumber: number,
+  now: number,
+) {
   const next = weeks.find((week) => week.number === closedNumber + 1);
   if (!next || next.status === "scored" || next.status === "final") return null;
+  return {
+    id: next.id,
+    number: next.number,
+    status: "open" as const,
+    deadlineAt: new Date(now + OPEN_WINDOW_MS).toISOString(),
+    clearDrafts: true,
+  };
+}
+
+export async function openFollowingGameweek(admin: SupabaseClient, seasonId: string, closedNumber: number, now = Date.now()) {
+  const weeks = await loadSeasonWeeks(admin, seasonId);
+  const plan = planFollowingGameweek(weeks, closedNumber, now);
+  if (!plan) return null;
+  const next = weeks.find((week) => week.id === plan.id);
+  if (!next) return null;
   const opened = await makeWeekPlayable(admin, weeks, next, now);
   const { error } = await admin
     .from("lineups")

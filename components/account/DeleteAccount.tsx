@@ -3,12 +3,13 @@
 import { useState } from "react";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
 
-export function DeleteAccount({ email }: { email: string }) {
+export function DeleteAccount() {
   const [phrase, setPhrase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
 
   async function remove() {
+    if (!window.confirm("Eliminare definitivamente l'account? L'operazione non si annulla.")) return;
     setPending(true);
     setError(null);
     try {
@@ -20,7 +21,7 @@ export function DeleteAccount({ email }: { email: string }) {
       }
       const supabase = createBrowserSupabase();
       await supabase.auth.signOut();
-      window.location.assign("/");
+      window.location.assign("/accesso");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Eliminazione non riuscita.");
     } finally {
@@ -30,15 +31,18 @@ export function DeleteAccount({ email }: { email: string }) {
 
   return (
     <section className="card stack">
-      <h2>Elimina account</h2>
-      <p>Cancella il profilo, la rosa e le iscrizioni. Le leghe con altri giocatori restano e passano a un altro partecipante. L&apos;operazione non si annulla.</p>
+      <h2>Gestione account</h2>
+      <p>
+        Elimina profilo, rosa, formazioni e iscrizioni. Se sei presidente di una lega con altri partecipanti,
+        prima trasferisci il ruolo o sciogli la lega. L&apos;operazione non si annulla.
+      </p>
       <label>
         Scrivi ELIMINA per confermare
         <input value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
       </label>
       {error ? <p className="banner">{error}</p> : null}
-      <button className="danger" type="button" disabled={pending || phrase !== "ELIMINA"} onClick={() => void remove()}>
-        Elimina account di {email}
+      <button className="danger solid" type="button" disabled={pending || phrase !== "ELIMINA"} onClick={() => void remove()}>
+        Elimina definitivamente il mio account
       </button>
     </section>
   );

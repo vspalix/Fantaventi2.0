@@ -31,6 +31,7 @@ import { RegulationPanel } from "@/components/rules/RegulationView";
 import { ROLE_LABEL } from "@/lib/types";
 import { useTapGuard } from "@/components/useTapGuard";
 import { pushToast } from "@/lib/toast";
+import { shareJoinCode, triggerHaptic } from "@/lib/native/bridge";
 
 const BENCH_ROLES: PlayerRole[] = ["GK", "DEF", "MID", "FWD"];
 const deadlineFormat = new Intl.DateTimeFormat("it-IT", {
@@ -619,6 +620,7 @@ export function LeagueHub({
       applyHub(body.hub);
       setMessage("Formazione salvata.");
       pushToast("ok", "Formazione salvata.");
+      void triggerHaptic();
     } catch (reason) {
       const text = reason instanceof Error ? reason.message : "Salvataggio non riuscito.";
       setError(text);
@@ -1569,7 +1571,7 @@ function LeagueSettings({
         <div className="code">{league.joinCode}</div>
         <div className="row">
           <CopyInviteLink code={league.joinCode} />
-          <button className="ghost" type="button" onClick={() => void navigator.clipboard.writeText(league.joinCode)}>Copia codice</button>
+          <button className="ghost" type="button" onClick={() => void shareJoinCode(league.joinCode)}>Condividi codice</button>
           {league.isOwner ? (
             <button className="ghost" type="button" disabled={pending} onClick={() => void onSave(true)}>Genera un nuovo codice</button>
           ) : null}

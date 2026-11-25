@@ -9,6 +9,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Supabase: il client browser fa solo auth. Letture e scritture dati passano da `createAdminSupabase()` (service role, bypassa RLS). Le policy restano nel SQL che l'utente esegue a mano nell'editor Supabase.
 - GitHub Actions per i cron. Vercel Hobby solo per il deploy web.
 - `vercel.json` resta `{}`. Non aggiungere mai una chiave `crons`: Vercel Hobby non regge job sub-giornalieri e un cron lì cancellerebbe o duplicherebbe la pianificazione su GitHub.
+- Capacitor avvolge il sito di produzione (`capacitor.config.ts`, `server.url` su `https://fantaventi2-0.vercel.app`, `cleartext: false`). `ios/` e `android/` restano fuori dal repo. Per generarle in locale: `npx cap add ios`, `npx cap add android`, poi `npx cap sync` dopo ogni cambio di config o plugin. Il bridge è in `lib/native/bridge.ts` (condivisione, aptico, push nativa). I token nativi stanno in `device_push_tokens`: lo SQL `supabase/device_push_tokens.sql` lo esegue l'utente nell'editor Supabase.
 
 ## Cartelle
 
@@ -28,6 +29,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Voti: chiamata esterna solo su una giornata di Serie A non final, dentro una finestra letta da `system_settings` in Europe/Rome (default: 125–150 minuti dopo il calcio d'inizio se la partita non è `finished`; rilettura 23:15–23:45 il giorno delle partite; 09:15–09:45 il giorno dopo). Fuori finestra: 200 `{ skipped: true }` senza richiesta a Fantacalcio.
 - Indisponibili: se la giornata aperta ha deadline passata e non è ancora calcolata, skip senza chiamata API-Sports.
 - `POST { "force": true }` (segreto cron o sessione super admin) salta finestre e guardia indisponibili e scrive. Origine log: `manual`. Il cron GitHub, senza body, è `cron`.
+- Telegram (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`): avviso solo se un sync voti o indisponibili finisce in `error`, oppure se la finestra mattutina dei voti si chiude con `records_written === 0` e la giornata di ieri è ancora da calcolare. Niente messaggi per `skipped` o `success`. Se le variabili mancano, il cron continua e lascia una riga in log. Il pulsante «Invia test alert» in Sincronizzazioni è solo super admin.
 - Non mettere `/api/cron/process-matchday` in schedule. Non chiamare `refreshSerieAKickoffs` da lì.
 - Non lanciare sync di scrittura (Forza sync, `force: true`) mentre una giornata di Serie A è in corso.
 

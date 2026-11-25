@@ -6,9 +6,16 @@
     "prebuild": "tsx scripts/ci-engine-suite.ts",
     "build": "next build",
     "start": "next start",
-    "test:engine": "tsx scripts/ci-engine-suite.ts"
+    "test:engine": "tsx scripts/ci-engine-suite.ts",
+    "test:matchday": "tsx scripts/test-matchday-lifecycle.ts"
   },
   "dependencies": {
+    "@capacitor/android": "^8.6.2",
+    "@capacitor/core": "^8.6.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/ios": "^8.6.2",
+    "@capacitor/push-notifications": "^8.1.3",
+    "@capacitor/share": "^8.0.3",
     "@supabase/ssr": "^0.7.0",
     "@supabase/supabase-js": "^2.81.1",
     "docx": "^9.15.3",
@@ -20,6 +27,7 @@
     "web-push": "^4.0.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@types/node": "^22.19.0",
     "@types/react": "^19.1.16",
     "@types/react-dom": "^19.1.9",

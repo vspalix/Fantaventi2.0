@@ -1,4 +1,5 @@
 import { Suspense, type ReactNode } from "react";
+import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -6,6 +7,7 @@ import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { ToastHost } from "@/components/ToastHost";
 import { SiteHeader, type HeaderSeason, type HeaderSquad } from "@/components/SiteHeader";
 import { AnnounceModal } from "@/components/AnnounceModal";
+import { NativeBridge } from "@/components/NativeBridge";
 import { ClubBadgeProvider } from "@/components/TeamBadge";
 import { loadActiveAnnouncements } from "@/lib/server/announcements";
 import { loadClubBadgeOverrides } from "@/lib/server/club-badges";
@@ -35,9 +37,26 @@ const mono = IBM_Plex_Mono({
   variable: "--font-mono",
 });
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Fantaventi",
   description: "Fantacalcio gratuito con rose da un calciatore per club.",
+  applicationName: "FantaVenti",
+  appleWebApp: {
+    capable: true,
+    title: "FantaVenti",
+    statusBarStyle: "black-translucent",
+  },
+  other: {
+    "apple-mobile-web-app-capable": "yes",
+  },
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  themeColor: "#09090b",
 };
 
 export const dynamic = "force-dynamic";
@@ -114,6 +133,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {maintenance.enabled ? <MaintenanceBanner message={maintenance.message} admin={platformAdmin} /> : null}
         <main className="shell page">{children}</main>
         {announcements.length > 0 ? <AnnounceModal items={announcements} /> : null}
+        <NativeBridge />
         <ToastHost />
         </ClubBadgeProvider>
       </body>

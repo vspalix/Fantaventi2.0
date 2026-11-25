@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { BusyLabel } from "@/components/BusyLabel";
 import { useRouter } from "next/navigation";
+import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { DEFAULT_LEAGUE_RULES } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary } from "@/lib/types";
@@ -116,6 +117,7 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
       <p>Condividi il codice con chi deve entrare.</p>
       <p className="code">{created.joinCode}</p>
       <div className="landing-actions">
+        <CopyInviteLink code={created.joinCode} />
         <button className="primary" type="button" onClick={() => router.push(`/leghe/${created.id}`)}>
           Apri la lega
         </button>

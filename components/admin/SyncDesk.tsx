@@ -87,6 +87,23 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
     }
   }
 
+  async function sendTestAlert() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    setResult(null);
+    try {
+      const response = await fetch("/api/admin/telegram-test", { method: "POST" });
+      const body = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !body.ok) throw new Error(body.error ?? "Messaggio di prova non inviato.");
+      setNote("Messaggio di prova inviato su Telegram.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Messaggio di prova non inviato.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function force(kind: "votes" | "availability") {
     const label = kind === "votes" ? "i voti" : "gli indisponibili";
     if (!window.confirm(`Forzare adesso la sincronizzazione di ${label}? Parte subito, anche fuori finestra.`)) return;
@@ -185,6 +202,8 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("votes")}>Forza sync voti ora</button>
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("availability")}>Forza sync indisponibili ora</button>
         </div>
+        <p className="small muted">Telegram avvisa solo se un giro va in errore, o se la finestra mattutina dei voti si chiude senza record e la giornata è ancora da calcolare.</p>
+        <button className="ghost" type="button" disabled={busy} onClick={() => void sendTestAlert()}>Invia Test Alert</button>
       </section>
 
       <section className="card stack">

@@ -1,4 +1,5 @@
 import { DeleteAccount } from "@/components/account/DeleteAccount";
+import { LegalLinks } from "@/components/LegalLinks";
 import { getSessionUser } from "@/lib/server/session";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
@@ -29,8 +30,9 @@ export default async function AccountPage() {
         <h1 className="section-title">Account</h1>
         <p className="lede">{name}{phone ? ` · ${phone}` : ""}</p>
         <p>{user.email}</p>
+        <LegalLinks />
       </header>
-      <DeleteAccount email={user.email ?? "questo account"} />
+      <DeleteAccount />
     </section>
   );
 }

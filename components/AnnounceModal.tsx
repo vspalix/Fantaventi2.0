@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Announcement } from "@/lib/announcements";
+import { nativeShare, triggerHaptic } from "@/lib/native/bridge";
 
 const STORAGE = "fv-announcement-seen";
 
@@ -42,6 +43,24 @@ export function AnnounceModal({ items }: { items: Announcement[] }) {
         {current.imageUrl ? <img src={current.imageUrl} alt={current.title ?? ""} /> : null}
         {current.title ? <h2>{current.title}</h2> : null}
         {current.body ? <p>{current.body}</p> : null}
+        {current.imageUrl ? (
+          <button
+            className="ghost"
+            type="button"
+            onClick={() => {
+              void (async () => {
+                const result = await nativeShare({
+                  title: current.title || "FantaVenti",
+                  text: current.body ?? undefined,
+                  url: current.imageUrl ?? undefined,
+                });
+                if (result === "shared" || result === "copied") void triggerHaptic();
+              })();
+            }}
+          >
+            Condividi locandina
+          </button>
+        ) : null}
         {current.ctaHref ? (
           <a className="primary" href={current.ctaHref} target="_blank" rel="noreferrer">{current.ctaLabel || "Apri"}</a>
         ) : null}

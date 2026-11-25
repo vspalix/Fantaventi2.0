@@ -1,12 +1,13 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { assertServiceEnv, getCurrentSeason, SEASON_COOKIE } from "@/lib/server/catalog";
-import { errorMessage, errorStatus } from "@/lib/server/session";
+import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
   try {
     assertServiceEnv();
+    await requireSessionUser();
     const body = await request.json().catch(() => ({})) as { seasonId?: unknown };
     const seasonId = typeof body.seasonId === "string" ? body.seasonId : "";
     if (!seasonId) {

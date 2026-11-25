@@ -129,6 +129,8 @@ export function SiteHeader({
                   <p className="profile-name">{profileLabel}</p>
                   {canSwitch ? <div className="profile-mode"><ModeSwitch mode={hostMode ? "host" : "player"} /></div> : null}
                   <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
+                  <Link href="/privacy" onClick={() => setOpen(null)}>Privacy</Link>
+                  <Link href="/termini" onClick={() => setOpen(null)}>Termini</Link>
                   <button type="button" onClick={() => void signOut()}>Esci</button>
                 </nav>
               </>

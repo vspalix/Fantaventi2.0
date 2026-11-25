@@ -33,6 +33,7 @@ export type VoteWindow = {
   fresh: boolean;
   evening: boolean;
   morning: boolean;
+  closing: boolean;
   date: string;
 };
 
@@ -84,7 +85,8 @@ export function voteWindowForMatches(now: Date, matches: WindowMatch[], bounds: 
   const playedYesterday = matches.some((match) => romeDate(match.kickoffAt) === yesterday);
   const evening = clock.minutes >= bounds.eveningStart && clock.minutes <= bounds.eveningEnd && playedToday;
   const morning = clock.minutes >= bounds.morningStart && clock.minutes <= bounds.morningEnd && playedYesterday;
-  return { open: fresh || evening || morning, fresh, evening, morning, date: clock.date };
+  const closing = morning && bounds.morningEnd - clock.minutes < 15;
+  return { open: fresh || evening || morning, fresh, evening, morning, closing, date: clock.date };
 }
 
 async function windowBounds(): Promise<VoteWindowBounds> {
@@ -100,7 +102,7 @@ async function windowBounds(): Promise<VoteWindowBounds> {
 }
 
 export async function inspectVoteSyncWindow(now = new Date()): Promise<VoteWindow> {
-  const closed: VoteWindow = { open: false, fresh: false, evening: false, morning: false, date: romeClock(now).date };
+  const closed: VoteWindow = { open: false, fresh: false, evening: false, morning: false, closing: false, date: romeClock(now).date };
   const bounds = await windowBounds();
   const admin = createAdminSupabase();
   const seasons = await admin.from("seasons").select("id, competitions!inner(code)");
@@ -120,4 +122,25 @@ export async function inspectVoteSyncWindow(now = new Date()): Promise<VoteWindo
     kickoffAt: String(match.kickoff_at),
     votesFetched: match.status === "finished",
   })), bounds);
+}
+
+export async function playedDayStillOpen(now = new Date()) {
+  const yesterday = shiftRomeDate(romeClock(now).date, -1);
+  const admin = createAdminSupabase();
+  const seasons = await admin.from("seasons").select("id, competitions!inner(code)");
+  if (seasons.error) throw new Error(seasons.error.message);
+  const seasonIds = (seasons.data ?? []).flatMap((season) => {
+    const competition = Array.isArray(season.competitions) ? season.competitions[0] : season.competitions;
+    return competition?.code === "serie_a" ? [season.id as string] : [];
+  });
+  if (seasonIds.length === 0) return false;
+  const weeks = await admin.from("gameweeks").select("id, status").in("season_id", seasonIds);
+  if (weeks.error) throw new Error(weeks.error.message);
+  const openIds = (weeks.data ?? [])
+    .filter((week) => week.status !== "scored" && week.status !== "final")
+    .map((week) => week.id as string);
+  if (openIds.length === 0) return false;
+  const matches = await admin.from("real_matches").select("kickoff_at").in("gameweek_id", openIds);
+  if (matches.error) throw new Error(matches.error.message);
+  return (matches.data ?? []).some((match) => romeDate(String(match.kickoff_at)) === yesterday);
 }

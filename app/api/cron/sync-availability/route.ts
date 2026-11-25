@@ -3,7 +3,8 @@ import { syncAvailability } from "@/lib/server/availability";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
-import { readSystemSettings, writeSyncLog } from "@/lib/server/system-settings";
+import { readSystemSettings, writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
+import { alertAvailabilitySync } from "@/lib/server/telegram-alert";
 
 export const maxDuration = 60;
 
@@ -51,22 +52,26 @@ async function run(request: Request) {
       return NextResponse.json({ skipped: true, reason: message });
     }
     const result = await syncAvailability(force);
-    await writeSyncLog({
+    const entry: SyncLogEntry = {
       jobType: "availability",
       triggerSource,
       status: result.skipped ? "skipped" : "success",
       recordsWritten: result.written,
       message: result.reason ?? "",
-    });
+    };
+    await writeSyncLog(entry);
+    await alertAvailabilitySync(entry);
     return NextResponse.json(result);
   } catch (error) {
-    await writeSyncLog({
+    const entry: SyncLogEntry = {
       jobType: "availability",
       triggerSource,
       status: "error",
       recordsWritten: 0,
       message: errorMessage(error),
-    });
+    };
+    await writeSyncLog(entry);
+    await alertAvailabilitySync(entry);
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }
 }

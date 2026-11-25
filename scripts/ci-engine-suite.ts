@@ -3,6 +3,7 @@ import path from "node:path";
 import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
 import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/lib/testing/scoringEngineTestSuite";
+import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
 
 const ENGINE_MIN = 34;
 const FULL_SUITE = 40;
@@ -50,7 +51,13 @@ async function main() {
     console.error(`Con il database la suite deve coprire ${FULL_SUITE} controlli. Ne ha ${report.checks.length}.`);
     process.exit(1);
   }
-  if (broken.length > 0) process.exit(1);
+  const lifecycle = runMatchdayLifecycle();
+  console.log(`Ciclo giornata: ${lifecycle.passed ? "PASSED" : "FAILED"} ${lifecycle.passedCount}/${lifecycle.total}`);
+  for (const step of lifecycle.steps) {
+    console.log(`- ${step.passed ? "PASS" : "FAIL"} ${step.name}: ${step.detail}`);
+  }
+
+  if (broken.length > 0 || !lifecycle.passed) process.exit(1);
 }
 
 main().catch((error: unknown) => {

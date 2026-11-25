@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
+import { alertVoteSync } from "@/lib/server/telegram-alert";
 import { readSystemSettings, writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
 import { syncScheduledVotes, type MatchVoteSyncResult } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
@@ -72,17 +73,22 @@ async function run(request: Request) {
       await writeSyncLog({ jobType: "votes", triggerSource, status: "skipped", recordsWritten: 0, message });
       return NextResponse.json({ skipped: true, reason: message });
     }
-    const result = await meter("vote-fetch", () => syncScheduledVotes(new Date(), force));
-    await writeSyncLog(voteLog(result, triggerSource));
+    const now = new Date();
+    const result = await meter("vote-fetch", () => syncScheduledVotes(now, force));
+    const entry = voteLog(result, triggerSource);
+    await writeSyncLog(entry);
+    await alertVoteSync(entry, force, now);
     return NextResponse.json(result);
   } catch (error) {
-    await writeSyncLog({
+    const entry: SyncLogEntry = {
       jobType: "votes",
       triggerSource,
       status: "error",
       recordsWritten: 0,
       message: errorMessage(error),
-    });
+    };
+    await writeSyncLog(entry);
+    await alertVoteSync(entry, force);
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }
 }

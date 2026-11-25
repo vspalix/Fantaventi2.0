@@ -339,7 +339,9 @@ body:has(.tabbar) .page { padding-bottom: calc(108px + env(safe-area-inset-botto
 .primary:hover:not(:disabled) { background: #d4ff55; }
 .ghost:hover:not(:disabled) { background: rgba(255, 255, 255, 0.05); }
 .danger { background: transparent; color: var(--danger); border: 1px solid var(--danger-line); font-weight: 600; }
+.danger.solid { background: var(--danger); color: #09090b; border-color: var(--danger); }
 .danger:hover:not(:disabled) { background: var(--danger-soft); }
+.legal-links a { text-decoration: underline; }
 .primary:disabled, .ghost:disabled, .danger:disabled, .togli:disabled { opacity: 0.45; cursor: not-allowed; }
 .spinner {
   width: 14px;

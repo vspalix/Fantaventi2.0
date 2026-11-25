@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { pendingInvitePath, safeJoinPath, writeInviteCookie } from "@/lib/invite";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
+import { LegalLinks } from "@/components/LegalLinks";
 
 function signInMessage(message: string) {
   const text = message.toLowerCase();
@@ -130,6 +131,7 @@ export function AuthForm() {
         {notice ? <p className="banner ok">{notice}</p> : null}
         <button className="primary" type="submit" disabled={pending}>Invia il link</button>
         <p><button className="text-button" type="button" onClick={() => switchMode("sign-in")}>Torna all&apos;accesso</button></p>
+        <LegalLinks />
       </form>
     );
   }
@@ -151,6 +153,7 @@ export function AuthForm() {
         <button className="primary" type="submit" disabled={pending}>Accedi</button>
         <p><button className="text-button" type="button" onClick={() => switchMode("recover")}>Password dimenticata</button></p>
         <p>Non hai un account? <button className="text-button" type="button" onClick={() => switchMode("sign-up")}>Registrati</button></p>
+        <LegalLinks />
       </form>
     );
   }
@@ -189,11 +192,12 @@ export function AuthForm() {
       </label>
       <label className="check">
         <input type="checkbox" checked={acceptRules} onChange={(event) => setAcceptRules(event.target.checked)} required />
-        <span>Accetto il <Link href="/rules">regolamento</Link> di Fantaventi.</span>
+        <span>Accetto il <Link href="/regolamento">regolamento</Link>, i <Link href="/termini">termini</Link> e l&apos;<Link href="/privacy">informativa privacy</Link>.</span>
       </label>
       {error ? <p className="banner">{error}</p> : null}
       <button className="primary" type="submit" disabled={pending}>Crea account</button>
       <p>Hai già un account? <button className="text-button" type="button" onClick={() => switchMode("sign-in")}>Accedi</button></p>
+      <LegalLinks />
     </form>
   );
 }

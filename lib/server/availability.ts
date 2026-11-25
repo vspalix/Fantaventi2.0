@@ -1,6 +1,7 @@
 import type { AvailabilityStatus } from "@/lib/availability-providers";
 import { providerFor } from "@/lib/availability-providers";
 import { fold, matchAvailability, type AvailabilityAlias, type KnownPlayer } from "@/lib/availability-providers/match";
+import { decideAvailabilitySync, deliverAvailabilityNotices, reconcileAutomaticRows } from "@/lib/server/availability-plan";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { readSystemSettings } from "@/lib/server/system-settings";
 import type { CatalogPlayer } from "@/lib/types";
@@ -140,25 +141,48 @@ async function openMatchday() {
   return { seasonId: season.id, open: open ? { number: Number(open.number), deadlineAt: open.deadline_at as string, status: open.status as string } : null };
 }
 
-export async function syncAvailability(force = false) {
-  const current = await readAvailabilitySettings();
-  if (!current.ready) throw httpError("Manca la tabella. Esegui player_availability.sql nell'editor SQL.", 503);
-  const settings = current.settings;
-  const { seasonId, open } = await openMatchday();
-  if (!open) return { skipped: true as const, reason: "Nessuna giornata aperta.", matchday: null, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
-  const deadlinePassed = new Date(open.deadlineAt).getTime() <= Date.now();
-  if (!force && deadlinePassed && open.status !== "scored" && open.status !== "final") {
-    return { skipped: true as const, reason: "La giornata è già partita e non è ancora calcolata. Nessuna chiamata esterna.", matchday: open.number, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
+type AvailabilityDeps = {
+  read: typeof readAvailabilitySettings;
+  open: typeof openMatchday;
+  load: (settings: AvailabilitySettings) => Promise<{ name: string; club: string; status: AvailabilityStatus; playProbability: number | null; reason: string | null }[]>;
+  commit: typeof commitAvailability;
+};
+
+function skipped(reason: string, matchday: number | null) {
+  return { skipped: true as const, reason, matchday, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
+}
+
+export async function runAvailabilitySync(force: boolean, deps: AvailabilityDeps, now = Date.now()) {
+  const current = await deps.read();
+  if (!current.ready) {
+    const missingTable = decideAvailabilitySync({ ready: false, provider: current.settings.provider, force, open: null, now });
+    if (missingTable.action === "error") throw httpError(missingTable.message, missingTable.status);
   }
-  if (settings.provider === "manual") {
-    return { skipped: true as const, reason: "La fonte attiva è solo manuale.", matchday: open.number, written: 0, unmatched: 0, changed: 0, samples: [] as string[] };
-  }
-  const rows = await providerFor(settings.provider).load({
-    leagueId: settings.leagueId,
-    season: settings.season,
-    jsonUrl: settings.jsonUrl,
+  const opened = await deps.open();
+  const decision = decideAvailabilitySync({
+    ready: current.ready,
+    provider: current.settings.provider,
+    force,
+    open: opened.open,
+    now,
   });
-  return commitAvailability(settings, seasonId, open, rows);
+  if (decision.action === "error") throw httpError(decision.message, decision.status);
+  if (decision.action === "skip") return skipped(decision.reason, decision.matchday);
+  const rows = await deps.load(current.settings);
+  return deps.commit(current.settings, opened.seasonId, opened.open!, rows);
+}
+
+export async function syncAvailability(force = false) {
+  return runAvailabilitySync(force, {
+    read: readAvailabilitySettings,
+    open: openMatchday,
+    load: (settings) => providerFor(settings.provider).load({
+      leagueId: settings.leagueId,
+      season: settings.season,
+      jsonUrl: settings.jsonUrl,
+    }),
+    commit: commitAvailability,
+  });
 }
 
 async function commitAvailability(
@@ -178,13 +202,16 @@ async function commitAvailability(
   };
   await writeSettings(next);
   const { alertAvailabilityWrites, alertUnmatchedAvailability } = await import("@/lib/server/telegram-alert");
-  await alertAvailabilityWrites({
+  await deliverAvailabilityNotices(() => alertAvailabilityWrites({
     matchday: open.number,
     written: savedRows.written,
     changed: savedRows.changed,
     samples: savedRows.samples,
-  });
-  await alertUnmatchedAvailability(unmatched.map((row) => ({ name: row.name, club: row.club, status: row.status })), open.number);
+  }));
+  await deliverAvailabilityNotices(() => alertUnmatchedAvailability(
+    unmatched.map((row) => ({ name: row.name, club: row.club, status: row.status })),
+    open.number,
+  ));
   return { skipped: false as const, reason: next.lastSyncNote, matchday: open.number, written: savedRows.written, unmatched: unmatched.length, changed: savedRows.changed, samples: savedRows.samples };
 }
 
@@ -237,7 +264,15 @@ async function upsertAutomatic(
     if (missing(existing.error.message)) throw httpError("Manca la tabella. Esegui player_availability.sql nell'editor SQL.", 503);
     throw new Error(existing.error.message);
   }
-  const previous = new Map((existing.data ?? []).map((row) => [row.player_id as string, row]));
+  const plan = reconcileAutomaticRows({
+    matched: matched.map((item) => ({ playerId: item.playerId, status: item.row.status, playProbability: item.row.playProbability })),
+    existing: (existing.data ?? []).map((row) => ({
+      playerId: row.player_id as string,
+      sourceProvider: String(row.source_provider ?? ""),
+      status: String(row.status ?? ""),
+      playProbability: row.play_probability == null ? null : Number(row.play_probability),
+    })),
+  });
   const manual = new Set((existing.data ?? []).filter((row) => row.source_provider === "manual").map((row) => row.player_id as string));
   const rows = matched
     .filter((item) => !manual.has(item.playerId))
@@ -250,10 +285,7 @@ async function upsertAutomatic(
       source_provider: source,
       updated_at: new Date().toISOString(),
     }));
-  const keep = new Set(rows.map((row) => row.player_id));
-  const stale = (existing.data ?? [])
-    .filter((row) => row.source_provider !== "manual" && !keep.has(row.player_id as string))
-    .map((row) => row.player_id as string);
+  const stale = plan.stale;
   if (stale.length > 0) {
     const removed = await admin.from("player_availability").delete().eq("matchday", matchday).in("player_id", stale);
     if (removed.error) throw new Error(removed.error.message);
@@ -268,11 +300,8 @@ async function upsertAutomatic(
   const saved = await admin.from("player_availability").upsert(rows, { onConflict: "player_id,matchday" });
   if (saved.error) throw new Error(saved.error.message);
   const names = new Map(matched.map((item) => [item.playerId, item.row.name]));
-  const changedRows = rows.filter((row) => {
-    const before = previous.get(row.player_id);
-    if (!before || before.source_provider === "manual") return !before;
-    return before.status !== row.status || Number(before.play_probability) !== Number(row.play_probability);
-  });
+  const changedIds = new Set(plan.changedIds);
+  const changedRows = rows.filter((row) => changedIds.has(row.player_id));
   const labels: Record<string, string> = {
     suspended: "squalificato",
     injured: "indisponibile",

@@ -2,6 +2,7 @@ import { cache } from "react";
 import { createJoinCode } from "@/lib/join-code";
 import { publicHandle } from "@/lib/public-name";
 import { parseLeagueRules, type LeagueRules } from "@/lib/league-rules";
+import { leagueActor } from "@/lib/server/access-policy";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { readLeagueSettings } from "@/lib/server/league-settings";
@@ -318,7 +319,6 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
   const isOwner = league.owner_user_id === userId;
   const delegateIds = await delegateUserIds(admin, leagueId);
   const platformOverride = await isSuperAdmin(userId);
-  const isManager = isOwner || delegateIds.includes(userId) || platformOverride;
 
   const { data: membership, error: membershipError } = team
     ? await admin
@@ -330,7 +330,15 @@ export async function getLeagueDetail(userId: string, leagueId: string): Promise
     : { data: null, error: null };
   if (membershipError) throw new Error(membershipError.message);
 
-  if (!isManager && !membership) throw httpError("Non fai parte di questa lega.", 403);
+  const actor = leagueActor({
+    userId,
+    ownerId: String(league.owner_user_id),
+    delegateIds,
+    isMember: Boolean(membership),
+    platformAdmin: platformOverride,
+  });
+  if (!actor.canEnter) throw httpError("Non fai parte di questa lega.", 403);
+  const isManager = actor.isManager;
 
   const { data: memberRows, error: membersError } = await admin
     .from("private_league_members")

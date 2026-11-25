@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { syncAvailability } from "@/lib/server/availability";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
@@ -9,12 +10,7 @@ import { alertAvailabilitySync } from "@/lib/server/telegram-alert";
 export const maxDuration = 60;
 
 function cronAuthorized(request: Request) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return false;
-  const header = request.headers.get("authorization") ?? "";
-  const bearer = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : "";
-  const alternate = request.headers.get("x-cron-secret") ?? "";
-  return bearer === secret || alternate === secret;
+  return cronSecretAccepted(request.headers, process.env.CRON_SECRET);
 }
 
 async function authorized(request: Request) {

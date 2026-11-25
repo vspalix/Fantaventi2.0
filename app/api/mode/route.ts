@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { hostViewAllowed } from "@/lib/server/access-policy";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
 import { VIEW_COOKIE } from "@/lib/server/view-mode";
@@ -14,7 +15,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as { mode?: string };
     const mode = body.mode === "host" ? "host" : "player";
     const platformAdmin = await isSuperAdmin(user.id);
-    if (mode === "host" && !platformAdmin) {
+    if (!hostViewAllowed(platformAdmin, mode)) {
       return NextResponse.json({ error: "La vista admin globale è riservata al super admin." }, { status: 403 });
     }
     const jar = await cookies();

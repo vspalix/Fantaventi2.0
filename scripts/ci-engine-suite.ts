@@ -4,6 +4,7 @@ import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
 import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/lib/testing/scoringEngineTestSuite";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
+import { runLiveGapChecks } from "./test-live-gaps";
 import { runRulesCoverage } from "./test-rules-coverage";
 import { runSubstitutionChecks } from "./test-substitutions";
 
@@ -67,11 +68,15 @@ async function main() {
   console.log(`Regole, parser e avvisi: ${rules.failures.length === 0 ? "PASSED" : "FAILED"} ${rules.passed}/${rules.total}`);
   for (const failure of rules.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed;
+  const gaps = await runLiveGapChecks();
+  console.log(`Lacune reali: ${gaps.failures.length === 0 ? "PASSED" : "FAILED"} ${gaps.passed}/${gaps.total}`);
+  for (const failure of gaps.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || total < 100) process.exit(1);
 }
 
 main().catch((error: unknown) => {

@@ -1,31 +1,19 @@
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { RegulationEditor } from "@/components/admin/RegulationEditor";
 import { SetupNotice } from "@/components/SetupNotice";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { publicError } from "@/lib/server/api-error";
-import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
-import Link from "next/link";
 
 export default async function RulesEditorPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
-  const user = await getSessionUser();
-  if (!user) {
-    return (
-      <section className="stack">
-        <header>
-          <h1 className="section-title">Gestione regolamento</h1>
-          <p className="lede">Entra per modificare il regolamento delle leghe che hai creato.</p>
-        </header>
-        <AdminNav />
-        <Link className="primary" href="/accesso">Entra</Link>
-      </section>
-    );
-  }
 
   try {
-    const leagues = (await listLeaguesForUser(user.id))
+    const leagues = (await listLeaguesForUser(gate.user.id))
       .filter((league) => league.isOwner)
       .map((league) => ({ id: league.id, name: league.name }));
     return (

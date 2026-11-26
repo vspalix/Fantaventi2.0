@@ -1,9 +1,8 @@
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { EmptyState } from "@/components/EmptyState";
 import { listAdminAudit } from "@/lib/server/audit";
-import { isSuperAdmin } from "@/lib/server/platform-role";
 import { publicError } from "@/lib/server/api-error";
-import { getSessionUser } from "@/lib/server/session";
 
 const WHEN = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "short",
@@ -30,8 +29,8 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default async function AdminAuditPage() {
-  const user = await getSessionUser();
-  if (!user || !(await isSuperAdmin(user.id))) return null;
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   try {
     const log = await listAdminAudit();
     return (

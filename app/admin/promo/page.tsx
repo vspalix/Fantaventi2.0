@@ -1,7 +1,10 @@
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { PromoDesk } from "@/components/admin/PromoDesk";
 
-export default function PromoPage() {
+export default async function PromoPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   return (
     <section className="stack">
       <header>

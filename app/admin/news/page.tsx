@@ -1,7 +1,10 @@
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { NewsDesk } from "@/components/admin/NewsDesk";
 
-export default function AdminNewsPage() {
+export default async function AdminNewsPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   return (
     <section className="stack">
       <header>

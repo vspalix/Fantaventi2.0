@@ -1,26 +1,14 @@
-import Link from "next/link";
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { ListoneView } from "@/components/admin/ListoneView";
 import { SetupNotice } from "@/components/SetupNotice";
-import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
 export default async function ListoneViewPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
-  const user = await getSessionUser();
-  if (!user) {
-    return (
-      <section className="stack">
-        <header>
-          <h1 className="section-title">Listone caricato</h1>
-          <p className="lede">Entra per controllare i calciatori salvati.</p>
-        </header>
-        <AdminNav />
-        <Link className="primary" href="/accesso">Entra</Link>
-      </section>
-    );
-  }
 
   return (
     <section className="stack">

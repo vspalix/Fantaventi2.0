@@ -1,7 +1,10 @@
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { AvailabilityDesk } from "@/components/admin/AvailabilityDesk";
 
-export default function IndisponibiliPage() {
+export default async function IndisponibiliPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   return (
     <section className="stack">
       <header>

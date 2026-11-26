@@ -1,13 +1,13 @@
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { AdminNav } from "@/components/admin/AdminNav";
 import { UserDesk } from "@/components/admin/UserDesk";
 import { listPlatformUsers } from "@/lib/server/platform-users";
-import { isSuperAdmin } from "@/lib/server/platform-role";
 import { publicError } from "@/lib/server/api-error";
-import { getSessionUser } from "@/lib/server/session";
 
 export default async function AdminUsersPage() {
-  const user = await getSessionUser();
-  if (!user || !(await isSuperAdmin(user.id))) return null;
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
+  const { user } = gate;
   try {
     const users = await listPlatformUsers();
     return (

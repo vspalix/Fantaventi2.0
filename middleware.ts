@@ -34,7 +34,10 @@ export async function middleware(request: NextRequest) {
     },
   });
 
-  await supabase.auth.getUser();
+  // Qui la sessione viene solo rinnovata quando sta per scadere, senza interrogare Supabase
+  // a ogni passaggio. L'esito non concede alcun accesso: chi è l'utente lo verificano
+  // le pagine e le API con getUser().
+  await supabase.auth.getSession();
   rememberInvite(request, response);
   return response;
 }

@@ -17,7 +17,7 @@ import { INVITE_COOKIE, joinHref, normalizeInviteCode } from "@/lib/invite";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { mustResetPassword } from "@/lib/server/account-password";
-import { readMaintenance } from "@/lib/server/maintenance";
+import { readMaintenanceBanner } from "@/lib/server/maintenance";
 import { getCurrentSeason, listPlayableSeasons } from "@/lib/server/catalog";
 import { getSessionUser } from "@/lib/server/session";
 import { hostAccess } from "@/lib/server/view-mode";
@@ -81,7 +81,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     headers().then((value) => value.get("x-pathname") ?? ""),
     user && service ? mustResetPassword(user.id).catch(() => false) : Promise.resolve(false),
     service
-      ? readMaintenance().catch(() => ({ enabled: false, message: "", updatedAt: null }))
+      ? readMaintenanceBanner().catch(() => ({ enabled: false, message: "", updatedAt: null }))
       : Promise.resolve({ enabled: false, message: "", updatedAt: null as string | null }),
     service ? listPlayableSeasons(createAdminSupabase()).catch(() => []) : Promise.resolve([]),
     loadClubBadgeOverrides(),

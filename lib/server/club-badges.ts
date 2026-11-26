@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { SERIE_A_CLUBS, type ClubBadgeOverride } from "@/lib/club-colors";
+import { shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 
 const HEX = /^#[0-9a-fA-F]{6}$/;
@@ -13,22 +14,28 @@ export function defaultClubBadges(): ClubBadgeOverride[] {
   }));
 }
 
+async function queryClubBadges(): Promise<ClubBadgeOverride[]> {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
+    .from("club_badges")
+    .select("club_code, primary_color, secondary_color, logo_url");
+  if (error || !data) throw new Error(error?.message ?? "Stemmi non letti.");
+  return data.flatMap((row) => {
+    const code = String(row.club_code ?? "");
+    const primary = String(row.primary_color ?? "");
+    const secondary = String(row.secondary_color ?? "");
+    if (!SERIE_A_CLUBS.some((club) => club.code === code) || !HEX.test(primary) || !HEX.test(secondary)) return [];
+    const logo = typeof row.logo_url === "string" && row.logo_url.trim() ? row.logo_url : null;
+    return [{ code, primary, secondary, logoUrl: logo }];
+  });
+}
+
+const sharedClubBadges = shared(SHARED_TAGS.clubBadges, 300, queryClubBadges);
+
 export const loadClubBadgeOverrides = cache(async (): Promise<ClubBadgeOverride[]> => {
   if (!hasServiceSupabaseEnv()) return [];
   try {
-    const admin = createAdminSupabase();
-    const { data, error } = await admin
-      .from("club_badges")
-      .select("club_code, primary_color, secondary_color, logo_url");
-    if (error || !data) return [];
-    return data.flatMap((row) => {
-      const code = String(row.club_code ?? "");
-      const primary = String(row.primary_color ?? "");
-      const secondary = String(row.secondary_color ?? "");
-      if (!SERIE_A_CLUBS.some((club) => club.code === code) || !HEX.test(primary) || !HEX.test(secondary)) return [];
-      const logo = typeof row.logo_url === "string" && row.logo_url.trim() ? row.logo_url : null;
-      return [{ code, primary, secondary, logoUrl: logo }];
-    });
+    return await sharedClubBadges();
   } catch {
     return [];
   }

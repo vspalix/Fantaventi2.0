@@ -3,6 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { missingSandboxColumn, SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
+import { shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { DEFAULT_RULES, type CatalogPlayer, type CatalogResponse, type ClubRef, type PlayerRole, type RosterRules } from "@/lib/types";
 
 export const SEASON_COOKIE = "fv-season";
@@ -113,7 +114,7 @@ async function cookieSeasonId() {
   }
 }
 
-const playableSeasons = cache(async () => {
+async function queryPlayableSeasons() {
   const admin = createAdminSupabase();
   const { data, error } = await admin
     .from("seasons")
@@ -122,7 +123,12 @@ const playableSeasons = cache(async () => {
     .order("starts_on", { ascending: false });
   if (error) throw new Error(error.message);
   return ((data ?? []) as SeasonRow[]).map(mapSeason).filter((season) => season.code !== SANDBOX_SEASON_CODE);
-});
+}
+
+// L'app non modifica le stagioni reali: un cambio fatto su Supabase si vede dopo la scadenza.
+const sharedPlayableSeasons = shared(SHARED_TAGS.seasons, 60, queryPlayableSeasons);
+
+const playableSeasons = cache(() => sharedPlayableSeasons());
 
 export async function listPlayableSeasons(admin: SupabaseClient) {
   void admin;
@@ -138,6 +144,9 @@ const seasonForRequest = cache(async (key: string) => {
 
 async function readSeason(admin: SupabaseClient, requested: string | null, explicit: boolean) {
   if (requested) {
+    // Una stagione aperta è già in memoria. Le altre (chiuse, di prova, inesistenti) si leggono dal database.
+    const known = (await playableSeasons().catch(() => [])).find((season) => season.id === requested);
+    if (known) return known;
     const { data, error } = await admin
       .from("seasons")
       .select(SEASON_COLUMNS)

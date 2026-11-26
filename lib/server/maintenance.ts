@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { forgetShared, shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const DEFAULT_MESSAGE = "Manutenzione in corso. Puoi consultare la lega: formazioni e mercati restano chiusi fino alla fine del calcolo.";
@@ -13,7 +14,7 @@ function missing(message: string) {
   return /platform_maintenance|schema cache|could not find|relation|does not exist/i.test(message);
 }
 
-export const readMaintenance = cache(async (): Promise<MaintenanceState> => {
+async function queryMaintenance(): Promise<MaintenanceState> {
   const admin = createAdminSupabase();
   const row = await admin.from("platform_maintenance").select("enabled, message, updated_at").eq("id", 1).maybeSingle();
   if (row.error) {
@@ -25,7 +26,15 @@ export const readMaintenance = cache(async (): Promise<MaintenanceState> => {
     message: (row.data?.message as string | undefined) || DEFAULT_MESSAGE,
     updatedAt: (row.data?.updated_at as string | null) ?? null,
   };
-});
+}
+
+/** Lettura sempre dal database: decide se le scritture sono chiuse. */
+export const readMaintenance = cache(queryMaintenance);
+
+const sharedMaintenance = shared(SHARED_TAGS.maintenance, 60, queryMaintenance);
+
+/** Solo per l'avviso a video, dalla memoria condivisa. Per bloccare le scritture usa readMaintenance. */
+export const readMaintenanceBanner = cache(() => sharedMaintenance());
 
 export async function assertWritesOpen() {
   const state = await readMaintenance();
@@ -51,5 +60,6 @@ export async function setMaintenance(enabled: boolean, message?: string) {
     }
     throw new Error(saved.error.message);
   }
+  forgetShared(SHARED_TAGS.maintenance);
   return readMaintenance();
 }

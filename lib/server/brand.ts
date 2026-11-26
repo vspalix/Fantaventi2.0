@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { accentOrDefault, DEFAULT_BRAND_ACCENT, type BrandSettings } from "@/lib/brand";
+import { forgetShared, shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type { BrandSettings };
@@ -28,21 +29,26 @@ function fromRow(row: Record<string, unknown> | null, ready: boolean): BrandSett
   };
 }
 
-export const readBrand = cache(async (): Promise<BrandSettings> => {
+async function queryBrand(): Promise<BrandSettings> {
+  const admin = createAdminSupabase();
+  const row = await admin.from("system_settings").select("brand_logo_url, brand_icon_192_url, brand_icon_512_url, brand_accent_color").eq("id", 1).maybeSingle();
+  if (row.error) throw new Error(row.error.message);
+  return fromRow((row.data ?? null) as Record<string, unknown> | null, true);
+}
+
+async function brandOrFallback(load: () => Promise<BrandSettings>) {
   try {
-    const admin = createAdminSupabase();
-    const row = await admin.from("system_settings").select("brand_logo_url, brand_icon_192_url, brand_icon_512_url, brand_accent_color").eq("id", 1).maybeSingle();
-    if (row.error) {
-      if (missing(row.error.message)) return FALLBACK;
-      throw new Error(row.error.message);
-    }
-    return fromRow((row.data ?? null) as Record<string, unknown> | null, true);
+    return await load();
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
     if (missing(message) || /SUPABASE_SERVICE_ROLE_KEY|fetch failed/i.test(message)) return FALLBACK;
     throw error;
   }
-});
+}
+
+const sharedBrand = shared(SHARED_TAGS.brand, 300, queryBrand);
+
+export const readBrand = cache(() => brandOrFallback(sharedBrand));
 
 function httpError(message: string, status: number) {
   const error = new Error(message) as Error & { status: number };
@@ -57,7 +63,8 @@ async function writeBrand(patch: Record<string, string>) {
     if (missing(saved.error.message)) throw httpError("Mancano le colonne brand. Esegui supabase/brand_storage.sql nell'editor SQL.", 503);
     throw new Error(saved.error.message);
   }
-  return readBrand();
+  forgetShared(SHARED_TAGS.brand);
+  return brandOrFallback(queryBrand);
 }
 
 export async function saveBrandSlot(slot: "logo" | "icon192" | "icon512", url: string) {

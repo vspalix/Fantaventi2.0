@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { defaultClubBadges, loadClubBadgeOverrides, parseClubBadge } from "@/lib/server/club-badges";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
+import { forgetShared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { errorMessage, errorStatus } from "@/lib/server/session";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
         { status: missing ? 503 : 500 },
       );
     }
+    forgetShared(SHARED_TAGS.clubBadges);
     return NextResponse.json({ ok: true });
   } catch (error) {
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });

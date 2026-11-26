@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import type { LeagueRules } from "@/lib/league-rules";
 import { getLeagueDetail, updateLeague } from "@/lib/server/leagues";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
 
@@ -15,7 +16,7 @@ export async function GET(_request: Request, context: RouteContext) {
     const league = await getLeagueDetail(user.id, leagueId);
     return NextResponse.json({ league });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId] (GET)", error);
   }
 }
 
@@ -44,6 +45,6 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
     return NextResponse.json({ league });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId] (PATCH)", error);
   }
 }

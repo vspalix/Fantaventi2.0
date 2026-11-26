@@ -3,6 +3,7 @@
 import { useState, type FormEvent } from "react";
 import { pendingInvitePath } from "@/lib/invite";
 import { createBrowserSupabase } from "@/lib/supabase/browser";
+import { readableError } from "@/lib/feedback";
 
 export function NewPasswordForm() {
   const [password, setPassword] = useState("");
@@ -32,7 +33,7 @@ export function NewPasswordForm() {
       await fetch("/api/account/password", { method: "POST" });
       window.location.assign(pendingInvitePath());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Aggiornamento non riuscito.");
+      setError(readableError(reason, "Aggiornamento non riuscito."));
     } finally {
       setPending(false);
     }

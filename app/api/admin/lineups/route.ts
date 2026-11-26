@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { meter } from "@/lib/server/telemetry";
 import { loadAdminLineups, setAdminLineups } from "@/lib/server/test-lab";
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     const lineups = await loadAdminLineups(user.id, leagueId, gameweekId);
     return NextResponse.json({ lineups });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/lineups (GET)", error);
   }
 }
 
@@ -42,6 +42,6 @@ export async function POST(request: Request) {
     const result = await meter("lineup-save", () => setAdminLineups(user.id, leagueId, gameweekId, filed, fantasyTeamId));
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/lineups (POST)", error);
   }
 }

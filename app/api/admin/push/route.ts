@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { sendPushToEveryone, vapidPublicKey } from "@/lib/server/web-push";
 import { createAdminSupabase } from "@/lib/supabase/admin";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 const KINDS = ["deadline", "bonus", "overtake"] as const;
 
@@ -25,7 +25,7 @@ export async function GET() {
       subscribers: subscribers.count ?? 0,
     });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/push (GET)", error);
   }
 }
 
@@ -66,6 +66,6 @@ export async function POST(request: Request) {
     const result = await sendPushToEveryone({ title, body: message, url: "/leghe" });
     return NextResponse.json({ sent: result.sent });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/push (POST)", error);
   }
 }

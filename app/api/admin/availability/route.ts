@@ -9,10 +9,10 @@ import {
   searchPlayers,
   syncAvailability,
 } from "@/lib/server/availability";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 const STATUSES = new Set<AvailabilityStatus>(["available", "starter", "bench", "doubt", "injured", "suspended"]);
 
@@ -33,7 +33,7 @@ export async function GET(request: Request) {
     }
     return NextResponse.json({ ...current, aliasNames });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/availability (GET)", error);
   }
 }
 
@@ -100,6 +100,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: "Azione non riconosciuta." }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/availability (POST)", error);
   }
 }

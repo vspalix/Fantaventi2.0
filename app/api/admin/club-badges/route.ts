@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { defaultClubBadges, loadClubBadgeOverrides, parseClubBadge } from "@/lib/server/club-badges";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { forgetShared, SHARED_TAGS } from "@/lib/server/shared-cache";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -17,7 +17,7 @@ export async function GET() {
       persisted: saved.length > 0,
     });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/club-badges (GET)", error);
   }
 }
 
@@ -44,6 +44,6 @@ export async function POST(request: Request) {
     forgetShared(SHARED_TAGS.clubBadges);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/club-badges (POST)", error);
   }
 }

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { loadTestLab } from "@/lib/server/test-lab";
 
@@ -11,6 +11,6 @@ export async function GET() {
     const lab = await loadTestLab(user.id);
     return NextResponse.json({ lab });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/test-lab (GET)", error);
   }
 }

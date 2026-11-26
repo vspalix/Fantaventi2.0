@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { listPlatformLeagues } from "@/lib/server/platform-control";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export async function GET() {
   try {
@@ -11,6 +11,6 @@ export async function GET() {
     const leagues = await listPlatformLeagues();
     return NextResponse.json({ leagues });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/platform-leagues (GET)", error);
   }
 }

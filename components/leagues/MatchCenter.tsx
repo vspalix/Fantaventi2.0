@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { PushOptIn } from "@/components/PushOptIn";
 import type { LiveCenter } from "@/lib/server/live-center";
+import { readableError } from "@/lib/feedback";
 
 const ROLE_ROW: Record<string, number> = { GK: 1, DEF: 2, MID: 3, FWD: 4 };
 
@@ -23,7 +24,7 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
           setError(null);
         }
       } catch (reason) {
-        if (!stop) setError(reason instanceof Error ? reason.message : "Live non disponibile.");
+        if (!stop) setError(readableError(reason, "Live non disponibile."));
       }
     }
     void load();

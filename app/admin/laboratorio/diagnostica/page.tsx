@@ -3,7 +3,8 @@ import { DiagnosticsDesk } from "@/components/admin/DiagnosticsDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { readOpsDiagnostics } from "@/lib/server/ops-diagnostics";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import Link from "next/link";
@@ -37,7 +38,7 @@ export default async function DiagnosticsPage() {
     return (
       <section className="stack">
         <header><h1 className="section-title">Diagnostica</h1></header>
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin: Diagnostica", error).message}</p>
         <Link href="/admin/laboratorio/sincronizzazioni">Torna alle sincronizzazioni</Link>
       </section>
     );

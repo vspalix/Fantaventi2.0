@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { listAnnouncements, saveAnnouncement, setAnnouncementActive } from "@/lib/server/announcements";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export async function GET() {
   try {
@@ -10,7 +10,7 @@ export async function GET() {
     await requireSuperAdmin();
     return NextResponse.json({ announcements: await listAnnouncements() });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/announcements (GET)", error);
   }
 }
 
@@ -26,6 +26,6 @@ export async function POST(request: Request) {
     await saveAnnouncement(body);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/announcements (POST)", error);
   }
 }

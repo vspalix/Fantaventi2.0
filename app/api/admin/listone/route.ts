@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { correctListoneRole, loadListone } from "@/lib/server/listone-view";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 
 export async function GET(request: Request) {
@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     );
     return NextResponse.json(listone);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/listone (GET)", error);
   }
 }
 
@@ -31,6 +31,6 @@ export async function PATCH(request: Request) {
     const player = await correctListoneRole(user.id, body.registrationId, body.role);
     return NextResponse.json({ player });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/listone (PATCH)", error);
   }
 }

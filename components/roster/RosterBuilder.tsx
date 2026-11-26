@@ -14,6 +14,7 @@ import { RosterSidebar } from "@/components/roster/RosterSidebar";
 import { useTapGuard } from "@/components/useTapGuard";
 import { evaluateRoster } from "@/lib/constraints";
 import { DEFAULT_RULES, ROLE_LABEL, type CatalogPlayer, type CatalogResponse, type LeagueSquad, type PlayerRole, type RosterImportSource, type RosterMarket, type RosterState } from "@/lib/types";
+import { readableError } from "@/lib/feedback";
 
 const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
@@ -81,7 +82,7 @@ export function RosterBuilder({
         if (!cancelled) setOthersView({ leagueName: body.leagueName ?? leagueName, squads: body.squads ?? [] });
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "Rose non disponibili.");
+        if (!cancelled) setError(readableError(reason, "Rose non disponibili."));
       })
       .finally(() => {
         if (!cancelled) setOthersLoading(false);
@@ -226,7 +227,7 @@ export function RosterBuilder({
       setMessage(`${saved} Ruoli e club sono controllati.`);
       pushToast("ok", saved);
     } catch (reason) {
-      const text = reason instanceof Error ? reason.message : "Salvataggio non riuscito.";
+      const text = readableError(reason, "Salvataggio non riuscito.");
       setError(text);
       pushToast("err", text);
     } finally {

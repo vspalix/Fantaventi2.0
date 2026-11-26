@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { reportingFetch } from "@/lib/server/db-fetch";
 
 export function hasPublicSupabaseEnv(): boolean {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
@@ -14,6 +15,7 @@ export async function createServerSupabase() {
 
   const cookieStore = await cookies();
   return createServerClient(url, key, {
+    global: { fetch: reportingFetch("session") },
     cookies: {
       getAll() {
         return cookieStore.getAll();

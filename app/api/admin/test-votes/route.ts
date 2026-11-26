@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { importFreshTestVotes } from "@/lib/server/simulate-gameweek";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 
 export async function POST(request: Request) {
@@ -18,6 +18,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/test-votes (POST)", error);
   }
 }

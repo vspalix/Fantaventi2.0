@@ -5,6 +5,7 @@ import { decideAvailabilitySync, deliverAvailabilityNotices, reconcileAutomaticR
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { readSystemSettings } from "@/lib/server/system-settings";
 import type { CatalogPlayer } from "@/lib/types";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const SETTINGS_KEY = "availability";
@@ -413,7 +414,8 @@ export async function attachAvailability(players: CatalogPlayer[], matchday: num
         },
       };
     });
-  } catch {
+  } catch (error) {
+    void reportError("Indisponibili nella formazione", error);
     return players;
   }
 }

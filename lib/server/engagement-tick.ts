@@ -4,6 +4,7 @@ import { writeLeagueFeed } from "@/lib/server/league-feed";
 import { overlayPublishedVotes } from "@/lib/server/live-projection";
 import { previewProvisional } from "@/lib/server/live-score";
 import { sendPushToUsers } from "@/lib/server/web-push";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -108,7 +109,8 @@ async function notifyBonuses(template: Template) {
     let preview: Awaited<ReturnType<typeof previewProvisional>>;
     try {
       preview = await previewProvisional(week.id as string);
-    } catch {
+    } catch (error) {
+      void reportError("Notifiche di giornata", error);
       continue;
     }
     const roles = new Map<string, PlayerRole>();

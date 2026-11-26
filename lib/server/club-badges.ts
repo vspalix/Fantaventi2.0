@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { SERIE_A_CLUBS, type ClubBadgeOverride } from "@/lib/club-colors";
+import { reportUnlessMissing } from "@/lib/server/error-report";
 import { shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 
@@ -36,7 +37,8 @@ export const loadClubBadgeOverrides = cache(async (): Promise<ClubBadgeOverride[
   if (!hasServiceSupabaseEnv()) return [];
   try {
     return await sharedClubBadges();
-  } catch {
+  } catch (error) {
+    reportUnlessMissing("Stemmi dei club", error);
     return [];
   }
 });

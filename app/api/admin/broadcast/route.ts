@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { listBroadcastLeagues, parseBroadcast, sendBroadcast } from "@/lib/server/broadcast";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export async function GET() {
   try {
@@ -13,7 +13,7 @@ export async function GET() {
       emailReady: Boolean(process.env.RESEND_API_KEY && process.env.RESEND_FROM),
     });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/broadcast (GET)", error);
   }
 }
 
@@ -25,6 +25,6 @@ export async function POST(request: Request) {
     const result = await sendBroadcast(parsed);
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/broadcast (POST)", error);
   }
 }

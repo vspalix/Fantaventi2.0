@@ -425,7 +425,7 @@ export function LeagueHub({
         if (!cancelled) setSquads(body.squads ?? []);
       })
       .catch((reason: unknown) => {
-        if (!cancelled) setError(reason instanceof Error ? reason.message : "Rose non disponibili.");
+        if (!cancelled) setError(readableError(reason, "Rose non disponibili."));
       })
       .finally(() => {
         if (!cancelled) setSquadsLoading(false);
@@ -465,7 +465,7 @@ export function LeagueHub({
       applyHub(body.hub);
       setTab((current) => stay ?? (current === "formazioni" || current === "risultati" ? current : "formazione"));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Giornata non disponibile.");
+      setError(readableError(reason, "Giornata non disponibile."));
     } finally {
       setPending(false);
     }
@@ -590,7 +590,7 @@ export function LeagueHub({
       setMessage("Formazione di test schierata e salvata.");
       pushToast("ok", "Formazione di test schierata e salvata.");
     } catch (reason) {
-      const text = reason instanceof Error ? reason.message : "Schieramento di test non riuscito.";
+      const text = readableError(reason, "Schieramento di test non riuscito.");
       setError(text);
       pushToast("err", text);
     } finally {
@@ -656,7 +656,7 @@ export function LeagueHub({
       applyHub(body.hub);
       setMessage(input.regenerateCode ? "Nuovo codice invito generato." : "Impostazioni della lega salvate.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
+      setError(readableError(reason, "Salvataggio non riuscito."));
     } finally {
       flight.current = false;
       setPending(false);
@@ -677,7 +677,7 @@ export function LeagueHub({
       applyHub(body.hub);
       setMessage("Admin delegato nominato. Il laboratorio globale resta del super admin.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Nomina non riuscita.");
+      setError(readableError(reason, "Nomina non riuscita."));
     } finally {
       setPending(false);
     }
@@ -697,7 +697,7 @@ export function LeagueHub({
       applyHub(body.hub);
       setMessage("Admin delegato rimosso.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Revoca non riuscita.");
+      setError(readableError(reason, "Revoca non riuscita."));
     } finally {
       setPending(false);
     }
@@ -715,7 +715,7 @@ export function LeagueHub({
       const body = await readJson<{ hub: LeagueHubData }>(await fetch(`/api/leagues/${hub.league.id}/hub`));
       applyHub(body.hub);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Rimozione non riuscita.");
+      setError(readableError(reason, "Rimozione non riuscita."));
     } finally {
       setPending(false);
     }

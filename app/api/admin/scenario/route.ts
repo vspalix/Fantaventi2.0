@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import { readWorkbook } from "@/lib/adapters/excel/workbook";
 import { parseScenarioGrid, parseScenarioText } from "@/lib/scenario/script";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { runScenario } from "@/lib/server/scenario-runner";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export const maxDuration = 60;
 
@@ -34,6 +34,6 @@ export async function POST(request: Request) {
     const report = await runScenario(script);
     return NextResponse.json(report, { status: report.passed ? 200 : 409 });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/scenario (POST)", error);
   }
 }

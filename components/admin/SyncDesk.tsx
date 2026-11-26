@@ -106,6 +106,29 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
     }
   }
 
+  async function sendErrorTest() {
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    setResult(null);
+    try {
+      const response = await fetch("/api/admin/telegram-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind: "error" }),
+      });
+      const body = await response.json() as { ok?: boolean; outcome?: string; error?: string };
+      if (!response.ok || !body.ok) throw new Error(body.error ?? "Avviso di prova non inviato.");
+      setNote(body.outcome === "grouped"
+        ? "Nessun nuovo messaggio: un avviso di prova è già partito nell'ultima ora."
+        : "Avviso di errore finto inviato su Telegram.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Avviso di prova non inviato.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function force(kind: "votes" | "availability") {
     const label = kind === "votes" ? "i voti" : "gli indisponibili";
     if (!window.confirm(`Forzare adesso la sincronizzazione di ${label}? Parte subito e contatta la fonte, anche fuori orario.`)) return;
@@ -216,6 +239,8 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
         <p className="small muted">Con la modalità test accesa, Telegram manda un riepilogo anche quando voti, indisponibili o orari cambiano davvero. Gli errori arrivano comunque. I giri saltati e quelli senza variazioni restano muti.</p>
         <p><a href="/admin/laboratorio/diagnostica">Apri la diagnostica</a></p>
         <button className="ghost" type="button" disabled={busy} onClick={() => void sendTestAlert()}>Invia Test Alert</button>
+        <button className="ghost" type="button" disabled={busy} onClick={() => void sendErrorTest()}>Prova un avviso di errore</button>
+        <p className="small muted">La prova non tocca il database: simula un errore con dati inventati. Parte al massimo un avviso all&apos;ora.</p>
       </section>
 
       <section className="card stack">

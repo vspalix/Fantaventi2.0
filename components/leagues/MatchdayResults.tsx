@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { InfoTip } from "@/components/InfoTip";
 import { CompactLineup, type CompactPlayer, type LineBonuses } from "@/components/lineups/CompactLineup";
 import type { LeagueHubData, LiveLineupSheet, OpponentLineup } from "@/lib/types";
+import { readableError } from "@/lib/feedback";
 
 type CalendarWeek = {
   selectedGameweekId: string;
@@ -111,7 +112,7 @@ export function MatchdayResults({ hub }: { hub: LeagueHubData }) {
         if (!response.ok) throw new Error(body.error ?? "Voti non disponibili.");
         setSheets((cache) => ({ ...cache, [gameweekId]: body.sheets ?? [] }));
       } catch (reason) {
-        if (!cancel) setError(reason instanceof Error ? reason.message : "Voti non disponibili.");
+        if (!cancel) setError(readableError(reason, "Voti non disponibili."));
       }
     })();
     return () => { cancel = true; };
@@ -128,7 +129,7 @@ export function MatchdayResults({ hub }: { hub: LeagueHubData }) {
       if (!response.ok || !body.calendar) throw new Error(body.error ?? "Giornata non disponibile.");
       setWeek(body.calendar);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Giornata non disponibile.");
+      setError(readableError(reason, "Giornata non disponibile."));
     } finally {
       setPending(false);
     }

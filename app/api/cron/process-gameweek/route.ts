@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
-import { errorMessage, errorStatus } from "@/lib/server/session";
+import { errorMessage } from "@/lib/server/session";
 import { prepareVoteClock, runPlannedReads } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
 
@@ -38,7 +39,7 @@ async function run(request: Request) {
     }
     return NextResponse.json({ ...result, kickoffs, votes });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/cron/process-gameweek", error);
   }
 }
 

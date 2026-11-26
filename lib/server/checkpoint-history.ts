@@ -1,6 +1,7 @@
 import { headToHeadPoints, weekScoreMode, type LeagueRules, type MarketCheckpoint } from "@/lib/league-rules";
 import { isHeldMatch } from "@/lib/server/held-lineup";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { CheckpointHistory } from "@/lib/types";
 
@@ -48,7 +49,8 @@ export async function loadCheckpointHistory(input: {
   } else {
     try {
       weekPoints = await fantasyPointsForLeague(input.leagueId, input.seasonId, teamIds, weeks);
-    } catch {
+    } catch (error) {
+      void reportError("Lega: storico dei checkpoint", error);
       weekPoints = null;
     }
   }

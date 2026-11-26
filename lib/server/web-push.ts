@@ -1,3 +1,4 @@
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type PushPayload = { title: string; body: string; url?: string };
@@ -44,6 +45,8 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
       const status = (error as { statusCode?: number }).statusCode;
       if (status === 404 || status === 410) {
         await admin.from("push_subscriptions").delete().eq("endpoint", row.endpoint as string);
+      } else {
+        void reportError("Notifiche: invio non riuscito", error);
       }
     }
   }

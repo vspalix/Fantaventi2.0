@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { reportingFetch } from "@/lib/server/db-fetch";
 
 let admin: SupabaseClient | null = null;
 
@@ -16,6 +17,7 @@ export function createAdminSupabase() {
 
   admin = createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: reportingFetch("server") },
   });
   return admin;
 }

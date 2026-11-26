@@ -3,7 +3,8 @@ import { BrandDesk } from "@/components/admin/BrandDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { readBrand } from "@/lib/server/brand";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import Link from "next/link";
@@ -37,7 +38,7 @@ export default async function BrandPage() {
     return (
       <section className="stack">
         <header><h1 className="section-title">Brand & Grafica</h1></header>
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin: Brand", error).message}</p>
       </section>
     );
   }

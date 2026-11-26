@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { deleteNews, listAllNews, saveNews } from "@/lib/server/news";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export async function GET() {
   try {
@@ -10,7 +10,7 @@ export async function GET() {
     await requireSuperAdmin();
     return NextResponse.json({ news: await listAllNews() });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/news (GET)", error);
   }
 }
 
@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     };
     return NextResponse.json({ news: await saveNews(body) });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/news (POST)", error);
   }
 }
 
@@ -42,6 +42,6 @@ export async function DELETE(request: Request) {
     await deleteNews(body.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/news (DELETE)", error);
   }
 }

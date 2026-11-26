@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { writeAdminAudit } from "@/lib/server/audit";
 import { deletePlatformUser, requirePasswordReset, setPlatformRole } from "@/lib/server/platform-users";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ userId: string }> };
 
@@ -13,7 +13,7 @@ export async function POST(_request: Request, context: RouteContext) {
     await requirePasswordReset(userId);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/users/[userId] (POST)", error);
   }
 }
 
@@ -34,7 +34,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/users/[userId] (PATCH)", error);
   }
 }
 
@@ -49,6 +49,6 @@ export async function DELETE(_request: Request, context: RouteContext) {
     await writeAdminAudit(admin.id, { action: "user.delete", targetType: "user", targetId: userId });
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/users/[userId] (DELETE)", error);
   }
 }

@@ -1,4 +1,5 @@
 import { DEFAULT_PROBABILI } from "@/lib/home-links";
+import { reportError, reportUnlessMissing } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export { DEFAULT_PROBABILI };
@@ -27,6 +28,7 @@ export async function loadHomePromo(): Promise<HomeSettings> {
   try {
     const admin = createAdminSupabase();
     const row = await admin.from("platform_home").select("promo_image, promo_href, promo_label, probabili_href").eq("id", 1).maybeSingle();
+    if (row.error) reportUnlessMissing("Home: locandina", new Error(row.error.message));
     if (row.error || !row.data) return fallback;
     const image = typeof row.data.promo_image === "string" ? row.data.promo_image.trim() : "";
     const href = typeof row.data.promo_href === "string" && HTTPS.test(row.data.promo_href) ? row.data.promo_href : null;
@@ -38,7 +40,8 @@ export async function loadHomePromo(): Promise<HomeSettings> {
       banner: image ? { imageUrl: image, href, label } : null,
       probabiliHref: probabili,
     };
-  } catch {
+  } catch (error) {
+    void reportError("Home: locandina", error);
     return fallback;
   }
 }

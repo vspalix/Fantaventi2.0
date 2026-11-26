@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks } from "@/lib/testing/scoringEngineTestSuite";
@@ -35,6 +35,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json(report);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/run-engine-tests (POST)", error);
   }
 }

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { moderateImage, moderateText } from "@/lib/moderation";
 import { ensureLeagueTeam, listLeaguesForUser } from "@/lib/server/leagues";
+import { reportError, reportUnlessMissing } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type TeamLook = {
@@ -35,6 +36,7 @@ export async function readTeamLook(teamId: string | null, name: string): Promise
   try {
     const admin = createAdminSupabase();
     const row = await admin.from("app_settings").select("value").eq("key", keyOf(teamId)).maybeSingle();
+    if (row.error) reportUnlessMissing("Colori della squadra", new Error(row.error.message));
     if (row.error || !row.data) return base;
     const value = (row.data.value ?? {}) as { primary?: unknown; secondary?: unknown; logoUrl?: unknown };
     return {
@@ -43,7 +45,8 @@ export async function readTeamLook(teamId: string | null, name: string): Promise
       secondary: hex(value.secondary, DEFAULT_SECONDARY),
       logoUrl: typeof value.logoUrl === "string" ? value.logoUrl : "",
     };
-  } catch {
+  } catch (error) {
+    void reportError("Colori della squadra", error);
     return base;
   }
 }

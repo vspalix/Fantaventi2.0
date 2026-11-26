@@ -2,7 +2,8 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { RegulationEditor } from "@/components/admin/RegulationEditor";
 import { SetupNotice } from "@/components/SetupNotice";
 import { listLeaguesForUser } from "@/lib/server/leagues";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import Link from "next/link";
@@ -41,7 +42,7 @@ export default async function RulesEditorPage() {
     return (
       <section className="stack">
         <header><h1 className="section-title">Gestione regolamento</h1></header>
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin: Regolamento", error).message}</p>
       </section>
     );
   }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { refreshKickoffsForAdmin } from "@/lib/server/kickoff-refresh";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 
 export async function POST() {
@@ -11,6 +11,6 @@ export async function POST() {
     const result = await refreshKickoffsForAdmin(user.id);
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/refresh-kickoffs (POST)", error);
   }
 }

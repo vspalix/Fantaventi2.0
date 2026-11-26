@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { resetSandbox, seedSandbox, simulateSandbox } from "@/lib/server/sandbox-lab";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export const maxDuration = 60;
 
@@ -35,6 +35,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: "Azione sandbox sconosciuta." }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/sandbox (POST)", error);
   }
 }

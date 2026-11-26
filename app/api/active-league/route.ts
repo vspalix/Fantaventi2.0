@@ -1,8 +1,9 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
+import { apiError } from "@/lib/server/api-error";
 import { listLeaguesForUser } from "@/lib/server/leagues";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +22,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ id: leagueId });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/active-league (POST)", error);
   }
 }

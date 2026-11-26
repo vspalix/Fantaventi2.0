@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { registerAccount, type RegistrationInput } from "@/lib/server/register-account";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 
 export async function POST(request: Request) {
@@ -12,6 +12,6 @@ export async function POST(request: Request) {
     const account = await registerAccount(body);
     return NextResponse.json(account, { status: 201 });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/auth/register (POST)", error);
   }
 }

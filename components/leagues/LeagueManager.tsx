@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { BONUS_FIELDS, COMPETITION_FORMATS, DEFAULT_LEAGUE_RULES, defaultPhases, type CompetitionFormat, type LeagueRules } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary, RosterImportSource } from "@/lib/types";
-import { readAction } from "@/lib/feedback";
+import { readAction, readableError } from "@/lib/feedback";
 
 async function readJson<T>(response: Response): Promise<T> {
   return readAction<T>(response);
@@ -41,8 +41,8 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
           setPublicLeagues(body.publicLeagues ?? []);
         }
       })
-      .catch((reason: Error) => {
-        if (!cancelled) setError(reason.message);
+      .catch((reason: unknown) => {
+        if (!cancelled) setError(readableError(reason, "Elenco delle leghe non disponibile."));
       });
     return () => {
       cancelled = true;
@@ -65,7 +65,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
       setName("");
       pushToast("ok", "Lega creata. Condividi il codice invito.");
     } catch (reason) {
-      const text = reason instanceof Error ? reason.message : "Creazione non riuscita.";
+      const text = readableError(reason, "Creazione non riuscita.");
       setError(text);
       pushToast("err", text);
     } finally {
@@ -93,7 +93,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
       setOffer(null);
       router.push(`/leghe/${body.league.id}`);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+      setError(readableError(reason, "Iscrizione non riuscita."));
     } finally {
       flight.current = false;
       setPending(false);

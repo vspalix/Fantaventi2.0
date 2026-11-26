@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { openCheckpoint, rosterChangeCount, sharedPlayerIds, type LeagueRules } from "@/lib/league-rules";
 import { readLeagueSettings } from "@/lib/server/league-settings";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
@@ -251,7 +252,8 @@ export async function saveRoster(userId: string, email: string | undefined, team
         playerIds,
         afterMatchday: checkpoint.afterMatchday,
       });
-    } catch {
+    } catch (error) {
+      void reportError("Salvataggio rosa: notizia in bacheca", error);
       // La rosa è già salva: la bacheca può arrivare al giro dopo.
     }
   }

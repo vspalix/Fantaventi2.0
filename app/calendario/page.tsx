@@ -2,7 +2,8 @@ import Link from "next/link";
 import { SerieACalendar } from "@/components/serie-a/SerieACalendar";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadSerieACalendar } from "@/lib/server/serie-a-calendar";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
@@ -24,7 +25,7 @@ export default async function SerieAPage() {
     return (
       <section className="card">
         <h2>Calendario non disponibile</h2>
-        <p>{errorMessage(error)}</p>
+        <p>{publicError("Schermata Calendario", error).message}</p>
       </section>
     );
   }

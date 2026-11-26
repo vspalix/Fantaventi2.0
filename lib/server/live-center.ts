@@ -5,6 +5,7 @@ import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { overlayPublishedVotes } from "@/lib/server/live-projection";
 import { previewProvisional } from "@/lib/server/live-score";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { LeagueDetail } from "@/lib/types";
 import type { PlayerRole } from "@/lib/types";
@@ -55,7 +56,8 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   let preview: Awaited<ReturnType<typeof previewProvisional>> | null = null;
   try {
     preview = await previewProvisional(liveWeek.id as string);
-  } catch {
+  } catch (error) {
+    void reportError("Lega: centro partite, punteggi in diretta", error);
     preview = null;
   }
   const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
@@ -71,7 +73,8 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
         const teamId = key.split(":")[0];
         base.set(teamId, (base.get(teamId) ?? 0) + value);
       }
-    } catch {
+    } catch (error) {
+      void reportError("Lega: centro partite, classifica", error);
       // La classifica live resta sulla giornata in corso.
     }
   }

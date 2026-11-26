@@ -1,6 +1,7 @@
 import { fetchFantacalcioMatchweek, type FantacalcioPlayerVote } from "@/lib/server/fantacalcio-live";
 import type { PlayerStat } from "@/lib/engine/calculator";
 import type { PlayerRole } from "@/lib/types";
+import { reportIfTechnical } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const FRESH_MS = 60_000;
@@ -27,7 +28,8 @@ export async function overlayPublishedVotes(
   let votes: FantacalcioPlayerVote[];
   try {
     votes = await publishedVotes(seasonCode, gameweekNumber);
-  } catch {
+  } catch (error) {
+    reportIfTechnical("Voti in diretta", error);
     return next;
   }
   if (votes.length === 0) return next;

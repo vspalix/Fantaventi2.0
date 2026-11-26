@@ -1,4 +1,6 @@
 import { revalidateTag, unstable_cache } from "next/cache";
+import { cachedLoad } from "@/lib/server/cached-load";
+import { reportError } from "@/lib/server/error-report";
 
 // Memoria condivisa tra tutte le visite e tutti gli utenti.
 // Va usata SOLO per dati uguali per tutti: niente utente, cookie o permessi dentro le letture.
@@ -21,7 +23,8 @@ type SharedTag = (typeof SHARED_TAGS)[keyof typeof SHARED_TAGS];
  * Gli eventuali argomenti di `load` tengono separate le copie (per esempio una per stagione).
  */
 export function shared<A extends string[], T>(tag: SharedTag, seconds: number, load: (...args: A) => Promise<T>) {
-  const cached = unstable_cache(load, [tag], { tags: [tag], revalidate: seconds });
+  const remembered = (...args: A) => cachedLoad.run(true, () => load(...args));
+  const cached = unstable_cache(remembered, [tag], { tags: [tag], revalidate: seconds });
   return async (...args: A): Promise<T> => {
     try {
       return await cached(...args);
@@ -38,6 +41,6 @@ export function forgetShared(tag: SharedTag) {
     revalidateTag(tag);
   } catch (error) {
     // Il dato è già salvato: al massimo si aggiorna alla scadenza.
-    console.warn(`Memoria condivisa non svuotata (${tag}):`, error instanceof Error ? error.message : error);
+    void reportError(`Memoria condivisa non svuotata (${tag})`, error);
   }
 }

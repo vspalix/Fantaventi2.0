@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { saveTeamLook } from "@/lib/server/team-look";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -35,6 +36,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ look });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/team-look (POST)", error);
   }
 }

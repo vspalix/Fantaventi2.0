@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { INVITE_COOKIE } from "@/lib/invite";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { joinLeague, joinPublicLeague, joinRosterOffer } from "@/lib/server/leagues";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { requireSessionUser } from "@/lib/server/session";
 import type { RosterImportSource } from "@/lib/types";
 
 function reply(body: unknown, status = 200, clearInvite = false) {
@@ -36,8 +37,8 @@ export async function POST(request: Request) {
       : await joinLeague(user.id, user.email, body.code ?? "", body.importFromLeagueId ?? null);
     return reply({ league }, 200, !body.leagueId);
   } catch (error) {
-    const message = errorMessage(error);
+    const { message, status } = publicError("API /api/leagues/join (POST)", error);
     const keepInvite = message.toLowerCase().includes("rosa") || message.toLowerCase().includes("calciatori");
-    return reply({ error: message }, errorStatus(error), !keepInvite);
+    return reply({ error: message }, status, !keepInvite);
   }
 }

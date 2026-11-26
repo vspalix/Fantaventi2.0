@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { readableError } from "@/lib/feedback";
 
 type FeedItem = {
   id: string;
@@ -38,7 +39,7 @@ export function LeagueBoard({ leagueId }: { leagueId: string }) {
           setError(null);
         }
       } catch (reason) {
-        if (!stop) setError(reason instanceof Error ? reason.message : "Bacheca non disponibile.");
+        if (!stop) setError(readableError(reason, "Bacheca non disponibile."));
       }
     }
     void load();

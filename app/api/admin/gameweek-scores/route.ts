@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { loadGameweekScores } from "@/lib/server/test-lab";
 
@@ -17,6 +17,6 @@ export async function GET(request: Request) {
     const board = await loadGameweekScores(user.id, leagueId, gameweekId);
     return NextResponse.json(board);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/gameweek-scores (GET)", error);
   }
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError, publicError } from "@/lib/server/api-error";
 import { probePooler } from "@/lib/server/pooler";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 function safeMessage(error: unknown) {
@@ -14,7 +14,7 @@ export async function GET() {
   try {
     await requireSuperAdmin();
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/system-status (GET)", error);
   }
 
   let pooler: Awaited<ReturnType<typeof probePooler>> | null = null;
@@ -41,6 +41,7 @@ export async function GET() {
       },
     });
   } catch (error) {
+    publicError("API /api/system-status (GET)", error);
     return NextResponse.json(
       {
         success: false,

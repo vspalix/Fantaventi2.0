@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { parseRegulation } from "@/lib/rules/regulation-blocks";
+import { readableError } from "@/lib/feedback";
 
 function Inline({ text }: { text: string }) {
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g).filter(Boolean);
@@ -106,7 +107,7 @@ export function DownloadRegulation({
       link.click();
       URL.revokeObjectURL(url);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Scaricamento non riuscito.");
+      setError(readableError(cause, "Scaricamento non riuscito."));
     }
   }
 
@@ -143,7 +144,7 @@ export function RegulationPanel({ leagueId }: { leagueId: string }) {
         if (!cancelled) setDocument(payload);
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Regolamento non disponibile.");
+        if (!cancelled) setError(readableError(cause, "Regolamento non disponibile."));
       });
     return () => {
       cancelled = true;

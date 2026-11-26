@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { readSyncLogs, readSystemSettings, saveSystemSettings } from "@/lib/server/system-settings";
 
 export async function GET() {
@@ -11,7 +11,7 @@ export async function GET() {
     const [settings, logs] = await Promise.all([readSystemSettings(), readSyncLogs(20)]);
     return NextResponse.json({ settings, logs });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/sync-settings (GET)", error);
   }
 }
 
@@ -53,6 +53,6 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ settings: settings.settings, notice: settings.notice });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/sync-settings (POST)", error);
   }
 }

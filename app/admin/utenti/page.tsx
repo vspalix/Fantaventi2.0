@@ -2,7 +2,8 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { UserDesk } from "@/components/admin/UserDesk";
 import { listPlatformUsers } from "@/lib/server/platform-users";
 import { isSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 
 export default async function AdminUsersPage() {
   const user = await getSessionUser();
@@ -24,7 +25,7 @@ export default async function AdminUsersPage() {
       <section className="stack">
         <h1 className="section-title">Utenti</h1>
         <AdminNav />
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin: Utenti", error).message}</p>
       </section>
     );
   }

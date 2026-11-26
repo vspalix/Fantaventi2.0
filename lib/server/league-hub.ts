@@ -10,6 +10,7 @@ import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { loadWeekMatchState, type WeekMatchState } from "@/lib/server/roster";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type {
   CatalogPlayer,
@@ -632,7 +633,8 @@ async function loadPreview(
         definition,
       )),
     };
-  } catch {
+  } catch (error) {
+    void reportError("Lega: punteggi in diretta", error);
     return null;
   }
 }
@@ -902,7 +904,8 @@ async function standingsFor(
         participants.map((participant) => participant.fantasyTeamId),
         closed.map((gameweek) => ({ id: gameweek.id, number: gameweek.number })),
       );
-    } catch {
+    } catch (error) {
+      void reportError("Lega: punti in classifica", error);
       weekPoints = null;
     }
   }

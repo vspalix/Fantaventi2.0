@@ -1,3 +1,4 @@
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type AuditInput = {
@@ -22,10 +23,10 @@ export async function writeAdminAudit(adminId: string, input: AuditInput) {
       detail: input.detail ?? {},
     });
     if (inserted.error && !missingTable(inserted.error.message)) {
-      console.error(inserted.error.message);
+      void reportError("Registro delle azioni admin", new Error(inserted.error.message));
     }
   } catch (error) {
-    console.error(error instanceof Error ? error.message : "audit");
+    void reportError("Registro delle azioni admin", error);
   }
 }
 

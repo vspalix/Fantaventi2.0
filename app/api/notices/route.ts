@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -20,7 +21,7 @@ export async function GET() {
     }
     return NextResponse.json({ notices: rows.data ?? [] });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/notices (GET)", error);
   }
 }
 
@@ -34,6 +35,6 @@ export async function POST(request: Request) {
     await admin.from("user_notices").update({ read_at: new Date().toISOString() }).eq("id", body.id).eq("user_id", user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/notices (POST)", error);
   }
 }

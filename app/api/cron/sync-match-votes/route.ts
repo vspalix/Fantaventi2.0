@@ -1,8 +1,9 @@
 import { after, NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
+import { errorMessage } from "@/lib/server/session";
 import { alertVoteSync } from "@/lib/server/telegram-alert";
 import { writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
 import { prepareVoteClock, runPlannedReads, syncDueMatchVotes } from "@/lib/server/sync-match-votes";
@@ -123,7 +124,7 @@ async function run(request: Request) {
       calculations: plan.calculations.length,
     });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/cron/sync-match-votes", error);
   }
 }
 

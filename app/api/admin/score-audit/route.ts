@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { loadScoreAudit } from "@/lib/server/score-audit";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 
 export async function GET(request: Request) {
@@ -18,6 +18,6 @@ export async function GET(request: Request) {
     const audit = await loadScoreAudit(user.id, leagueId, gameweekId, fantasyTeamId);
     return NextResponse.json(audit);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/score-audit (GET)", error);
   }
 }

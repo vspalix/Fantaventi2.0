@@ -4,9 +4,11 @@ import { RosterBuilder } from "@/components/roster/RosterBuilder";
 import { SetupNotice } from "@/components/SetupNotice";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { loadCatalog } from "@/lib/server/catalog";
+import { reportError } from "@/lib/server/error-report";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { describeCheckpoint, loadRoster } from "@/lib/server/roster";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { meter } from "@/lib/server/telemetry";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
@@ -37,7 +39,10 @@ export default async function RosterPage() {
     const [catalog, roster, checkpointNote] = await Promise.all([
       loadCatalog(),
       meter("roster", () => loadRoster(user.id, league.id)),
-      describeCheckpoint(user.id, league.id).catch(() => null),
+      describeCheckpoint(user.id, league.id).catch((error: unknown) => {
+        void reportError("Schermata Rosa: nota del checkpoint", error);
+        return null;
+      }),
     ]);
     return (
       <section className="roster-screen">
@@ -56,7 +61,7 @@ export default async function RosterPage() {
   } catch (error) {
     return (
       <section className="roster-screen">
-        <RosterBuilder signedIn catalog={null} initialRoster={null} loadError={errorMessage(error)} />
+        <RosterBuilder signedIn catalog={null} initialRoster={null} loadError={publicError("Schermata Rosa", error).message} />
       </section>
     );
   }

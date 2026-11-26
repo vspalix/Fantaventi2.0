@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import type { LeagueRules } from "@/lib/league-rules";
 import { unlockLeagueLineups } from "@/lib/server/platform-control";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { updateLeague } from "@/lib/server/leagues";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
 
@@ -28,6 +28,6 @@ export async function PATCH(request: Request, context: RouteContext) {
       : null;
     return NextResponse.json({ league, unlocked });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/platform-leagues/[leagueId] (PATCH)", error);
   }
 }

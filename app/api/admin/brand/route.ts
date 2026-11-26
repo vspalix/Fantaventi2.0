@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { apiError } from "@/lib/server/api-error";
 import { resetBrand, saveBrandAccent, saveBrandSlot } from "@/lib/server/brand";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const MAX_BYTES = 2 * 1024 * 1024;
@@ -54,6 +54,6 @@ export async function POST(request: Request) {
     const url = admin.storage.from("brand-assets").getPublicUrl(path).data.publicUrl;
     return NextResponse.json({ brand: await saveBrandSlot(slot, url) });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/brand (POST)", error);
   }
 }

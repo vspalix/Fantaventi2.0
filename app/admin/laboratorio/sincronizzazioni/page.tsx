@@ -3,7 +3,8 @@ import { SyncDesk } from "@/components/admin/SyncDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { readSyncLogs, readSystemSettings } from "@/lib/server/system-settings";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import Link from "next/link";
@@ -42,7 +43,7 @@ export default async function SyncSettingsPage() {
         <header>
           <h1 className="section-title">Sincronizzazioni</h1>
         </header>
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin: Sincronizzazioni", error).message}</p>
       </section>
     );
   }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { processMatchday } from "@/lib/server/process-matchday";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 function authorized(request: Request) {
   const secret = process.env.CRON_SECRET;
@@ -21,7 +21,7 @@ async function run(request: Request) {
     const result = await processMatchday();
     return NextResponse.json(result);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/cron/process-matchday", error);
   }
 }
 

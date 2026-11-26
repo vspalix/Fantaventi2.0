@@ -4,6 +4,7 @@ import { getLeagueDetail } from "@/lib/server/leagues";
 import { schemaHint, scoreOfficialGameweek } from "@/lib/server/live-score";
 import { rebuildWeekBoard } from "@/lib/server/engagement-tick";
 import { ensureMockVotes } from "@/lib/server/simulate-gameweek";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 function httpError(message: string, status: number) {
@@ -271,7 +272,8 @@ export async function recalculateExtraordinary(gameweekId: string) {
   let board = 0;
   try {
     board = await rebuildWeekBoard(gameweekId);
-  } catch {
+  } catch (error) {
+    void reportError("Ricalcolo giornata: bacheca", error);
     board = 0;
   }
   return {

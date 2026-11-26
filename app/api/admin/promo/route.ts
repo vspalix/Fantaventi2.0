@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { loadHomePromo, parseHomePromo } from "@/lib/server/home-promo";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export async function GET() {
@@ -11,7 +11,7 @@ export async function GET() {
     await requireSuperAdmin();
     return NextResponse.json(await loadHomePromo());
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/promo (GET)", error);
   }
 }
 
@@ -31,6 +31,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/promo (POST)", error);
   }
 }

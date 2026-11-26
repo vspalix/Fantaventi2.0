@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { Announcement, AnnouncementKind } from "@/lib/announcements";
+import { reportUnlessMissing } from "@/lib/server/error-report";
 import { forgetShared, shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -60,7 +61,8 @@ const sharedActiveAnnouncements = shared(SHARED_TAGS.announcements, 300, queryAc
 export const loadActiveAnnouncements = cache(async (): Promise<Announcement[]> => {
   try {
     return await sharedActiveAnnouncements();
-  } catch {
+  } catch (error) {
+    reportUnlessMissing("Annunci", error);
     return [];
   }
 });

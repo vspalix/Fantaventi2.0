@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { lateJoinTest } from "@/lib/server/test-lab";
 
@@ -15,6 +15,6 @@ export async function POST(request: Request) {
     const report = await lateJoinTest(user.id, body.leagueId, Number(body.gameweekNumber));
     return NextResponse.json({ report });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/late-join (POST)", error);
   }
 }

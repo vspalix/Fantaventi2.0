@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { loadImportOptions } from "@/lib/server/import-quotations";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { assertServiceEnv } from "@/lib/server/catalog";
 
@@ -11,6 +11,6 @@ export async function GET() {
     const options = await loadImportOptions(user.id);
     return NextResponse.json(options);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/import-options (GET)", error);
   }
 }

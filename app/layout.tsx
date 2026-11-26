@@ -19,7 +19,8 @@ import { listLeaguesForUser } from "@/lib/server/leagues";
 import { mustResetPassword } from "@/lib/server/account-password";
 import { readMaintenanceBanner } from "@/lib/server/maintenance";
 import { getCurrentSeason, listPlayableSeasons } from "@/lib/server/catalog";
-import { getSessionUser } from "@/lib/server/session";
+import { reportError } from "@/lib/server/error-report";
+import { getSessionUser, SESSION_UNAVAILABLE, sessionUnavailable } from "@/lib/server/session";
 import { hostAccess } from "@/lib/server/view-mode";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
@@ -74,16 +75,27 @@ export const dynamic = "force-dynamic";
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const service = hasServiceSupabaseEnv();
   const user = hasPublicSupabaseEnv() ? await getSessionUser() : null;
+  const authDown = await sessionUnavailable();
+  // La parte comune non deve mai bloccare la pagina: se una lettura utile manca, lo si dice.
+  let incomplete = false;
+  const orElse = <T,>(where: string, read: Promise<T>, fallback: T) => read.catch((error: unknown) => {
+    incomplete = true;
+    void reportError(where, error);
+    return fallback;
+  });
   const [access, path, needsReset, maintenance, playable, badges, announcements, brand, jar] = await Promise.all([
     user && service
       ? hostAccess(user.id)
       : Promise.resolve({ platformAdmin: false, canSwitch: false, hostMode: false }),
     headers().then((value) => value.get("x-pathname") ?? ""),
-    user && service ? mustResetPassword(user.id).catch(() => false) : Promise.resolve(false),
+    user && service ? orElse("Parte comune: cambio password obbligatorio", mustResetPassword(user.id), false) : Promise.resolve(false),
     service
-      ? readMaintenanceBanner().catch(() => ({ enabled: false, message: "", updatedAt: null }))
+      ? readMaintenanceBanner().catch((error: unknown) => {
+        void reportError("Parte comune: avviso di manutenzione", error);
+        return { enabled: false, message: "", updatedAt: null };
+      })
       : Promise.resolve({ enabled: false, message: "", updatedAt: null as string | null }),
-    service ? listPlayableSeasons(createAdminSupabase()).catch(() => []) : Promise.resolve([]),
+    service ? orElse("Parte comune: stagioni", listPlayableSeasons(createAdminSupabase()), []) : Promise.resolve([]),
     loadClubBadgeOverrides(),
     user ? loadActiveAnnouncements() : Promise.resolve([]),
     readBrand(),
@@ -122,7 +134,9 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         const displayName = profile.data?.display_name;
         if (typeof displayName === "string" && displayName.trim()) profileLabel = displayName.trim();
       }
-    } catch {
+    } catch (error) {
+      incomplete = true;
+      void reportError("Parte comune: squadre e profilo", error);
       seasons = [];
       activeSeasonId = null;
       squads = [];
@@ -151,7 +165,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           />
         </Suspense>
         {maintenance.enabled ? <MaintenanceBanner message={maintenance.message} admin={platformAdmin} /> : null}
-        <main className="shell page">{children}</main>
+        <main className="shell page">
+          {authDown || incomplete ? (
+            <p className="banner" role="status">
+              {authDown ? SESSION_UNAVAILABLE : "Qualche informazione non si è caricata. Ricarica la pagina tra poco."}
+            </p>
+          ) : null}
+          {children}
+        </main>
         {announcements.length > 0 ? <AnnounceModal items={announcements} /> : null}
         <NativeBridge />
         <ToastHost />

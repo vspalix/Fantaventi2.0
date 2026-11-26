@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { vapidPublicKey } from "@/lib/server/web-push";
 import { createAdminSupabase } from "@/lib/supabase/admin";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 export async function GET() {
   const publicKey = vapidPublicKey();
@@ -49,6 +50,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/push/subscribe (POST)", error);
   }
 }

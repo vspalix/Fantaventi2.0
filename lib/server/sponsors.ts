@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { moderateImage, moderateText } from "@/lib/moderation";
+import { reportError, reportUnlessMissing } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type SponsorItem = {
@@ -49,9 +50,11 @@ export async function readSponsors(): Promise<SponsorStrip> {
   try {
     const admin = createAdminSupabase();
     const row = await admin.from("app_settings").select("value").eq("key", KEY).maybeSingle();
+    if (row.error) reportUnlessMissing("Home: sponsor", new Error(row.error.message));
     if (row.error || !row.data) return EMPTY;
     return asStrip(row.data.value);
-  } catch {
+  } catch (error) {
+    void reportError("Home: sponsor", error);
     return EMPTY;
   }
 }

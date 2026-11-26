@@ -3,7 +3,8 @@ import { LeagueHub } from "@/components/leagues/LeagueHub";
 import { isHubTab } from "@/lib/hub-tabs";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadLeagueHub } from "@/lib/server/league-hub";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hostAccess } from "@/lib/server/view-mode";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
@@ -43,7 +44,7 @@ export default async function LeaguePage({
     return (
       <section className="card">
         <h2>Lega non disponibile</h2>
-        <p>{errorMessage(error)}</p>
+        <p>{publicError("Schermata Lega", error).message}</p>
         <Link href="/leghe">Torna alle leghe</Link>
       </section>
     );

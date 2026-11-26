@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { removeParticipant } from "@/lib/server/leagues";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
 
@@ -24,6 +25,6 @@ export async function DELETE(request: Request, context: RouteContext) {
     });
     return NextResponse.json({ league });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/members (DELETE)", error);
   }
 }

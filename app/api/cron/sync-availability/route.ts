@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { syncAvailability } from "@/lib/server/availability";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
+import { errorMessage } from "@/lib/server/session";
 import { readSystemSettings, writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
 import { alertAvailabilitySync } from "@/lib/server/telegram-alert";
 
@@ -67,7 +68,7 @@ async function run(request: Request) {
     };
     await writeSyncLog(entry);
     await alertAvailabilitySync(entry);
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/cron/sync-availability", error);
   }
 }
 

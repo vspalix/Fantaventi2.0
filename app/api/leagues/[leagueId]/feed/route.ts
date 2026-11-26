@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { listLeagueFeed } from "@/lib/server/league-feed";
 import { getLeagueDetail } from "@/lib/server/leagues";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
 
@@ -15,6 +16,6 @@ export async function GET(_request: Request, context: RouteContext) {
     const board = await listLeagueFeed(leagueId);
     return NextResponse.json(board);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/feed (GET)", error);
   }
 }

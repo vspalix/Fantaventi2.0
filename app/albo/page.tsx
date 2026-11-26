@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { loadHallOfFame, type NamedScore } from "@/lib/server/hall-of-fame";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 
 const points = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
 
@@ -84,7 +85,7 @@ export default async function HallOfFamePage() {
     return (
       <section className="stack">
         <h1 className="section-title">Albo d&apos;oro</h1>
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Schermata Albo d'oro", error).message}</p>
       </section>
     );
   }

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { loadCatalog } from "@/lib/server/catalog";
 import { loadLeagueRosters } from "@/lib/server/league-hub";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 export async function GET(
   request: Request,
@@ -20,6 +21,6 @@ export async function GET(
     );
     return NextResponse.json(others);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/others (GET)", error);
   }
 }

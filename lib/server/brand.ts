@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { accentOrDefault, DEFAULT_BRAND_ACCENT, type BrandSettings } from "@/lib/brand";
+import { reportUnlessMissing } from "@/lib/server/error-report";
 import { forgetShared, shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -40,9 +41,9 @@ async function brandOrFallback(load: () => Promise<BrandSettings>) {
   try {
     return await load();
   } catch (error) {
-    const message = error instanceof Error ? error.message : "";
-    if (missing(message) || /SUPABASE_SERVICE_ROLE_KEY|fetch failed/i.test(message)) return FALLBACK;
-    throw error;
+    // Colori e logo non devono mai bloccare la pagina: si usano quelli di serie.
+    reportUnlessMissing("Colori e logo", error);
+    return FALLBACK;
   }
 }
 

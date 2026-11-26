@@ -3,7 +3,8 @@ import { LiveSyncDesk } from "@/components/admin/LiveSyncDesk";
 import { MatchdayDesk } from "@/components/admin/MatchdayDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadTestLab } from "@/lib/server/test-lab";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import Link from "next/link";
@@ -46,7 +47,7 @@ export default async function AdminPage() {
         <header>
           <h1 className="section-title">Admin</h1>
         </header>
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin", error).message}</p>
       </section>
     );
   }

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { publicError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { saveLeagueLineup } from "@/lib/server/league-hub";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 import { meter } from "@/lib/server/telemetry";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
@@ -35,11 +36,11 @@ export async function POST(request: Request, context: RouteContext) {
     }));
     return NextResponse.json({ hub });
   } catch (error) {
-    const message = errorMessage(error);
+    const { message, status } = publicError("API /api/leagues/[leagueId]/lineup (POST)", error);
     const locked = /scaduta|è chiusa|in corso/i.test(message);
     return NextResponse.json(
       { error: locked ? "Formazione bloccata. La giornata è in corso." : message },
-      { status: errorStatus(error) },
+      { status },
     );
   }
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { InfoTip } from "@/components/InfoTip";
 import { CompactLineup, compactFromAudit } from "@/components/lineups/CompactLineup";
 import type { ScoreAudit } from "@/lib/engine/score-audit";
+import { readableError } from "@/lib/feedback";
 
 export function MyPagelle({
   leagueId,
@@ -30,7 +31,7 @@ export function MyPagelle({
         if (!response.ok) throw new Error(body.error ?? "Voti non disponibili.");
         setAudit(body);
       } catch (reason) {
-        if (!cancel) setError(reason instanceof Error ? reason.message : "Voti non disponibili.");
+        if (!cancel) setError(readableError(reason, "Voti non disponibili."));
       }
     })();
     return () => { cancel = true; };

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { readSponsors, saveSponsorStrip, uploadSponsorImage, type SponsorItem } from "@/lib/server/sponsors";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 const MAX_BYTES = 2 * 1024 * 1024;
 
@@ -12,7 +12,7 @@ export async function GET() {
     await requireSuperAdmin();
     return NextResponse.json({ sponsors: await readSponsors() });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/sponsors (GET)", error);
   }
 }
 
@@ -39,6 +39,6 @@ export async function POST(request: Request) {
     const imageUrl = await uploadSponsorImage(Buffer.from(await file.arrayBuffer()), file.type);
     return NextResponse.json({ imageUrl });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/sponsors (POST)", error);
   }
 }

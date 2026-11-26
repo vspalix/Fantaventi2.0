@@ -8,7 +8,7 @@ import { JoinImportPrompt } from "@/components/leagues/JoinImportPrompt";
 import { DEFAULT_LEAGUE_RULES } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary, RosterImportSource } from "@/lib/types";
-import { readAction } from "@/lib/feedback";
+import { readAction, readableError } from "@/lib/feedback";
 
 async function readJson<T>(response: Response): Promise<T> {
   return readAction<T>(response);
@@ -40,7 +40,7 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
       pushToast("ok", "Lega creata. Condividi il codice invito.");
       router.refresh();
     } catch (reason) {
-      const text = reason instanceof Error ? reason.message : "Creazione non riuscita.";
+      const text = readableError(reason, "Creazione non riuscita.");
       setError(text);
       pushToast("err", text);
     } finally {
@@ -68,7 +68,7 @@ export function LeagueOnboarding({ variant = "page" }: { variant?: "page" | "car
       router.push(`/leghe/${body.league.id}`);
       router.refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Iscrizione non riuscita.");
+      setError(readableError(reason, "Iscrizione non riuscita."));
     } finally {
       flight.current = false;
       setPending(false);

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { moderateText } from "@/lib/moderation";
 import { isPublicHandle } from "@/lib/public-name";
+import { apiError } from "@/lib/server/api-error";
 import { deleteOwnAccount } from "@/lib/server/platform-users";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export async function PATCH(request: Request) {
@@ -24,7 +25,7 @@ export async function PATCH(request: Request) {
     if (saved.error) throw new Error(saved.error.message);
     return NextResponse.json({ ok: true, username });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/account (PATCH)", error);
   }
 }
 
@@ -34,6 +35,6 @@ export async function DELETE() {
     await deleteOwnAccount(user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/account (DELETE)", error);
   }
 }

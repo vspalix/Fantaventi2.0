@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { assertExportMarkdown, loadRegulation } from "@/lib/server/regulation";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 import { regulationPlainText } from "@/lib/rules/regulation-blocks";
 import { attachmentHeader, regulationDocx, regulationFileName } from "@/lib/rules/regulation-export";
 
@@ -39,7 +40,7 @@ export async function GET(request: Request, context: RouteContext) {
     const document = await loadRegulation(user.id, leagueId);
     return fileResponse(document.leagueName, document.markdown, formatOf(request));
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/regulation/export (GET)", error);
   }
 }
 
@@ -53,6 +54,6 @@ export async function POST(request: Request, context: RouteContext) {
     const markdown = typeof body.markdown === "string" ? assertExportMarkdown(body.markdown) : document.markdown;
     return fileResponse(document.leagueName, markdown, formatOf(request));
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/regulation/export (POST)", error);
   }
 }

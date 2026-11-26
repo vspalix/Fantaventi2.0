@@ -121,6 +121,20 @@ export async function sendSyncTestAlert() {
   return sendTelegramMessage(text);
 }
 
+/** Errore dell'app. `where` e `detail` arrivano già ripuliti da password, chiavi e dati personali. */
+export async function alertAppError(input: { where: string; detail: string; repeats: number }, now = new Date()) {
+  const lines = [
+    "<b>Fantaventi — errore nell'app</b>",
+    `Dove: ${escapeHtml(input.where)}`,
+    `Cosa: ${escapeHtml(input.detail)}`,
+    `Quando: ${escapeHtml(romeStamp(now))} (ora di Roma)`,
+    `Ambiente: ${process.env.VERCEL_ENV === "production" ? "sito" : "prova"}`,
+  ];
+  if (input.repeats > 0) lines.push(`Ripetizioni non inviate dall'avviso precedente: ${input.repeats}`);
+  lines.push("Errori uguali: al massimo un avviso all'ora.");
+  return sendTelegramMessage(lines.join("\n"));
+}
+
 export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = new Date(), detail?: SyncDetail) {
   try {
     const changed = detail ? detail.changed : null;

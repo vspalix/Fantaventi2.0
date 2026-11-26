@@ -8,6 +8,7 @@ import { listLeaguesForUser } from "@/lib/server/leagues";
 import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
 import { readSponsors } from "@/lib/server/sponsors";
 import { readTeamLook } from "@/lib/server/team-look";
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type HomeFixture = {
@@ -292,7 +293,8 @@ async function leagueCard(
       })),
       insights,
     };
-  } catch {
+  } catch (error) {
+    void reportError("Home: riquadro di una lega", error);
     return empty;
   }
 }

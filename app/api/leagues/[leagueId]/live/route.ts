@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { loadLiveCenter } from "@/lib/server/live-center";
 import { getLeagueDetail } from "@/lib/server/leagues";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
 
@@ -15,6 +16,6 @@ export async function GET(_request: Request, context: RouteContext) {
     const live = await loadLiveCenter(league, user.id);
     return NextResponse.json({ live });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/live (GET)", error);
   }
 }

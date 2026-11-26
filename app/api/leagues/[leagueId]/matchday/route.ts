@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { loadCompactSheets, loadScoreAudit } from "@/lib/server/score-audit";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 type RouteContext = { params: Promise<{ leagueId: string }> };
 
@@ -23,6 +24,6 @@ export async function GET(request: Request, context: RouteContext) {
     const detail = await loadScoreAudit(user.id, leagueId, gameweekId, fantasyTeamId, "member");
     return NextResponse.json(detail);
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/leagues/[leagueId]/matchday (GET)", error);
   }
 }

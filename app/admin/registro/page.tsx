@@ -2,7 +2,8 @@ import { AdminNav } from "@/components/admin/AdminNav";
 import { EmptyState } from "@/components/EmptyState";
 import { listAdminAudit } from "@/lib/server/audit";
 import { isSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, getSessionUser } from "@/lib/server/session";
+import { publicError } from "@/lib/server/api-error";
+import { getSessionUser } from "@/lib/server/session";
 
 const WHEN = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "short",
@@ -81,7 +82,7 @@ export default async function AdminAuditPage() {
       <section className="stack">
         <h1 className="section-title">Registro</h1>
         <AdminNav />
-        <p className="banner">{errorMessage(error)}</p>
+        <p className="banner">{publicError("Admin: Registro", error).message}</p>
       </section>
     );
   }

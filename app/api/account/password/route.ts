@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { clearPasswordReset } from "@/lib/server/account-password";
-import { errorMessage, errorStatus, requireSessionUser } from "@/lib/server/session";
+import { requireSessionUser } from "@/lib/server/session";
 
 export async function POST() {
   try {
@@ -8,6 +9,6 @@ export async function POST() {
     await clearPasswordReset(user.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/account/password (POST)", error);
   }
 }

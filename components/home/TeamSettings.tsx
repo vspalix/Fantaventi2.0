@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { TeamLook } from "@/lib/server/team-look";
+import { readableError } from "@/lib/feedback";
 
 export function TeamSettings({ look }: { look: TeamLook }) {
   const router = useRouter();
@@ -32,7 +33,7 @@ export function TeamSettings({ look }: { look: TeamLook }) {
       setFile(null);
       router.refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Salvataggio non riuscito.");
+      setError(readableError(reason, "Salvataggio non riuscito."));
     } finally {
       setPending(false);
     }

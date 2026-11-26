@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
+import { apiError } from "@/lib/server/api-error";
 import { writeAdminAudit } from "@/lib/server/audit";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { recalculateExtraordinary, recalculatePartial, setMatchHold, setMatchPostponed } from "@/lib/server/match-control";
 import type { MatchHold } from "@/lib/server/held-lineup";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { errorMessage, errorStatus } from "@/lib/server/session";
 
 export async function POST(request: Request) {
   try {
@@ -71,6 +71,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: "Azione non riconosciuta." }, { status: 400 });
   } catch (error) {
-    return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
+    return apiError("API /api/admin/match-control (POST)", error);
   }
 }

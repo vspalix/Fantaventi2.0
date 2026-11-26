@@ -1,4 +1,5 @@
 import { runEngagementTick } from "@/lib/server/engagement-tick";
+import { reportError } from "@/lib/server/error-report";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { syncDueMatchVotes } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
@@ -10,7 +11,8 @@ export async function processMatchday(now = new Date()) {
   let engagement = { sent: 0, badges: 0 };
   try {
     engagement = await runEngagementTick(now);
-  } catch {
+  } catch (error) {
+    void reportError("Elaborazione giornata: notifiche e premi", error);
     engagement = { sent: 0, badges: 0 };
   }
   return {

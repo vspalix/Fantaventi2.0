@@ -13,6 +13,8 @@ export function readableError(reason: unknown, fallback: string) {
   if (text.includes("unexpected token") || text.includes("not valid json")) {
     return "Il server non ha risposto in modo leggibile. Resta qui e riprova tra poco.";
   }
+  // Un errore interno del programma non si mostra com'è.
+  if (reason instanceof TypeError || reason instanceof ReferenceError) return fallback;
   return message || fallback;
 }
 

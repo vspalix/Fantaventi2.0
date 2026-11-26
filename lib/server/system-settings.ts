@@ -1,3 +1,4 @@
+import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export const DEFAULT_VOTES_SOURCE_URL = "https://www.fantacalcio.it/serie-a/voti";
@@ -246,10 +247,10 @@ export async function writeSyncLog(entry: SyncLogEntry) {
       message: entry.message.slice(0, 500),
     });
     if (saved.error && !missing(saved.error.message) && !/job_type|check constraint/i.test(saved.error.message)) {
-      console.error(saved.error.message);
+      void reportError("Storico sincronizzazioni", new Error(saved.error.message));
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : "";
-    if (!missing(message)) console.error(message);
+    if (!missing(message)) void reportError("Storico sincronizzazioni", error);
   }
 }

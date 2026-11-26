@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { readableError } from "@/lib/feedback";
 
 function urlBase64ToUint8Array(value: string) {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
@@ -47,7 +48,7 @@ export function PushOptIn() {
       if (!saved.ok) throw new Error(body.error ?? "Iscrizione non riuscita.");
       setMessage("Notifiche attive su questo dispositivo.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Notifiche non attivate.");
+      setMessage(readableError(error, "Notifiche non attivate."));
     } finally {
       setPending(false);
     }

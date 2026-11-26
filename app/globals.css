@@ -2148,7 +2148,6 @@ button.shirt-empty:disabled { cursor: default; }
 .bench-handle:active { cursor: grabbing; color: var(--accent); }
 .bench-num { flex: none; width: 18px; color: var(--muted); font-size: var(--fs-sm); text-align: right; font-variant-numeric: tabular-nums; }
 .bench-club { flex: none; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; }
-.bench-drop { flex: none; width: 36px; height: 36px; min-height: 36px; display: grid; place-items: center; padding: 0; border-radius: 50%; border: 1px solid rgba(241, 154, 138, 0.45); background: transparent; color: var(--danger); font-size: 18px; line-height: 1; }
 /* Rullo dal basso per capitano e vice */
 .wheel-backdrop { position: fixed; inset: 0; z-index: 85; display: grid; place-items: end center; background: rgba(0, 0, 0, 0.62); }
 .wheel-sheet {

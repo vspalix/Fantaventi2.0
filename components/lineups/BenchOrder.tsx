@@ -18,12 +18,10 @@ export function BenchOrder({
   players,
   editable,
   onMove,
-  onRemove,
 }: {
   players: BenchRow[];
   editable: boolean;
   onMove: (from: number, to: number) => void;
-  onRemove: (playerId: string) => void;
 }) {
   const [drag, setDrag] = useState<Drag | null>(null);
   const list = useRef<HTMLOListElement>(null);
@@ -107,16 +105,6 @@ export function BenchOrder({
               <span className="bench-club">
                 {editable ? null : <TeamBadge teamName={player.clubShort} />} {player.clubShort}
               </span>
-              {editable ? (
-                <button
-                  className="bench-drop"
-                  type="button"
-                  aria-label={`Togli ${player.fullName} dalla panchina`}
-                  onClick={() => onRemove(player.id)}
-                >
-                  ×
-                </button>
-              ) : null}
             </div>
           </li>
         );

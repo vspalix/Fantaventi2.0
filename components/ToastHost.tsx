@@ -7,10 +7,11 @@ export function ToastHost() {
   const [items, setItems] = useState<ToastItem[]>([]);
 
   useEffect(() => subscribeToasts((item) => {
-    setItems((current) => [...current.slice(-2), item]);
+    // Un errore toglie le conferme ancora a video, per non mostrare insieme «salvata» e «non salvata», e resta di più.
+    setItems((current) => [...(item.tone === "err" ? current.filter((entry) => entry.tone === "err") : current).slice(-2), item]);
     window.setTimeout(() => {
       setItems((current) => current.filter((entry) => entry.id !== item.id));
-    }, 4600);
+    }, item.tone === "err" ? 8000 : 4600);
   }), []);
 
   if (items.length === 0) return null;

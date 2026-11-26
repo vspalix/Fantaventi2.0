@@ -364,6 +364,10 @@ export function LeagueHub({
   const [squads, setSquads] = useState(initial.squads);
   const [squadsLoading, setSquadsLoading] = useState(false);
   const flight = useRef(false);
+  /** Salvataggi formazione in fila: partono uno alla volta, vince l'ultimo. */
+  const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const lastSent = useRef<string | null>(null);
+  const [shownAsSaved, setShownAsSaved] = useState<string | null>(null);
   const picks = useTapGuard();
   const [now, setNow] = useState(() => Date.now());
 
@@ -519,7 +523,10 @@ export function LeagueHub({
     const outgoing = hub.roster.find((player) => player.id === replacingId);
     if (!outgoing || incoming.role !== outgoing.role || !playerIds.includes(replacingId)) return;
     setPlayerIds(playerIds.map((id) => (id === replacingId ? incoming.id : id)));
-    setBenchIds(benchIds.filter((id) => id !== incoming.id));
+    // Scambio: chi esce prende in panchina il posto di chi entra.
+    setBenchIds(benchIds.includes(incoming.id)
+      ? benchIds.map((id) => (id === incoming.id ? outgoing.id : id))
+      : benchIds);
     if (captainId === replacingId) setCaptainId(null);
     if (viceId === replacingId) setViceId(null);
     setReplacingId(null);
@@ -533,11 +540,6 @@ export function LeagueHub({
       setBenchIds([...benchIds, player.id]);
       if (isUnavailable(player)) pushToast("err", "Attenzione: giocatore indisponibile per questo turno.");
     });
-  }
-
-  function dropFromBench(playerId: string) {
-    if (!canEdit || pending) return;
-    picks.occupy(playerId, () => setBenchIds(benchIds.filter((id) => id !== playerId)));
   }
 
   function moveBench(from: number, to: number) {
@@ -611,7 +613,7 @@ export function LeagueHub({
           viceId: picked.viceId,
         }),
       }));
-      markSaved(body.saved);
+      markSaved(selected.id, body.saved);
       void refreshAfterSave(selected.id);
       setMessage("Formazione di test schierata e salvata.");
       pushToast("ok", "Formazione di test schierata e salvata.");
@@ -625,7 +627,7 @@ export function LeagueHub({
     }
   }
 
-  async function saveLineup() {
+  function saveLineup() {
     if (flight.current || pending) return;
     if (!selected || !canEdit) return;
     if (saveBlocked) {
@@ -636,41 +638,53 @@ export function LeagueHub({
       pushToast("err", shapeIssue);
       return;
     }
-    flight.current = true;
-    setPending(true);
+    const gameweekId = selected.id;
+    const number = selected.number;
+    const body = lineupBody;
+    // La conferma compare subito; se il server rifiuta, arriva un avviso rosso.
     setError(null);
     setMessage(null);
-    try {
-      const body = await readJson<{ saved: SavedLineup }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameweekId: selected.id, playerIds, benchIds, captainId, viceId }),
-      }));
-      markSaved(body.saved);
-      const savedText = `Formazione salvata per la giornata ${selected.number}.`;
-      setMessage(savedText);
-      pushToast("ok", savedText);
-      void triggerHaptic();
-      void refreshAfterSave(selected.id);
-    } catch (reason) {
-      const text = readableError(reason, "Salvataggio non riuscito. La formazione non è cambiata: riprova da questa schermata.");
-      setError(text);
-      pushToast("err", text);
-    } finally {
-      flight.current = false;
-      setPending(false);
-    }
+    setShownAsSaved(body);
+    pushToast("ok", `Formazione salvata per la giornata ${number}.`);
+    void triggerHaptic();
+    if (lastSent.current === body) return;
+    lastSent.current = body;
+    saveQueue.current = saveQueue.current.then(async () => {
+      try {
+        const result = await readJson<{ saved: SavedLineup }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          // L'invio arriva in fondo anche se si chiude o si cambia pagina.
+          keepalive: true,
+        }));
+        markSaved(gameweekId, result.saved);
+        if (lastSent.current !== body) return;
+        lastSent.current = null;
+        setError(null);
+        void refreshAfterSave(gameweekId);
+      } catch (reason) {
+        // Se è già in coda un salvataggio più recente, conta l'esito di quello.
+        if (lastSent.current !== body) return;
+        lastSent.current = null;
+        setShownAsSaved((current) => (current === body ? null : current));
+        const detail = readableError(reason, "Riprova da questa schermata.");
+        const text = `Formazione della giornata ${number} NON salvata. ${detail}`;
+        setError(text);
+        pushToast("err", text);
+      }
+    });
   }
 
   /** Segna la formazione come salvata senza cambiare ciò che è sullo schermo. */
-  function markSaved(saved: SavedLineup) {
-    setHub((current) => ({
+  function markSaved(gameweekId: string, saved: SavedLineup) {
+    setHub((current) => current.selectedGameweekId !== gameweekId ? current : {
       ...current,
       lineup: saved.lineup,
       lineupOrigin: "saved",
       carriedFromMatchday: null,
       home: { ...current.home, lineupSaved: true, lineupSavedAt: saved.savedAt ?? current.home.lineupSavedAt },
-    }));
+    });
   }
 
   /** Dopo il salvataggio rilegge in sottofondo il resto della lega, senza toccare la formazione sullo schermo. */
@@ -785,6 +799,8 @@ export function LeagueHub({
     .filter((player): player is CatalogPlayer => Boolean(player));
   const available = hub.roster.filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id));
   const missingBench = available.length > 0;
+  /** Ciò che si invierebbe premendo «Salva»: serve anche a sapere se sullo schermo è cambiato qualcosa. */
+  const lineupBody = JSON.stringify({ gameweekId: selected?.id ?? null, playerIds, benchIds, captainId, viceId });
   const saveBlocked = missingCaptainOrVice || missingBench;
   const saveReason = [
     missingCaptainOrVice ? "manca capitano o vice" : "",
@@ -973,13 +989,12 @@ export function LeagueHub({
                 <h2>Panchina</h2>
                 <span>{bench.length}</span>
               </div>
-              {canEdit && bench.length > 0 ? <p className="small muted">Entrano in quest'ordine. Trascina la maniglia ⋮⋮ per spostare, × per togliere.</p> : null}
+              {canEdit && bench.length > 0 ? <p className="small muted">Entrano in quest'ordine. Trascina la maniglia ⋮⋮ per spostarli.</p> : null}
               {bench.length === 0 ? <p className="small">Nessuno in panchina.</p> : (
                 <BenchOrder
                   players={bench}
                   editable={canEdit && !pending && !picks.locked}
                   onMove={moveBench}
-                  onRemove={dropFromBench}
                 />
               )}
               {canEdit && available.length > 0 ? BENCH_ROLES.map((role) => {
@@ -1017,8 +1032,8 @@ export function LeagueHub({
                   if (!pending && saveBlocked) pushToast("err", `Non posso salvare perché ${saveReason}.`);
                 }}
               >
-                <button className="primary" type="button" disabled={pending || picks.locked || saveBlocked} aria-busy={pending} onClick={() => void saveLineup()}>
-                  <BusyLabel pending={pending} idle="Salva formazione" busy="Salvataggio..." />
+                <button className="primary" type="button" disabled={pending || picks.locked || saveBlocked} aria-busy={pending} onClick={saveLineup}>
+                  <BusyLabel pending={pending} idle={shownAsSaved === lineupBody ? "✓ Salvata" : "Salva formazione"} busy="Salvataggio..." />
                 </button>
               </span>
               <button
@@ -1124,7 +1139,7 @@ export function LeagueHub({
               <button className="ghost" type="button" onClick={() => setReplacingId(null)}>Chiudi</button>
             </div>
             <p className="small muted">
-              {ROLE_LABEL[replacing.role]} non in campo. Chi esce va in fondo alla panchina.
+              {ROLE_LABEL[replacing.role]} non in campo. Chi entra e chi esce si scambiano di posto.
             </p>
             {replacementPlayers.length === 0 ? <p>Nessun calciatore libero in questo ruolo.</p> : (
               <div className="stack">

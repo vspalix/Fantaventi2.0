@@ -14,6 +14,8 @@ import { Pitch } from "@/components/leagues/Pitch";
 import { TeamBadge } from "@/components/TeamBadge";
 import { AvailabilityBadge, isUnavailable } from "@/components/lineups/AvailabilityBadge";
 import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
+import { WheelPicker } from "@/components/lineups/WheelPicker";
+import { BenchOrder } from "@/components/lineups/BenchOrder";
 import {
   FORMATIONS,
   autoLineup,
@@ -355,7 +357,7 @@ export function LeagueHub({
   );
   const [captainId, setCaptainId] = useState(initial.lineup.captainId);
   const [viceId, setViceId] = useState(initial.lineup.viceId);
-  const [arm, setArm] = useState<"captain" | "vice">("captain");
+  const [armOpen, setArmOpen] = useState<"captain" | "vice" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -526,6 +528,15 @@ export function LeagueHub({
   function dropFromBench(playerId: string) {
     if (!canEdit || pending) return;
     picks.occupy(playerId, () => setBenchIds(benchIds.filter((id) => id !== playerId)));
+  }
+
+  function moveBench(from: number, to: number) {
+    if (!canEdit || pending || picks.locked) return;
+    if (from === to || from < 0 || to < 0 || from >= benchIds.length || to >= benchIds.length) return;
+    const next = [...benchIds];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    setBenchIds(next);
   }
 
   function clearPitch() {
@@ -900,29 +911,25 @@ export function LeagueHub({
                   <div className="lineup-card-head">
                     <h2>Capitano e vice</h2>
                   </div>
-                  <p className="small muted">Scegli la scheda, poi tocca un giocatore.</p>
-                  <div className="tabs" role="tablist" aria-label="Capitano e vice">
-                    <button className="tab" type="button" data-active={arm === "captain"} onClick={() => setArm("captain")}>Capitano</button>
-                    <button className="tab" type="button" data-active={arm === "vice"} onClick={() => setArm("vice")} disabled={fielded.length < 2}>Vice</button>
-                  </div>
-                  <div className="arm-list">
-                    {fielded.map((player) => {
-                      const active = arm === "captain" ? captainId === player.id : viceId === player.id;
-                      return (
-                        <button
-                          key={player.id}
-                          type="button"
-                          data-active={active}
-                          disabled={!canEdit || pending || picks.locked}
-                          onClick={() => mark(player.id, arm)}
-                        >
-                          <span className="role-chip" data-role={player.role}>{ROLE_LETTER[player.role]}</span>
-                          <strong>{player.fullName}</strong>
-                          {captainId === player.id ? <em className="arm-mark">C</em> : viceId === player.id ? <em className="arm-mark">V</em> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  {([["captain", "Capitano", captainId], ["vice", "Vice", viceId]] as const).map(([kind, label, chosenId]) => {
+                    const chosen = fielded.find((player) => player.id === chosenId) ?? null;
+                    const blocked = !canEdit || pending || picks.locked || (kind === "vice" && fielded.length < 2);
+                    return (
+                      <button
+                        key={kind}
+                        className="arm-pick"
+                        type="button"
+                        disabled={blocked}
+                        data-empty={!chosen}
+                        onClick={() => setArmOpen(kind)}
+                      >
+                        <em className="arm-mark">{kind === "captain" ? "C" : "V"}</em>
+                        <span className="arm-label">{label}</span>
+                        <strong>{chosen ? chosen.fullName : canEdit ? "Scegli" : "Nessuno"}</strong>
+                        {canEdit ? <span className="arm-chevron" aria-hidden="true">›</span> : null}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : null}
               <div className="lineup-card">
@@ -930,30 +937,14 @@ export function LeagueHub({
                 <h2>Panchina</h2>
                 <span>{bench.length}</span>
               </div>
-              {canEdit && bench.length > 0 ? <p className="small muted">In ordine di ingresso. Tocca per toglierlo.</p> : null}
+              {canEdit && bench.length > 0 ? <p className="small muted">Entrano in quest'ordine. Trascina la maniglia ⋮⋮ per spostare, × per togliere.</p> : null}
               {bench.length === 0 ? <p className="small">Nessuno in panchina.</p> : (
-                <ol className="bench-order">
-                  {bench.map((player, index) => (
-                    <li key={player.id}>
-                      {canEdit ? (
-                        <button type="button" disabled={pending || picks.locked} onClick={() => dropFromBench(player.id)} aria-label={`Togli ${player.fullName} dalla panchina`}>
-                          <span className="bench-num">{index + 1}</span>
-                          <span className="role-chip" data-role={player.role}>{ROLE_LETTER[player.role]}</span>
-                          <strong>{player.fullName}</strong>
-                          <span className="bench-club">{player.clubShort}</span>
-                          <span className="bench-drop" aria-hidden="true">×</span>
-                        </button>
-                      ) : (
-                        <span className="bench-static">
-                          <span className="bench-num">{index + 1}</span>
-                          <span className="role-chip" data-role={player.role}>{ROLE_LETTER[player.role]}</span>
-                          <strong>{player.fullName}</strong>
-                          <span className="bench-club"><TeamBadge teamName={player.clubShort} /> {player.clubShort}</span>
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ol>
+                <BenchOrder
+                  players={bench}
+                  editable={canEdit && !pending && !picks.locked}
+                  onMove={moveBench}
+                  onRemove={dropFromBench}
+                />
               )}
               {canEdit && available.length > 0 ? BENCH_ROLES.map((role) => {
                 const players = available.filter((player) => player.role === role);
@@ -1073,6 +1064,21 @@ export function LeagueHub({
             onRevoke={revokeDelegate}
           />
         ) : <LeagueRulesReadout league={hub.league} />
+      ) : null}
+      {armOpen && canEdit ? (
+        <WheelPicker
+          title={armOpen === "captain" ? "Capitano" : "Vice"}
+          items={[...fielded]
+            .filter((player) => armOpen === "captain" || player.id !== captainId)
+            .sort((left, right) => BENCH_ROLES.indexOf(left.role) - BENCH_ROLES.indexOf(right.role))
+            .map((player) => ({ id: player.id, label: player.fullName, role: player.role, detail: player.clubShort }))}
+          selectedId={armOpen === "captain" ? captainId : viceId}
+          onClose={() => setArmOpen(null)}
+          onConfirm={(playerId) => {
+            mark(playerId, armOpen);
+            setArmOpen(null);
+          }}
+        />
       ) : null}
       {replacing ? (
         <div className="modal-backdrop" role="presentation" onClick={() => setReplacingId(null)}>

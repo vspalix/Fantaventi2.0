@@ -119,6 +119,9 @@ export type LineupPick = {
 
 export type LineupOrigin = "saved" | "previous" | "empty";
 
+/** Risposta del salvataggio formazione: la formazione registrata e quando. */
+export type SavedLineup = { lineup: LineupPick; savedAt: string | null };
+
 export type OpponentLineup = {
   fantasyTeamId: string;
   teamName: string;

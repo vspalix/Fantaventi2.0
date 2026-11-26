@@ -30,7 +30,7 @@ import {
 import { isHubTab, LEAGUE_TAB_EVENT, type HubTab } from "@/lib/hub-tabs";
 import { InfoTip } from "@/components/InfoTip";
 import type { LeagueRules } from "@/lib/league-rules";
-import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole } from "@/lib/types";
+import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole, SavedLineup } from "@/lib/types";
 import { RegulationPanel } from "@/components/rules/RegulationView";
 import { ROLE_LABEL } from "@/lib/types";
 import { useTapGuard } from "@/components/useTapGuard";
@@ -600,7 +600,7 @@ export function LeagueHub({
     setError(null);
     setMessage(null);
     try {
-      const body = await readJson<{ hub: LeagueHubData }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
+      const body = await readJson<{ saved: SavedLineup }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -611,7 +611,8 @@ export function LeagueHub({
           viceId: picked.viceId,
         }),
       }));
-      applyHub(body.hub);
+      markSaved(body.saved);
+      void refreshAfterSave(selected.id);
       setMessage("Formazione di test schierata e salvata.");
       pushToast("ok", "Formazione di test schierata e salvata.");
     } catch (reason) {
@@ -640,12 +641,12 @@ export function LeagueHub({
     setError(null);
     setMessage(null);
     try {
-      const body = await readJson<{ hub: LeagueHubData }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
+      const body = await readJson<{ saved: SavedLineup }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameweekId: selected.id, playerIds, benchIds, captainId, viceId }),
       }));
-      applyHub(body.hub);
+      markSaved(body.saved);
       const savedText = `Formazione salvata per la giornata ${selected.number}.`;
       setMessage(savedText);
       pushToast("ok", savedText);
@@ -659,6 +660,17 @@ export function LeagueHub({
       flight.current = false;
       setPending(false);
     }
+  }
+
+  /** Segna la formazione come salvata senza cambiare ciò che è sullo schermo. */
+  function markSaved(saved: SavedLineup) {
+    setHub((current) => ({
+      ...current,
+      lineup: saved.lineup,
+      lineupOrigin: "saved",
+      carriedFromMatchday: null,
+      home: { ...current.home, lineupSaved: true, lineupSavedAt: saved.savedAt ?? current.home.lineupSavedAt },
+    }));
   }
 
   /** Dopo il salvataggio rilegge in sottofondo il resto della lega, senza toccare la formazione sullo schermo. */

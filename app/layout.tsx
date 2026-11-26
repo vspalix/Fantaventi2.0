@@ -1,6 +1,6 @@
 import { Suspense, type ReactNode } from "react";
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { Jost } from "next/font/google";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
@@ -9,7 +9,7 @@ import { SiteHeader, type HeaderSeason, type HeaderSquad } from "@/components/Si
 import { AnnounceModal } from "@/components/AnnounceModal";
 import { NativeBridge } from "@/components/NativeBridge";
 import { ClubBadgeProvider } from "@/components/TeamBadge";
-import { accentOrDefault } from "@/lib/brand";
+import { accentInk, accentOrDefault } from "@/lib/brand";
 import { readBrand } from "@/lib/server/brand";
 import { loadActiveAnnouncements } from "@/lib/server/announcements";
 import { loadClubBadgeOverrides } from "@/lib/server/club-badges";
@@ -26,18 +26,11 @@ import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import "./globals.css";
 
-const sans = IBM_Plex_Sans({
+const sans = Jost({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
   display: "swap",
   variable: "--font-sans",
-});
-
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-  display: "swap",
-  variable: "--font-mono",
 });
 
 export const metadata: Metadata = {
@@ -66,7 +59,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   viewportFit: "cover",
-  themeColor: "#09090b",
+  themeColor: "#0f0e0c",
   interactiveWidget: "resizes-content",
 };
 
@@ -149,7 +142,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const blue = Number.parseInt(accent.slice(5, 7), 16);
   return (
     <html lang="it">
-      <body className={`${sans.variable} ${mono.variable}`} style={{ ["--accent" as string]: accent, ["--glow" as string]: `0 0 28px rgba(${red}, ${green}, ${blue}, 0.16)` }}>
+      <body className={sans.variable} style={{ ["--accent" as string]: accent, ["--accent-ink" as string]: accentInk(accent), ["--glow" as string]: `0 0 28px rgba(${red}, ${green}, ${blue}, 0.16)` }}>
         <ClubBadgeProvider badges={badges}>
         <Suspense fallback={<header className="site-header" />}>
           <SiteHeader

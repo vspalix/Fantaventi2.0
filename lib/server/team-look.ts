@@ -13,7 +13,7 @@ export type TeamLook = {
   logoUrl: string;
 };
 
-const DEFAULT_PRIMARY = "#c6f531";
+const DEFAULT_PRIMARY = "#d8b66a";
 const DEFAULT_SECONDARY = "#f4f4f5";
 
 function httpError(message: string, status: number) {

@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { SyncDesk } from "@/components/admin/SyncDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { readSyncLogs, readSystemSettings } from "@/lib/server/system-settings";
@@ -20,7 +19,6 @@ export default async function SyncSettingsPage() {
           <h1 className="section-title">Sincronizzazioni</h1>
           <p className="lede">Fonti, letture dei voti e storico dei giri automatici. Vale per tutta la piattaforma.</p>
         </header>
-        <AdminNav />
         <SyncDesk initial={settings} initialLogs={logs} />
       </section>
     );

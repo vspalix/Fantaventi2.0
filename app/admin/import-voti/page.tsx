@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { ImportVoti } from "@/components/admin/ImportVoti";
 import { SetupNotice } from "@/components/SetupNotice";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -19,7 +18,6 @@ export default async function ImportVotiPage() {
           A giornata final il caricamento si ferma.
         </p>
       </header>
-      <AdminNav />
       <ImportVoti />
     </section>
   );

@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { DiagnosticsDesk } from "@/components/admin/DiagnosticsDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { readOpsDiagnostics } from "@/lib/server/ops-diagnostics";
@@ -20,7 +19,6 @@ export default async function DiagnosticsPage() {
           <h1 className="section-title">Diagnostica</h1>
           <p className="lede">Ultimi giri, anomalie e stato della giornata. È una lettura: non ricalcola e non scrive.</p>
         </header>
-        <AdminNav />
         <DiagnosticsDesk data={data} />
       </section>
     );

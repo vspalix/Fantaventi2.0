@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { PushDesk } from "@/components/admin/PushDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -15,7 +14,6 @@ export default async function PushAdminPage() {
         <h1 className="section-title">Notifiche</h1>
         <p className="lede">Da super admin scrivi un messaggio e lo mandi subito. Qui regoli anche i testi automatici.</p>
       </header>
-      <AdminNav />
       <PushDesk />
     </section>
   );

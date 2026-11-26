@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { RegulationEditor } from "@/components/admin/RegulationEditor";
 import { SetupNotice } from "@/components/SetupNotice";
 import { listLeaguesForUser } from "@/lib/server/leagues";
@@ -22,7 +21,6 @@ export default async function RulesEditorPage() {
           <h1 className="section-title">Gestione regolamento</h1>
           <p className="lede">Modifica il testo ufficiale e scaricalo in documento.</p>
         </header>
-        <AdminNav />
         <RegulationEditor leagues={leagues} />
       </section>
     );

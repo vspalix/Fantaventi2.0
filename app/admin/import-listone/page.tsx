@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { ImportListone } from "@/components/admin/ImportListone";
 import { SetupNotice } from "@/components/SetupNotice";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -19,7 +18,6 @@ export default async function ImportListonePage() {
           i ceduti chiudono solo la registrazione corrente.
         </p>
       </header>
-      <AdminNav />
       <ImportListone />
     </section>
   );

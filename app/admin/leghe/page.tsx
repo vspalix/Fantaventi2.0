@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { AdminNav } from "@/components/admin/AdminNav";
 import { PlatformControl } from "@/components/admin/PlatformControl";
 import { SetupNotice } from "@/components/SetupNotice";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -15,7 +14,6 @@ export default async function PlatformLeaguesPage() {
         <h1 className="section-title">Leghe della piattaforma</h1>
         <p className="lede">Elenco completo e override. Le regole si modificano dentro la lega; da qui nomini gli admin e riapri le formazioni.</p>
       </header>
-      <AdminNav />
       <PlatformControl />
     </section>
   );

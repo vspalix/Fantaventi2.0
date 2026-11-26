@@ -19,7 +19,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-export function PlatformControl() {
+export function PlatformControl({ initialLeagueId = null }: { initialLeagueId?: string | null } = {}) {
   const [leagues, setLeagues] = useState<PlatformLeagueRow[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [gameweekId, setGameweekId] = useState("");
@@ -33,10 +33,10 @@ export function PlatformControl() {
       .then((response) => readJson<{ leagues: PlatformLeagueRow[] }>(response))
       .then((body) => {
         setLeagues(body.leagues);
-        setSelectedId(body.leagues[0]?.id ?? "");
+        setSelectedId(body.leagues.find((league) => league.id === initialLeagueId)?.id ?? body.leagues[0]?.id ?? "");
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Elenco non disponibile."));
-  }, []);
+  }, [initialLeagueId]);
 
   const selected = leagues.find((league) => league.id === selectedId) ?? null;
 

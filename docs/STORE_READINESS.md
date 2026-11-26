@@ -55,7 +55,7 @@ Non committare `ios/` e `android/`: sono in `.gitignore`.
 
 Se in Laboratorio → Brand & Grafica carichi le icone, il manifest usa quegli URL e, se mancano, torna ai file locali. L'icona Apple della home screen resta `public/apple-touch-icon.png` finché non la sostituisci con un PNG 180×180 o 192×192. Il colore accento del tema segue il brand; il default è `#c6f531` su fondo `#09090b`.
 
-Prima del caricamento icone serve `supabase/brand_storage.sql` nell'editor SQL di Supabase.
+Il bucket `brand-assets` per le icone esiste già sul database del sito; per un database nuovo lo crea `supabase/migrations/20261126000000_partenza.sql`.
 
 ## App Store Connect
 
@@ -84,7 +84,7 @@ Prima del caricamento icone serve `supabase/brand_storage.sql` nell'editor SQL d
 
 Il bridge (`lib/native/bridge.ts`) chiede il permesso, legge il token e lo manda a `POST /api/push/device`. Senza questi passi il token non arriva:
 
-1. Esegui `supabase/device_push_tokens.sql` nell'editor Supabase. Senza tabella la route risponde 409 e lo scrive in chiaro.
+1. La tabella `device_push_tokens` esiste già sul database del sito (per un database nuovo la crea `supabase/migrations/20261126000000_partenza.sql`). Senza tabella la route risponde 409 e lo scrive in chiaro.
 2. iOS: capability Push Notifications, chiave APNs in Apple Developer, caricata nel provider che userai per inviare (Firebase o invio diretto).
 3. Android: progetto Firebase, `google-services.json` in `android/app`, non nel repository se contiene chiavi.
 4. Le push web (VAPID) e le push native sono due canali. Le env `VAPID_*` non sostituiscono APNs/FCM.

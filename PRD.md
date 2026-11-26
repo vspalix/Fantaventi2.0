@@ -242,7 +242,7 @@ Finché non esiste almeno una giornata disputata, la media non esiste e il Punte
 
 **CLS-04.** A parità di punti di classifica, l'ordine è: punti reali più alti, poi nome squadra.
 
-**CLS-05.** Il gruppo privato filtra le squadre della stessa stagione. La rosa resta unica: il gruppo non ha un mercato separato. Il calcolo ufficiale è `league_standings(p_league_id)` in `league_hub.sql`.
+**CLS-05.** Il gruppo privato filtra le squadre della stessa stagione. La rosa resta unica: il gruppo non ha un mercato separato. Il calcolo ufficiale è `league_standings(p_league_id)` (file di partenza `supabase/migrations/20261126000000_partenza.sql`; in origine `supabase/archivio/league_hub.sql`).
 
 **CLS-06.** La classifica live usa la stessa formula. Per la giornata in corso sostituisce il totale ufficiale con `provisional_total` delle righe `is_live`. Le giornate già `final` restano sui punti ufficiali.
 

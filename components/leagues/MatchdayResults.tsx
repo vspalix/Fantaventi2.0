@@ -184,7 +184,7 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
 
       <article className="card">
         <h2>Risultati giornata{current ? ` ${current.number}` : ""}</h2>
-        <p className="small muted">Squadre della lega <InfoTip label="Risultati di giornata">Posizione e punti di questa giornata. La tua squadra resta in alto e anche al suo posto in elenco.</InfoTip></p>
+        <p className="small muted">Tocca una squadra per vedere la formazione e i voti <InfoTip label="Risultati di giornata">Posizione e punti di questa giornata. La tua squadra resta in alto e anche al suo posto in elenco.</InfoTip></p>
         {teams.length === 0 ? <p className="small muted">Nessuna squadra iscritta.</p> : (
           <div className="cal-teams">
             {mine ? (
@@ -250,13 +250,14 @@ function TeamRow({
   onOpen: () => void;
 }) {
   return (
-    <button className="cal-team" type="button" data-open={open} data-mine={team.isMine} data-featured={featured} onClick={onOpen}>
+    <button className="cal-team" type="button" aria-expanded={open} data-open={open} data-mine={team.isMine} data-featured={featured} onClick={onOpen}>
       <span className="cal-rank">{standing?.points == null ? "–" : `${standing.rank}°`}</span>
       <span className="cal-name">
         <strong>{team.teamName}</strong>
         <span>{[team.displayName, team.isMine ? "la tua" : ""].filter(Boolean).join(" · ")}</span>
       </span>
       <span className="cal-points">{points(standing?.points ?? null)}</span>
+      <span className="cal-chevron" aria-hidden="true">›</span>
     </button>
   );
 }

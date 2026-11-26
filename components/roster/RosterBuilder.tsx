@@ -16,6 +16,8 @@ import { evaluateRoster } from "@/lib/constraints";
 import { DEFAULT_RULES, ROLE_LABEL, type CatalogPlayer, type CatalogResponse, type LeagueSquad, type PlayerRole, type RosterImportSource, type RosterMarket, type RosterState } from "@/lib/types";
 import { readableError } from "@/lib/feedback";
 
+const ROLE_LETTER: Record<PlayerRole, string> = { GK: "P", DEF: "D", MID: "C", FWD: "A" };
+
 const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
 
 function roleMax(role: PlayerRole, rules: { gkMax: number; outfieldMax: number }) {
@@ -72,7 +74,8 @@ export function RosterBuilder({
   }, []);
 
   useEffect(() => {
-    if (mode !== "others" || othersView || othersLoading || !leagueId) return;
+    // othersLoading non sta tra le dipendenze: cambiandolo qui si annullava da sola la richiesta appena partita.
+    if (mode !== "others" || othersView || !leagueId) return;
     let cancelled = false;
     setOthersLoading(true);
     void fetch(`/api/leagues/${leagueId}/others?gameweek=${appliesFrom}`)
@@ -90,7 +93,7 @@ export function RosterBuilder({
     return () => {
       cancelled = true;
     };
-  }, [mode, othersView, othersLoading, leagueId, appliesFrom, leagueName]);
+  }, [mode, othersView, leagueId, appliesFrom, leagueName]);
 
   const selected = useMemo(
     () => selectedIds
@@ -329,7 +332,7 @@ export function RosterBuilder({
                   if (rows.length === 0) return null;
                   return (
                     <section className="rosa-role" key={role}>
-                      <h2>{ROLE_LABEL[role]}</h2>
+                      <h2><span className="role-chip" data-role={role} aria-hidden="true">{ROLE_LETTER[role]}</span>{ROLE_LABEL[role]}<small>{rows.length}</small></h2>
                       {rows.map((player) => (
                         <p className="rosa-line" key={player.id}><TeamBadge teamName={player.clubShort} /><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
                       ))}
@@ -363,8 +366,8 @@ export function RosterBuilder({
           const rows = selected.filter((player) => player.role === role).sort((left, right) => left.fullName.localeCompare(right.fullName, "it"));
           if (rows.length === 0) return null;
           return (
-            <section className="rosa-role" key={role}>
-              <h2>{ROLE_LABEL[role]}</h2>
+            <section className="rosa-role rosa-role-card" key={role}>
+              <h2><span className="role-chip" data-role={role} aria-hidden="true">{ROLE_LETTER[role]}</span>{ROLE_LABEL[role]}<small>{rows.length}</small></h2>
               {rows.map((player) => (
                 <p className="rosa-line" key={player.id}><TeamBadge teamName={player.clubShort} /><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
               ))}

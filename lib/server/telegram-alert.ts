@@ -4,9 +4,7 @@ import {
   kickoffAlertKind,
   unmatchedAlertKind,
   voteAlertKind,
-  voteAlertNeedsMorning,
 } from "@/lib/server/telegram-decisions";
-import { inspectVoteSyncWindow, playedDayStillOpen } from "@/lib/server/vote-sync-window";
 import { readSystemSettings, type SyncLogEntry } from "@/lib/server/system-settings";
 
 export type TelegramResult = { sent: true; warning?: string } | { sent: false; reason: string };
@@ -135,13 +133,8 @@ export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = n
       changed,
       successEnabled: successOn,
     };
-    let morningClosing = false;
-    let playedDayStill = false;
-    if (voteAlertNeedsMorning(base)) {
-      morningClosing = (await inspectVoteSyncWindow(now)).closing;
-      if (morningClosing) playedDayStill = await playedDayStillOpen(now);
-    }
-    const kind = voteAlertKind({ ...base, morningClosing, playedDayStillOpen: playedDayStill });
+    // Le letture dei voti avvisano da sé (vote-engine): qui restano errori e riepiloghi.
+    const kind = voteAlertKind({ ...base, morningClosing: false, playedDayStillOpen: false });
     if (kind === "error") {
       await sendTelegramMessage([
         "<b>Fantaventi — sync in errore</b>",
@@ -154,14 +147,6 @@ export async function alertVoteSync(entry: SyncLogEntry, force: boolean, now = n
     if (kind === "success" && detail) {
       await sendTelegramMessage(summary(entry.jobType, detail, now));
       return;
-    }
-    if (kind === "morning-empty") {
-      await sendTelegramMessage([
-        "<b>Fantaventi — finestra mattutina vuota</b>",
-        "Job: Voti",
-        `Quando: ${escapeHtml(romeStamp(now))}`,
-        "La finestra mattutina si è chiusa senza voti scritti, ma ci sono ancora partite della giornata da calcolare.",
-      ].join("\n"));
     }
   } catch {
     quiet("Controllo allerta non riuscito.");

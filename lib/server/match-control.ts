@@ -199,13 +199,20 @@ export async function setMatchHold(matchId: string, hold: MatchHold) {
   const admin = createAdminSupabase();
   const match = await admin
     .from("real_matches")
-    .select("id, gameweek_id, home_club_id, away_club_id")
+    .select("id, gameweek_id, home_club_id, away_club_id, kickoff_at")
     .eq("id", matchId)
     .maybeSingle();
   if (match.error) throw new Error(match.error.message);
   if (!match.data) throw httpError("Partita non trovata.", 404);
   const postponed = hold !== "none";
-  let updated = await admin.from("real_matches").update({ postponed, hold_status: hold }).eq("id", matchId);
+  // L'orario al momento del rinvio: quando cambia, le letture dei voti ripartono.
+  let updated = await admin
+    .from("real_matches")
+    .update({ postponed, hold_status: hold, hold_kickoff_at: postponed ? match.data.kickoff_at : null })
+    .eq("id", matchId);
+  if (updated.error && /hold_kickoff_at/i.test(updated.error.message)) {
+    updated = await admin.from("real_matches").update({ postponed, hold_status: hold }).eq("id", matchId);
+  }
   if (updated.error && /hold_status|schema cache|could not find/i.test(updated.error.message)) {
     if (hold === "suspended") {
       throw httpError("Per segnare una partita sospesa esegui match_hold.sql.", 409);

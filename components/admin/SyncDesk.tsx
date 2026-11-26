@@ -15,6 +15,7 @@ type Settings = {
   syncWindowMorningEnd: string;
   autoSyncEnabled: boolean;
   notifyOnSyncSuccess: boolean;
+  halftimeReadEnabled: boolean;
   ready: boolean;
 };
 
@@ -107,7 +108,7 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
 
   async function force(kind: "votes" | "availability") {
     const label = kind === "votes" ? "i voti" : "gli indisponibili";
-    if (!window.confirm(`Forzare adesso la sincronizzazione di ${label}? Parte subito, anche fuori finestra.`)) return;
+    if (!window.confirm(`Forzare adesso la sincronizzazione di ${label}? Parte subito e contatta la fonte, anche fuori orario.`)) return;
     setBusy(true);
     setError(null);
     setResult(null);
@@ -187,26 +188,27 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
       </section>
 
       <section className="card stack">
-        <h2>Finestre chirurgiche</h2>
-        <div className="row">
-          <label>Minuti min<input type="number" value={settings.syncWindowPostMatchMin} onChange={(event) => patch({ syncWindowPostMatchMin: Number(event.target.value) })} /></label>
-          <label>Minuti max<input type="number" value={settings.syncWindowPostMatchMax} onChange={(event) => patch({ syncWindowPostMatchMax: Number(event.target.value) })} /></label>
-        </div>
-        <div className="row">
-          <label>Sera dalle<input value={settings.syncWindowEveningStart} onChange={(event) => patch({ syncWindowEveningStart: event.target.value })} inputMode="numeric" /></label>
-          <label>Sera alle<input value={settings.syncWindowEveningEnd} onChange={(event) => patch({ syncWindowEveningEnd: event.target.value })} inputMode="numeric" /></label>
-        </div>
-        <div className="row">
-          <label>Mattina dalle<input value={settings.syncWindowMorningStart} onChange={(event) => patch({ syncWindowMorningStart: event.target.value })} inputMode="numeric" /></label>
-          <label>Mattina alle<input value={settings.syncWindowMorningEnd} onChange={(event) => patch({ syncWindowMorningEnd: event.target.value })} inputMode="numeric" /></label>
-        </div>
-        <p className="small muted">Gli orari sono quelli di Roma. Il giro dei voti parte solo dentro queste finestre.</p>
+        <h2>Letture dei voti</h2>
+        <label className="check-line">
+          <input
+            type="checkbox"
+            checked={settings.halftimeReadEnabled}
+            onChange={(event) => patch({ halftimeReadEnabled: event.target.checked })}
+          />
+          Leggi anche a fine primo tempo
+        </label>
+        <p className="small muted">
+          Fine primo tempo: 50 minuti dopo il calcio d&apos;inizio. Fine partita: 120 minuti dopo. Dopo l&apos;ultima partita del turno:
+          alle 08:00 del giorno seguente, poi il calcolo (dalla giornata 12) solo con voti completi.
+          Le partite in contemporanea condividono la lettura. Ogni lettura ha un solo nuovo tentativo, poi arriva un avviso Telegram.
+          Orari di Roma. Il calendario si rilegge ogni giorno alle 08:00.
+        </p>
         <button className="primary" type="button" disabled={busy || !settings.ready} onClick={() => void save()}>Salva configurazione</button>
       </section>
 
       <section className="card stack">
         <h2>Controllo manuale</h2>
-        <p className="small muted">Parte subito, anche se la finestra è chiusa o la giornata è già iniziata. Usa la configurazione già salvata.</p>
+        <p className="small muted">Parte subito, anche fuori orario. Scrive i voti ufficiali e calcola solo dalle 08:00 successive al turno e con voti completi.</p>
         <div className="row">
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("votes")}>Forza sync voti ora</button>
           <button className="ghost" type="button" disabled={busy} onClick={() => void force("availability")}>Forza sync indisponibili ora</button>

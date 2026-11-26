@@ -16,6 +16,7 @@ export type SystemSettings = {
   syncWindowMorningEnd: string;
   autoSyncEnabled: boolean;
   notifyOnSyncSuccess: boolean;
+  halftimeReadEnabled: boolean;
   ready: boolean;
 };
 
@@ -41,6 +42,7 @@ const DEFAULTS: SystemSettings = {
   syncWindowMorningEnd: "09:45",
   autoSyncEnabled: true,
   notifyOnSyncSuccess: true,
+  halftimeReadEnabled: true,
   ready: false,
 };
 
@@ -80,6 +82,7 @@ function normalize(row: Record<string, unknown>): SystemSettings {
     syncWindowMorningEnd: clockOr(row.sync_window_morning_end, DEFAULTS.syncWindowMorningEnd),
     autoSyncEnabled: typeof row.auto_sync_enabled === "boolean" ? row.auto_sync_enabled : DEFAULTS.autoSyncEnabled,
     notifyOnSyncSuccess: typeof row.notify_on_sync_success === "boolean" ? row.notify_on_sync_success : DEFAULTS.notifyOnSyncSuccess,
+    halftimeReadEnabled: typeof row.halftime_read_enabled === "boolean" ? row.halftime_read_enabled : DEFAULTS.halftimeReadEnabled,
     ready: true,
   };
 }
@@ -182,6 +185,11 @@ export async function saveSystemSettings(input: Omit<SystemSettings, "ready">) {
   }).eq("id", 1);
   const flagMissing = Boolean(flagged.error && /notify_on_sync_success|schema cache|could not find|column/i.test(flagged.error.message));
   if (flagged.error && !flagMissing) throw new Error(flagged.error.message);
+  const halftime = await admin.from("system_settings").update({
+    halftime_read_enabled: input.halftimeReadEnabled,
+  }).eq("id", 1);
+  const halftimeMissing = Boolean(halftime.error && /halftime_read_enabled|schema cache|could not find|column/i.test(halftime.error.message));
+  if (halftime.error && !halftimeMissing) throw new Error(halftime.error.message);
   return {
     settings: normalize({
     votes_source_url: url,
@@ -197,8 +205,11 @@ export async function saveSystemSettings(input: Omit<SystemSettings, "ready">) {
     sync_window_morning_end: morningEnd,
     auto_sync_enabled: input.autoSyncEnabled,
     notify_on_sync_success: flagMissing ? current.notifyOnSyncSuccess : input.notifyOnSyncSuccess,
+    halftime_read_enabled: halftimeMissing ? current.halftimeReadEnabled : input.halftimeReadEnabled,
   }),
-    notice: flagMissing ? "Il flag Telegram non è ancora in tabella. Esegui supabase/brand_storage.sql." : null,
+    notice: halftimeMissing
+      ? "L'interruttore dell'intervallo non è ancora in tabella. Esegui supabase/vote_schedule.sql."
+      : flagMissing ? "Il flag Telegram non è ancora in tabella. Esegui supabase/brand_storage.sql." : null,
   };
 }
 

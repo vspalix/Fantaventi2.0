@@ -1,10 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
 import { fetchFantacalcioMatchweek, votesForClubs, type FantacalcioPlayerVote } from "@/lib/server/fantacalcio-live";
-import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { schemaHint, scoreOfficialGameweek, refreshProvisionalScores, persistLiveProjection } from "@/lib/server/live-score";
-import { inspectVoteSyncWindow, shiftRomeDate, romeClock, VOTE_SYNC_SKIP_REASON } from "@/lib/server/vote-sync-window";
+import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
+import { sendTelegramMessage } from "@/lib/server/telegram-alert";
+import { runManualRead, runVoteCycle, type ClockDeps, type CycleReport, type VotePage } from "@/lib/server/vote-engine";
+import { planVoteClock, type ClockSnapshot, type VotePlan } from "@/lib/server/vote-schedule";
 import type { PlayerStat } from "@/lib/engine/calculator";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+
+export type { MatchVoteSyncResult } from "@/lib/server/vote-engine";
 
 const SOURCE = "fantacalcio-live";
 
@@ -15,13 +19,6 @@ type MatchRow = {
   status: string;
   home_club_id: string;
   away_club_id: string;
-};
-
-type GameweekRow = {
-  id: string;
-  number: number;
-  status: string;
-  season_id: string;
 };
 
 type StoredStat = {
@@ -37,18 +34,6 @@ type StoredStat = {
   penalties_saved: number;
   own_goals: number;
   goals_conceded: number;
-};
-
-export type MatchVoteSyncResult = {
-  synced: { gameweekNumber: number; matchId: string; players: number }[];
-  waiting: { gameweekNumber: number; matchId: string; reason: string }[];
-  projected: number[];
-  audited: number[];
-  scored: number[];
-  skipped: { gameweekNumber: number; reason: string }[];
-  errors: { gameweekNumber: number | null; matchId: string | null; message: string }[];
-  changed: number;
-  samples: string[];
 };
 
 function digest(matchId: string, votes: FantacalcioPlayerVote[]) {
@@ -82,288 +67,6 @@ function sameStat(stored: StoredStat, vote: FantacalcioPlayerVote) {
     && stored.penalties_saved === vote.penaltiesSaved
     && stored.own_goals === vote.ownGoals
     && stored.goals_conceded === vote.goalsConceded;
-}
-
-export async function syncScheduledVotes(now = new Date(), force = false): Promise<MatchVoteSyncResult | { skipped: true; reason: string }> {
-  const gate = await inspectVoteSyncWindow(now);
-  if (!force && !gate.open) return { skipped: true, reason: VOTE_SYNC_SKIP_REASON };
-  if (!force && (gate.evening || gate.morning)) {
-    const target = gate.morning ? shiftRomeDate(gate.date, -1) : gate.date;
-    return refreshPlayedDay(target);
-  }
-  return syncDueMatchVotes(now);
-}
-
-export async function syncDueMatchVotes(now = new Date()): Promise<MatchVoteSyncResult> {
-  const admin = createAdminSupabase();
-  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [], changed: 0, samples: [] };
-  const seasons = await admin
-    .from("seasons")
-    .select("id, code, competitions!inner(code)");
-  if (seasons.error) throw new Error(seasons.error.message);
-  const seasonCode = new Map<string, string>();
-  const competitionCode = new Map<string, string>();
-  for (const season of seasons.data ?? []) {
-    const competition = Array.isArray(season.competitions) ? season.competitions[0] : season.competitions;
-    seasonCode.set(season.id as string, season.code as string);
-    competitionCode.set(season.id as string, String(competition?.code ?? ""));
-  }
-  const seasonIds = [...seasonCode.keys()];
-  if (seasonIds.length === 0) return result;
-
-  const weeks = await admin
-    .from("gameweeks")
-    .select("id, number, status, season_id")
-    .in("season_id", seasonIds);
-  if (weeks.error) throw new Error(weeks.error.message);
-  const gameweeks = (weeks.data ?? []) as GameweekRow[];
-  const openWeeks = gameweeks.filter((week) => week.status !== "final" && week.status !== "scored");
-  if (openWeeks.length === 0) return result;
-
-  const matches = await admin
-    .from("real_matches")
-    .select("id, gameweek_id, kickoff_at, status, home_club_id, away_club_id")
-    .in("gameweek_id", openWeeks.map((week) => week.id));
-  if (matches.error) throw new Error(schemaHint(matches.error.message));
-  const rows = (matches.data ?? []) as MatchRow[];
-  const clubIds = [...new Set(rows.flatMap((match) => [match.home_club_id, match.away_club_id]))];
-  const clubs = clubIds.length
-    ? await admin.from("clubs").select("id, code").in("id", clubIds)
-    : { data: [], error: null };
-  if (clubs.error) throw new Error(clubs.error.message);
-  const clubCode = new Map((clubs.data ?? []).map((club) => [club.id as string, (club.code as string).toLowerCase()]));
-
-  const pageCache = new Map<string, Awaited<ReturnType<typeof fetchFantacalcioMatchweek>>>();
-  async function pageFor(week: GameweekRow, fresh = false) {
-    const key = `${week.season_id}:${week.number}`;
-    if (fresh) pageCache.delete(key);
-    const cached = pageCache.get(key);
-    if (cached) return cached;
-    const loaded = await fetchFantacalcioMatchweek(seasonCode.get(week.season_id) ?? "", week.number);
-    pageCache.set(key, loaded);
-    return loaded;
-  }
-
-  const byWeek = new Map<string, MatchRow[]>();
-  for (const match of rows) {
-    const list = byWeek.get(match.gameweek_id) ?? [];
-    list.push(match);
-    byWeek.set(match.gameweek_id, list);
-  }
-
-  for (const week of openWeeks) {
-    const weekMatches = byWeek.get(week.id) ?? [];
-    if (weekMatches.length === 0) continue;
-    if (competitionCode.get(week.season_id) !== "serie_a") {
-      result.skipped.push({
-        gameweekNumber: week.number,
-        reason: "La fonte automatica dei voti vale per serie_a. Le altre competizioni si chiudono con il file di emergenza.",
-      });
-      continue;
-    }
-    const underway = weekMatches.filter((match) => (
-      match.status !== "finished"
-      && now.getTime() >= new Date(match.kickoff_at).getTime()
-      && now.getTime() < new Date(match.kickoff_at).getTime() + MATCH_CLOSE_MS
-    ));
-    if (underway.length > 0) {
-      try {
-        const page = await pageFor(week);
-        if (page.votes.length > 0) {
-          await projectPublishedVotes(admin, week.id, page.votes);
-          if (!result.projected.includes(week.number)) result.projected.push(week.number);
-        }
-      } catch (error) {
-        result.errors.push({
-          gameweekNumber: week.number,
-          matchId: null,
-          message: error instanceof Error ? error.message : "Proiezione live non aggiornata.",
-        });
-      }
-    }
-
-    const due = weekMatches.filter((match) => (
-      match.status !== "finished" && now.getTime() >= new Date(match.kickoff_at).getTime() + MATCH_CLOSE_MS
-    ));
-    for (const match of due) {
-      const othersOpen = weekMatches.some((item) => item.id !== match.id && item.status !== "finished");
-      try {
-        const page = await pageFor(week);
-        const home = clubCode.get(match.home_club_id) ?? "";
-        const away = clubCode.get(match.away_club_id) ?? "";
-        const votes = votesForClubs(page.votes, home, away);
-        if (votes.length === 0) {
-          result.waiting.push({
-            gameweekNumber: week.number,
-            matchId: match.id,
-            reason: "I voti di questa partita non sono ancora pubblicati.",
-          });
-          continue;
-        }
-        const written = await writeMatchVotes(admin, week.id, match, votes, false, result);
-        if (written === 0) {
-          result.waiting.push({
-            gameweekNumber: week.number,
-            matchId: match.id,
-            reason: "I codici del tabellino non sono nel listone.",
-          });
-          continue;
-        }
-        const score = page.scores.find((item) => item.homeSlug === home && item.awaySlug === away);
-        if (score && score.homeGoals !== null && score.awayGoals !== null) {
-          const goals = await admin.from("real_matches").update({
-            home_goals: score.homeGoals,
-            away_goals: score.awayGoals,
-          }).eq("id", match.id);
-          if (goals.error && !/home_goals|away_goals/i.test(goals.error.message)) {
-            throw new Error(schemaHint(goals.error.message));
-          }
-        }
-        if (!othersOpen) {
-          await auditWeek(admin, week, weekMatches, clubCode, await pageFor(week, true), result);
-          result.audited.push(week.number);
-          await markFinished(admin, match.id);
-          match.status = "finished";
-          await closeWeek(admin, week, result);
-        } else {
-          await markFinished(admin, match.id);
-          match.status = "finished";
-        }
-        try {
-          await refreshProvisionalScores(week.id);
-        } catch (error) {
-          result.errors.push({
-            gameweekNumber: week.number,
-            matchId: match.id,
-            message: error instanceof Error ? error.message : "Punteggio live non aggiornato.",
-          });
-        }
-        result.synced.push({ gameweekNumber: week.number, matchId: match.id, players: written });
-      } catch (error) {
-        result.errors.push({
-          gameweekNumber: week.number,
-          matchId: match.id,
-          message: error instanceof Error ? error.message : "Sincronizzazione non riuscita.",
-        });
-      }
-    }
-
-    const stillOpen = (byWeek.get(week.id) ?? []).some((match) => match.status !== "finished");
-    const liveImports = await admin
-      .from("vote_imports")
-      .select("id", { count: "exact", head: true })
-      .eq("gameweek_id", week.id)
-      .eq("source", SOURCE);
-    if (liveImports.error) throw new Error(liveImports.error.message);
-    if (!stillOpen && (liveImports.count ?? 0) > 0 && week.status !== "scored" && week.status !== "final" && !result.scored.includes(week.number)) {
-      try {
-        await auditWeek(admin, week, weekMatches, clubCode, await pageFor(week, true), result);
-        result.audited.push(week.number);
-        await closeWeek(admin, week, result);
-      } catch (error) {
-        result.errors.push({
-          gameweekNumber: week.number,
-          matchId: null,
-          message: error instanceof Error ? error.message : "Chiusura giornata non riuscita.",
-        });
-      }
-    }
-  }
-
-  return result;
-}
-
-async function refreshPlayedDay(playedOn: string): Promise<MatchVoteSyncResult> {
-  const admin = createAdminSupabase();
-  const result: MatchVoteSyncResult = { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [], changed: 0, samples: [] };
-  const seasons = await admin.from("seasons").select("id, code, competitions!inner(code)");
-  if (seasons.error) throw new Error(seasons.error.message);
-  const seasonCode = new Map<string, string>();
-  const serieA = new Set<string>();
-  for (const season of seasons.data ?? []) {
-    const competition = Array.isArray(season.competitions) ? season.competitions[0] : season.competitions;
-    seasonCode.set(season.id as string, season.code as string);
-    if (competition?.code === "serie_a") serieA.add(season.id as string);
-  }
-  if (serieA.size === 0) return result;
-  const weeks = await admin
-    .from("gameweeks")
-    .select("id, number, status, season_id")
-    .in("season_id", [...serieA])
-    .neq("status", "final");
-  if (weeks.error) throw new Error(weeks.error.message);
-  const gameweeks = (weeks.data ?? []) as GameweekRow[];
-  if (gameweeks.length === 0) return result;
-  const matches = await admin
-    .from("real_matches")
-    .select("id, gameweek_id, kickoff_at, status, home_club_id, away_club_id")
-    .in("gameweek_id", gameweeks.map((week) => week.id));
-  if (matches.error) throw new Error(schemaHint(matches.error.message));
-  const rows = (matches.data ?? []) as MatchRow[];
-  const played = (kickoffAt: string) => {
-    const time = new Date(kickoffAt).getTime();
-    return Number.isFinite(time) && romeClock(new Date(time)).date === playedOn;
-  };
-  const targetIds = new Set(rows.filter((match) => played(match.kickoff_at)).map((match) => match.gameweek_id));
-  const clubIds = [...new Set(rows.flatMap((match) => [match.home_club_id, match.away_club_id]))];
-  const clubs = clubIds.length ? await admin.from("clubs").select("id, code").in("id", clubIds) : { data: [], error: null };
-  if (clubs.error) throw new Error(clubs.error.message);
-  const clubCode = new Map((clubs.data ?? []).map((club) => [club.id as string, (club.code as string).toLowerCase()]));
-
-  for (const week of gameweeks) {
-    if (!targetIds.has(week.id)) continue;
-    const weekMatches = rows.filter((match) => match.gameweek_id === week.id);
-    try {
-      const page = await fetchFantacalcioMatchweek(seasonCode.get(week.season_id) ?? "", week.number);
-      await auditWeek(admin, week, weekMatches, clubCode, page, result);
-      result.audited.push(week.number);
-      for (const match of weekMatches) {
-        const home = clubCode.get(match.home_club_id) ?? "";
-        const away = clubCode.get(match.away_club_id) ?? "";
-        const votes = votesForClubs(page.votes, home, away);
-        if (votes.length === 0) {
-          result.waiting.push({ gameweekNumber: week.number, matchId: match.id, reason: "I voti di questa partita non sono ancora pubblicati." });
-          continue;
-        }
-        const score = page.scores.find((item) => item.homeSlug === home && item.awaySlug === away);
-        if (score && score.homeGoals !== null && score.awayGoals !== null) {
-          const goals = await admin.from("real_matches").update({
-            home_goals: score.homeGoals,
-            away_goals: score.awayGoals,
-          }).eq("id", match.id);
-          if (goals.error && !/home_goals|away_goals/i.test(goals.error.message)) throw new Error(schemaHint(goals.error.message));
-        }
-        if (match.status !== "finished") {
-          await markFinished(admin, match.id);
-          match.status = "finished";
-        }
-        result.synced.push({ gameweekNumber: week.number, matchId: match.id, players: votes.length });
-      }
-      try {
-        await refreshProvisionalScores(week.id);
-      } catch (error) {
-        result.errors.push({
-          gameweekNumber: week.number,
-          matchId: null,
-          message: error instanceof Error ? error.message : "Punteggio live non aggiornato.",
-        });
-      }
-      const stillOpen = weekMatches.some((match) => match.status !== "finished");
-      if (!stillOpen && week.status === "scored") {
-        const outcome = await scoreOfficialGameweek(week.id, { allowRewrite: true });
-        if (!outcome.skipped) result.scored.push(week.number);
-      } else if (!stillOpen) {
-        await closeWeek(admin, week, result);
-      }
-    } catch (error) {
-      result.errors.push({
-        gameweekNumber: week.number,
-        matchId: null,
-        message: error instanceof Error ? error.message : "Ricalcolo dei voti non riuscito.",
-      });
-    }
-  }
-  return result;
 }
 
 async function projectPublishedVotes(
@@ -408,7 +111,7 @@ async function markFinished(admin: ReturnType<typeof createAdminSupabase>, match
 async function writeMatchVotes(
   admin: ReturnType<typeof createAdminSupabase>,
   gameweekId: string,
-  match: MatchRow,
+  match: Pick<MatchRow, "id">,
   votes: FantacalcioPlayerVote[],
   onlyChanges: boolean,
   sink?: { samples: string[]; changed: number },
@@ -516,25 +219,6 @@ async function writeMatchVotes(
   return known.length;
 }
 
-async function auditWeek(
-  admin: ReturnType<typeof createAdminSupabase>,
-  week: GameweekRow,
-  matches: MatchRow[],
-  clubCode: Map<string, string>,
-  page: Awaited<ReturnType<typeof fetchFantacalcioMatchweek>>,
-  sink?: { samples: string[]; changed: number },
-) {
-  for (const match of matches) {
-    const votes = votesForClubs(
-      page.votes,
-      clubCode.get(match.home_club_id) ?? "",
-      clubCode.get(match.away_club_id) ?? "",
-    );
-    if (votes.length === 0) continue;
-    await writeMatchVotes(admin, week.id, match, votes, true, sink);
-  }
-}
-
 export async function importPublishedWeekVotes(gameweekId: string) {
   const admin = createAdminSupabase();
   const week = await admin.from("gameweeks").select("id, number, season_id").eq("id", gameweekId).maybeSingle();
@@ -585,32 +269,115 @@ export async function importPublishedWeekVotes(gameweekId: string) {
   };
 }
 
-async function closeWeek(
-  admin: ReturnType<typeof createAdminSupabase>,
-  week: GameweekRow,
-  result: MatchVoteSyncResult,
-) {
-  if (result.scored.includes(week.number) || week.status === "scored" || week.status === "final") {
-    result.skipped.push({ gameweekNumber: week.number, reason: "Giornata già calcolata." });
-    return;
+/** L'unica lettura fatta quando la sveglia suona: impostazioni, partite recenti e tentativi. */
+async function readClock(): Promise<ClockSnapshot> {
+  const { data, error } = await createAdminSupabase().rpc("vote_clock");
+  if (error) {
+    if (/vote_clock|schema cache|could not find|does not exist/i.test(error.message)) {
+      const missing = new Error("Esegui supabase/vote_schedule.sql nell'editor SQL di Supabase.");
+      (missing as Error & { status: number }).status = 503;
+      throw missing;
+    }
+    throw new Error(error.message);
   }
-  const outcome = await scoreOfficialGameweek(week.id);
-  if (outcome.skipped) {
-    result.skipped.push({ gameweekNumber: week.number, reason: outcome.reason ?? "Calcolo non rieseguito." });
-    return;
-  }
-  const stamp = new Date().toISOString();
-  let statusUpdate = await admin.from("gameweeks").update({ status: "scored", scored_at: stamp }).eq("id", week.id);
-  if (statusUpdate.error && /scored_at/i.test(statusUpdate.error.message)) {
-    statusUpdate = await admin.from("gameweeks").update({ status: "scored" }).eq("id", week.id);
-  }
-  if (statusUpdate.error) throw new Error(schemaHint(statusUpdate.error.message));
-  const { error: lineupError } = await admin
-    .from("lineups")
-    .update({ status: "locked", locked_at: stamp })
-    .eq("gameweek_id", week.id)
-    .eq("status", "draft");
-  if (lineupError) throw new Error(lineupError.message);
-  week.status = "scored";
-  result.scored.push(week.number);
+  return data as ClockSnapshot;
+}
+
+function clockDeps(): ClockDeps {
+  const admin = createAdminSupabase();
+  return {
+    snapshot: readClock,
+    async claim(target, attempt, now) {
+      const { error } = await admin.from("vote_reads").insert({
+        task_key: target.key,
+        attempt,
+        gameweek_id: target.weekId,
+        kind: target.kind,
+        outcome: attempt === 0 ? "alert" : "pending",
+        started_at: new Date(now).toISOString(),
+      });
+      if (!error) return true;
+      if (error.code === "23505") return false;
+      throw new Error(error.message);
+    },
+    async finish(key, attempt, outcome, detail) {
+      const { error } = await admin
+        .from("vote_reads")
+        .update({ outcome, detail, finished_at: new Date().toISOString() })
+        .eq("task_key", key)
+        .eq("attempt", attempt);
+      if (error) throw new Error(error.message);
+    },
+    fetchPage: (week) => fetchFantacalcioMatchweek(week.seasonCode, week.number),
+    async lockWeek(week) {
+      const stamp = new Date().toISOString();
+      const status = await admin.from("gameweeks").update({ status: "locked" }).eq("id", week.id).in("status", ["scheduled", "open"]);
+      if (status.error) throw new Error(schemaHint(status.error.message));
+      const lineups = await admin.from("lineups").update({ status: "locked", locked_at: stamp }).eq("gameweek_id", week.id).eq("status", "draft");
+      if (lineups.error) throw new Error(lineups.error.message);
+    },
+    writeProjection: (week, votes) => projectPublishedVotes(admin, week.id, votes),
+    async writeOfficial(week, match, page: VotePage, sink) {
+      const votes = votesForClubs(page.votes, match.home, match.away);
+      const written = await writeMatchVotes(admin, week.id, { id: match.id }, votes, true, sink);
+      if (written === 0) return 0;
+      const score = page.scores.find((item) => item.homeSlug === match.home && item.awaySlug === match.away);
+      if (score && score.homeGoals !== null && score.awayGoals !== null) {
+        const goals = await admin.from("real_matches").update({
+          home_goals: score.homeGoals,
+          away_goals: score.awayGoals,
+        }).eq("id", match.id);
+        if (goals.error && !/home_goals|away_goals/i.test(goals.error.message)) throw new Error(schemaHint(goals.error.message));
+      }
+      await markFinished(admin, match.id);
+      return written;
+    },
+    async releaseHold(match) {
+      const { error } = await admin
+        .from("real_matches")
+        .update({ postponed: false, hold_status: "none", hold_kickoff_at: null })
+        .eq("id", match.id);
+      if (error) throw new Error(schemaHint(error.message));
+    },
+    async refreshProvisional(week) {
+      await refreshProvisionalScores(week.id);
+    },
+    async calculate(week, rewrite) {
+      const outcome = await scoreOfficialGameweek(week.id, rewrite ? { allowRewrite: true } : undefined);
+      if (outcome.skipped) return { scored: false, reason: outcome.reason ?? undefined };
+      if (rewrite) return { scored: true };
+      const stamp = new Date().toISOString();
+      let update = await admin.from("gameweeks").update({ status: "scored", scored_at: stamp }).eq("id", week.id);
+      if (update.error && /scored_at/i.test(update.error.message)) {
+        update = await admin.from("gameweeks").update({ status: "scored" }).eq("id", week.id);
+      }
+      if (update.error) throw new Error(schemaHint(update.error.message));
+      const lineups = await admin.from("lineups").update({ status: "locked", locked_at: stamp }).eq("gameweek_id", week.id).eq("status", "draft");
+      if (lineups.error) throw new Error(lineups.error.message);
+      return { scored: true };
+    },
+    async refreshCalendar() {
+      const outcome = await refreshSerieAKickoffs({ daily: true });
+      return { changed: outcome.updated, warnings: outcome.warnings };
+    },
+    async notify(message) {
+      const safe = message.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+      await sendTelegramMessage(`<b>Fantaventi — voti</b>\n${safe}`);
+    },
+  };
+}
+
+/** Decide cosa c'è da fare con una sola lettura, senza scrivere e senza contattare le fonti. */
+export async function prepareVoteClock(now = new Date()) {
+  const snapshot = await readClock();
+  return { snapshot, plan: planVoteClock(snapshot, now.getTime()) };
+}
+
+export function runPlannedReads(snapshot: ClockSnapshot, plan: VotePlan, now = new Date()): Promise<CycleReport> {
+  return runVoteCycle(clockDeps(), snapshot, plan, now.getTime());
+}
+
+/** Richiesta manuale di un super admin: contatta subito la fonte. */
+export function syncDueMatchVotes(now = new Date()): Promise<CycleReport> {
+  return runManualRead(clockDeps(), now.getTime());
 }

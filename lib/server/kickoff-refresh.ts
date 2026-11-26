@@ -194,7 +194,9 @@ async function serieARunningSeason(admin: ReturnType<typeof createAdminSupabase>
   return getCurrentSeason(admin, data.id as string);
 }
 
-async function runKickoffRefresh(options?: { force?: boolean; seasonId?: string }) {
+type RefreshOptions = { force?: boolean; seasonId?: string; daily?: boolean };
+
+async function runKickoffRefresh(options?: RefreshOptions) {
   const admin = createAdminSupabase();
   const season = options?.seasonId
     ? await getCurrentSeason(admin, options.seasonId)
@@ -203,67 +205,47 @@ async function runKickoffRefresh(options?: { force?: boolean; seasonId?: string 
     throw httpError("L'aggiornamento orari Sky vale solo per la Serie A.", 409);
   }
   const previous = await lastRefreshAt(admin, season.id);
-  if (!options?.force && previous.at !== null && Date.now() - previous.at < WEEK_MS) {
+  const unconditional = options?.force || options?.daily;
+  if (!unconditional && previous.at !== null && Date.now() - previous.at < WEEK_MS) {
     return {
       seasonCode: season.code,
       skipped: true,
       reason: "Orari già aggiornati negli ultimi 7 giorni.",
       updated: 0,
       kept: 0,
-      results: 0,
-      goalsColumn: true,
       deadlines: 0,
       rounds: 0,
       fixtures: 0,
       lockColumn: true,
       logged: previous.logged,
+      warnings: [] as string[],
     };
   }
-  if (!options?.force && !previous.logged) {
+  if (!unconditional && !previous.logged) {
     return {
       seasonCode: season.code,
       skipped: true,
       reason: "Aggiornamento settimanale in attesa di calendar_setup.sql. Dal laboratorio puoi lanciarlo a mano.",
       updated: 0,
       kept: 0,
-      results: 0,
-      goalsColumn: true,
       deadlines: 0,
       rounds: 0,
       fixtures: 0,
       lockColumn: true,
       logged: false,
+      warnings: [] as string[],
     };
   }
 
   const rounds = await fetchSkyCalendar();
   const stored = await loadStoredMatches(admin, season.id);
   const byKey = new Map(stored.matches.map((match) => [`${match.gameweekNumber}:${match.home}:${match.away}`, match]));
-  const changes: { kind: "kickoff" | "status"; round: number; label: string; at: string }[] = [];
+  const changes: { round: number; label: string; at: string }[] = [];
+  const warnings: string[] = [];
   let updated = 0;
   let kept = 0;
-  let results = 0;
-  let goalsColumn = true;
-
-  for (const round of rounds) {
-    for (const fixture of round.fixtures) {
-      if (fixture.homeGoals == null || fixture.awayGoals == null) continue;
-      const match = byKey.get(`${round.number}:${fixture.home}:${fixture.away}`);
-      if (!match) continue;
-      const patch = { status: "finished" as const, home_goals: fixture.homeGoals, away_goals: fixture.awayGoals };
-      let update = await admin.from("real_matches").update(patch).eq("id", match.id);
-      if (update.error && /home_goals|away_goals/i.test(update.error.message)) {
-        goalsColumn = false;
-        update = await admin.from("real_matches").update({ status: "finished" }).eq("id", match.id);
-      }
-      if (update.error) throw new Error(schemaHint(update.error.message));
-      if (match.status !== "finished") {
-        changes.push({ kind: "status", round: round.number, label: `${match.home}-${match.away}`, at: match.kickoffAt });
-      }
-      match.status = "finished";
-      results += 1;
-    }
-  }
+  const held = await heldMatchIds(admin, stored.matches.map((match) => match.id));
+  const when = new Intl.DateTimeFormat("it-IT", { timeZone: "Europe/Rome", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 
   for (const round of rounds) {
     const timed = round.fixtures.filter((fixture) => fixture.timeKnown && fixture.kickoff);
@@ -282,18 +264,31 @@ async function runKickoffRefresh(options?: { force?: boolean; seasonId?: string 
     }
     for (const fixture of timed) {
       const match = byKey.get(`${round.number}:${fixture.home}:${fixture.away}`);
-      if (!match || match.status !== "scheduled") continue;
+      if (!match || match.status === "finished") continue;
+      const isHeld = held.has(match.id);
+      if (match.status !== "scheduled" && !isHeld) continue;
       if (match.kickoffLocked) {
         kept += 1;
         continue;
       }
       if (new Date(match.kickoffAt).getTime() === new Date(fixture.kickoff).getTime()) continue;
-      const { error } = await admin.from("real_matches").update({ kickoff_at: fixture.kickoff }).eq("id", match.id).eq("status", "scheduled");
+      const patch = isHeld ? { kickoff_at: fixture.kickoff, status: "scheduled" } : { kickoff_at: fixture.kickoff };
+      const { error } = await admin.from("real_matches").update(patch).eq("id", match.id).eq("status", match.status);
       if (error) throw new Error(schemaHint(error.message));
-      changes.push({ kind: "kickoff", round: round.number, label: `${match.home}-${match.away}`, at: fixture.kickoff });
+      changes.push({ round: round.number, label: `${match.home}-${match.away}`, at: fixture.kickoff });
+      warnings.push(...kickoffWarnings(`G${round.number} ${match.home}-${match.away}`, match.kickoffAt, fixture.kickoff, isHeld, when));
       match.kickoffAt = fixture.kickoff;
       updated += 1;
     }
+  }
+
+  // Partite vicine che Sky non dà né in programma né finite: possibile rinvio.
+  const listed = new Set(rounds.flatMap((round) => round.fixtures.map((fixture) => `${round.number}:${fixture.home}:${fixture.away}`)));
+  for (const [key, match] of byKey) {
+    const kickoff = new Date(match.kickoffAt).getTime();
+    if (match.status === "finished" || held.has(match.id) || listed.has(key)) continue;
+    if (kickoff < Date.now() || kickoff > Date.now() + 3 * 24 * 60 * 60 * 1000) continue;
+    warnings.push(`G${match.gameweekNumber} ${match.home}-${match.away} (${when.format(kickoff)}): su Sky non risulta in programma. Possibile rinvio.`);
   }
 
   const deadlines = await refreshDeadlines(admin, stored.weeks, stored.matches);
@@ -304,16 +299,17 @@ async function runKickoffRefresh(options?: { force?: boolean; seasonId?: string 
   });
   const samples = kickoffSamples(changes);
   const triggerSource = options?.force ? "manual" as const : "cron" as const;
+  const message = changes.length ? `Orari variati: ${changes.length}.` : "Nessuna variazione sugli orari.";
   await writeSyncLog({
     jobType: "kickoffs",
     triggerSource,
     status: "success",
     recordsWritten: changes.length,
-    message: changes.length ? `Orari o stati variati: ${changes.length}.` : "Nessuna variazione sugli orari.",
+    message,
   });
   await alertKickoffSync({
     status: "success",
-    message: changes.length ? `Orari o stati variati: ${changes.length}.` : "Nessuna variazione sugli orari.",
+    message,
     changed: changes.length,
     samples,
   });
@@ -323,17 +319,36 @@ async function runKickoffRefresh(options?: { force?: boolean; seasonId?: string 
     reason: null,
     updated,
     kept,
-    results,
-    goalsColumn,
     deadlines,
     rounds: rounds.length,
     fixtures: rounds.reduce((sum, round) => sum + round.fixtures.length, 0),
     lockColumn: stored.lockColumn,
     logged,
+    warnings,
   };
 }
 
-function kickoffSamples(changes: { kind: "kickoff" | "status"; round: number; label: string; at: string }[]) {
+async function heldMatchIds(admin: ReturnType<typeof createAdminSupabase>, matchIds: string[]) {
+  if (matchIds.length === 0) return new Set<string>();
+  const { data, error } = await admin.from("real_matches").select("id").in("id", matchIds).eq("postponed", true);
+  if (error) {
+    if (/postponed|schema cache|could not find/i.test(error.message)) return new Set<string>();
+    throw new Error(error.message);
+  }
+  return new Set((data ?? []).map((row) => row.id as string));
+}
+
+function kickoffWarnings(label: string, before: string, after: string, held: boolean, when: Intl.DateTimeFormat) {
+  const lines: string[] = [];
+  const next = new Date(after);
+  const clock = new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Rome", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(next);
+  if (clock < "12:30" || clock > "21:00") lines.push(`${label}: nuovo orario ${when.format(next)}, fuori dalla fascia della sveglia.`);
+  if (held) lines.push(`${label}: partita rinviata con nuovo orario ${when.format(next)}. Le letture riprendono.`);
+  else if (Math.abs(next.getTime() - new Date(before).getTime()) > 48 * 60 * 60 * 1000) lines.push(`${label}: spostata da ${when.format(new Date(before))} a ${when.format(next)}.`);
+  return lines;
+}
+
+function kickoffSamples(changes: { round: number; label: string; at: string }[]) {
   const rome = new Intl.DateTimeFormat("it-IT", {
     weekday: "short",
     day: "numeric",
@@ -342,21 +357,13 @@ function kickoffSamples(changes: { kind: "kickoff" | "status"; round: number; la
     minute: "2-digit",
     timeZone: "Europe/Rome",
   });
-  const kickoffs = changes.filter((item) => item.kind === "kickoff").sort((left, right) => left.at.localeCompare(right.at));
-  const lines: string[] = [];
-  if (kickoffs.length > 0) {
-    const first = kickoffs[0];
-    const last = kickoffs[kickoffs.length - 1];
-    lines.push(`Giornata ${first.round}, primo calcio d'inizio ${rome.format(new Date(first.at))} (${first.label})`);
-    if (last !== first) lines.push(`Giornata ${last.round}, ultimo calcio d'inizio ${rome.format(new Date(last.at))} (${last.label})`);
-  }
-  for (const item of changes.filter((row) => row.kind === "status").slice(0, 3)) {
-    lines.push(`Giornata ${item.round}: ${item.label} finita`);
-  }
+  const lines = [...changes]
+    .sort((left, right) => left.at.localeCompare(right.at))
+    .map((item) => `Giornata ${item.round}: ${item.label}, ${rome.format(new Date(item.at))}`);
   return lines.slice(0, 5);
 }
 
-export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonId?: string }) {
+export async function refreshSerieAKickoffs(options?: RefreshOptions) {
   try {
     return await runKickoffRefresh(options);
   } catch (error) {
@@ -368,7 +375,8 @@ export async function refreshSerieAKickoffs(options?: { force?: boolean; seasonI
       recordsWritten: 0,
       message,
     });
-    await alertKickoffSync({ status: "error", message, changed: 0, samples: [] });
+    // Il giro giornaliero avvisa solo dopo il secondo tentativo (vote-engine).
+    if (!options?.daily) await alertKickoffSync({ status: "error", message, changed: 0, samples: [] });
     throw error;
   }
 }

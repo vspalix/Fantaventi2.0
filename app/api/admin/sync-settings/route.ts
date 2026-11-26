@@ -32,6 +32,7 @@ export async function POST(request: Request) {
       syncWindowMorningEnd?: string;
       autoSyncEnabled?: boolean;
       notifyOnSyncSuccess?: boolean;
+      halftimeReadEnabled?: boolean;
     };
     const current = await readSystemSettings();
     const settings = await saveSystemSettings({
@@ -48,6 +49,7 @@ export async function POST(request: Request) {
       syncWindowMorningEnd: body.syncWindowMorningEnd ?? current.syncWindowMorningEnd,
       autoSyncEnabled: body.autoSyncEnabled ?? current.autoSyncEnabled,
       notifyOnSyncSuccess: body.notifyOnSyncSuccess ?? current.notifyOnSyncSuccess,
+      halftimeReadEnabled: body.halftimeReadEnabled ?? current.halftimeReadEnabled,
     });
     return NextResponse.json({ settings: settings.settings, notice: settings.notice });
   } catch (error) {

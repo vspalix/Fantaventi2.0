@@ -30,7 +30,7 @@ export default async function SyncSettingsPage() {
       <section className="stack">
         <header>
           <h1 className="section-title">Sincronizzazioni</h1>
-          <p className="lede">Fonti, finestre e storico dei giri automatici. Vale per tutta la piattaforma.</p>
+          <p className="lede">Fonti, letture dei voti e storico dei giri automatici. Vale per tutta la piattaforma.</p>
         </header>
         <AdminNav />
         <SyncDesk initial={settings} initialLogs={logs} />

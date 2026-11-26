@@ -1,6 +1,5 @@
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
-import { scoreOfficialGameweek } from "@/lib/server/live-score";
 import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 import { syncDueMatchVotes } from "@/lib/server/sync-match-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -171,9 +170,14 @@ export async function forceLiveRound() {
   if (weeks.error) throw new Error(weeks.error.message);
   const rows = (weeks.data ?? []) as { id: string; number: number; status: string; deadline_at: string }[];
   const current = pickCurrent(rows);
-  const score = current
-    ? await scoreOfficialGameweek(current.id, { allowRewrite: current.status === "scored" })
-    : null;
+  // Qui non si calcola: lo fa la lettura dei voti, solo con voti completi.
+  const score = {
+    teams: 0,
+    skipped: true,
+    reason: votes.scored.length > 0
+      ? `Calcolate le giornate ${votes.scored.join(", ")}.`
+      : `Nessun calcolo: parte dalle 08:00 successive al turno, con voti completi. Voti ufficiali scritti per ${votes.synced.length} partite.`,
+  };
   return {
     seasonCode: season.code,
     calendar,

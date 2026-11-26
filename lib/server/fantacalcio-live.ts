@@ -18,6 +18,8 @@ export type FantacalcioFixtureScore = {
   awaySlug: string;
   homeGoals: number | null;
   awayGoals: number | null;
+  /** Stato della partita sulla pagina dei voti (4 = finita), null se assente. */
+  status: number | null;
 };
 
 const SOURCE = "https://www.fantacalcio.it";
@@ -133,12 +135,14 @@ export function parseFantacalcioScores(html: string): FantacalcioFixtureScore[] 
     const teams = block.match(/\/calendario\/\d+\/[^/"']+\/([a-z0-9]+)-([a-z0-9]+)\/\d+/i);
     const home = block.match(/class="score-home">\s*(\d+)/i);
     const away = block.match(/class="score-away">\s*(\d+)/i);
+    const status = block.match(/data-match-status="(\d+)"/i);
     if (!teams) continue;
     scores.push({
       homeSlug: teams[1].toLowerCase(),
       awaySlug: teams[2].toLowerCase(),
       homeGoals: home ? Number(home[1]) : null,
       awayGoals: away ? Number(away[1]) : null,
+      status: status ? Number(status[1]) : null,
     });
   }
   return scores;

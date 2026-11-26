@@ -7,6 +7,7 @@ import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
 import { runLiveGapChecks } from "./test-live-gaps";
 import { runRulesCoverage } from "./test-rules-coverage";
 import { runSubstitutionChecks } from "./test-substitutions";
+import { runVoteScheduleChecks } from "./test-vote-schedule";
 
 const ENGINE_MIN = 34;
 const FULL_SUITE = 40;
@@ -72,11 +73,15 @@ async function main() {
   console.log(`Lacune reali: ${gaps.failures.length === 0 ? "PASSED" : "FAILED"} ${gaps.passed}/${gaps.total}`);
   for (const failure of gaps.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed;
+  const schedule = await runVoteScheduleChecks();
+  console.log(`Letture dei voti: ${schedule.failures.length === 0 ? "PASSED" : "FAILED"} ${schedule.passed}/${schedule.total}`);
+  for (const failure of schedule.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || total < 100) process.exit(1);
 }
 
 main().catch((error: unknown) => {

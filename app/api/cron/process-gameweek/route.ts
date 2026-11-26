@@ -3,7 +3,7 @@ import { assertServiceEnv } from "@/lib/server/catalog";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
 import { errorMessage, errorStatus } from "@/lib/server/session";
-import { syncDueMatchVotes } from "@/lib/server/sync-match-votes";
+import { prepareVoteClock, runPlannedReads } from "@/lib/server/sync-match-votes";
 import { meter } from "@/lib/server/telemetry";
 
 function authorized(request: Request) {
@@ -21,7 +21,9 @@ async function run(request: Request) {
       return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401 });
     }
     assertServiceEnv();
-    const votes = await meter("vote-fetch", () => syncDueMatchVotes());
+    // La fonte dei voti si contatta solo nei momenti previsti.
+    const { snapshot, plan } = await prepareVoteClock();
+    const votes = await meter("vote-fetch", () => runPlannedReads(snapshot, plan));
     const result = await meter("gameweek-calc", () => processGameweekLifecycle());
     let kickoffs: { skipped: boolean; reason: string | null; updated: number } = {
       skipped: true,

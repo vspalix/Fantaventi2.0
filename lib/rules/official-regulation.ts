@@ -82,8 +82,9 @@ Durante un checkpoint ogni cambio rispetta di nuovo il vincolo di un calciatore 
 
 ## 5. Quando una partita è chiusa
 
-- Una partita entra nel calcolo **130 minuti** dopo il calcio d'inizio.
-- Resta aperta finché i voti di quella partita non sono stati salvati sul listone.
+- I voti letti a fine primo tempo e a fine partita sono **provvisori**.
+- La giornata si calcola dopo la lettura delle **08:00** (ora italiana) del giorno successivo all'ultima partita del turno.
+- Si calcola solo con i voti completi di tutte le partite. Una partita rinviata si attende fino al recupero.
 - Se i voti non sono ancora pubblicati, o se i codici del tabellino non sono nel listone, la partita non viene chiusa.
 
 ## 6. Voti e fonte

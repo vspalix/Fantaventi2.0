@@ -1,5 +1,4 @@
 import { telegramChatIds } from "@/lib/server/telegram-alert";
-import { playedDayStillOpen } from "@/lib/server/vote-sync-window";
 import { readSyncLogs, readSystemSettings, type SyncLogRow } from "@/lib/server/system-settings";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -143,10 +142,6 @@ export async function readOpsDiagnostics(): Promise<OpsDiagnostics> {
   if (!settings.ready) anomalies.push("Manca system_settings. Esegui supabase/system_settings.sql.");
   for (const job of jobs) {
     if (job.status === "error") anomalies.push(`${job.label}: ultimo giro in errore. ${job.message}`);
-  }
-  const votes = jobs[0];
-  if (votes.status === "success" && votes.recordsWritten === 0 && await playedDayStillOpen().catch(() => false)) {
-    anomalies.push("Voti: ultimo successo ha scritto 0 record e c'è ancora una giornata di ieri da calcolare.");
   }
   if (matchday.behind.length > 0) {
     anomalies.push(`Giornate precedenti ancora non calcolate: ${matchday.behind.join(", ")}.`);

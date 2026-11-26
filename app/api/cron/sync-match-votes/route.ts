@@ -1,13 +1,17 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage, errorStatus } from "@/lib/server/session";
 import { alertVoteSync } from "@/lib/server/telegram-alert";
-import { readSystemSettings, writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
-import { closeFinishedGameweeks } from "@/lib/server/gameweek-lifecycle";
-import { syncScheduledVotes, type MatchVoteSyncResult } from "@/lib/server/sync-match-votes";
+import { writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
+import { prepareVoteClock, runPlannedReads, syncDueMatchVotes } from "@/lib/server/sync-match-votes";
+import type { CycleReport } from "@/lib/server/vote-engine";
+import { planIsEmpty } from "@/lib/server/vote-schedule";
 import { meter } from "@/lib/server/telemetry";
+
+// Le letture continuano dopo la risposta: la sveglia esterna aspetta al massimo 30 secondi.
+export const maxDuration = 60;
 
 function cronAuthorized(request: Request) {
   const internal = request.headers.get("x-fantaventi-job") ?? "";
@@ -38,67 +42,87 @@ async function requestedForce(request: Request) {
   }
 }
 
-function voteLog(result: MatchVoteSyncResult | { skipped: true; reason: string }, triggerSource: SyncLogEntry["triggerSource"]): SyncLogEntry {
-  if ("reason" in result && result.skipped === true) {
-    return { jobType: "votes", triggerSource, status: "skipped", recordsWritten: 0, message: result.reason };
+function voteLog(report: CycleReport, triggerSource: SyncLogEntry["triggerSource"]): SyncLogEntry {
+  const recordsWritten = report.synced.reduce((sum, item) => sum + item.players, 0);
+  const lines = [
+    report.reads.length > 0 ? `Letture: ${report.reads.join(", ")}.` : "Nessuna lettura.",
+    recordsWritten > 0 ? `Voti ufficiali: ${recordsWritten}.` : "",
+    report.scored.length > 0 ? `Calcolate le giornate ${[...new Set(report.scored)].join(", ")}.` : "",
+    ...[...new Set(report.waiting.map((item) => item.reason))].slice(0, 3),
+    ...report.errors.map((item) => item.message),
+  ];
+  const wrote = recordsWritten > 0 || report.scored.length > 0 || report.projected.length > 0 || report.calendarChanged > 0;
+  const status = report.errors.length > 0 && !wrote ? "error" : wrote ? "success" : "skipped";
+  return { jobType: "votes", triggerSource, status, recordsWritten, message: lines.filter(Boolean).join(" ") };
+}
+
+async function failed(error: unknown, triggerSource: SyncLogEntry["triggerSource"]) {
+  const entry: SyncLogEntry = {
+    jobType: "votes",
+    triggerSource,
+    status: "error",
+    recordsWritten: 0,
+    message: errorMessage(error),
+  };
+  await writeSyncLog(entry);
+  await alertVoteSync(entry, triggerSource === "manual");
+}
+
+async function finished(report: CycleReport, triggerSource: SyncLogEntry["triggerSource"], now: Date) {
+  const entry = voteLog(report, triggerSource);
+  await writeSyncLog(entry);
+  // Gli avvisi sulle letture fallite partono dal giro stesso, una volta sola.
+  if (entry.status === "success") {
+    const detail = report.scored.length > 0
+      ? { changed: report.scored.length, samples: report.scored.map((number) => `Giornata ${number} calcolata`) }
+      : { changed: report.changed, samples: report.samples };
+    await alertVoteSync(entry, triggerSource === "manual", now, detail);
   }
-  const sync = result as MatchVoteSyncResult;
-  const recordsWritten = sync.synced.reduce((sum, item) => sum + item.players, 0);
-  if (sync.errors.length > 0 && recordsWritten === 0 && sync.scored.length === 0) {
-    return {
-      jobType: "votes",
-      triggerSource,
-      status: "error",
-      recordsWritten: 0,
-      message: sync.errors.map((item) => item.message).join(" ") || "Sincronizzazione voti non riuscita.",
-    };
-  }
-  return { jobType: "votes", triggerSource, status: "success", recordsWritten, message: `Aggiornati ${recordsWritten} voti.` };
 }
 
 async function run(request: Request) {
   const force = await requestedForce(request);
-  const triggerSource = force ? "manual" : "cron";
   try {
     if (!(await authorized(request))) {
       return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401 });
     }
     assertServiceEnv();
-    const settings = await readSystemSettings();
-    if (!force && !settings.autoSyncEnabled) {
-      const message = "Sincronizzazione automatica disattivata.";
-      await writeSyncLog({ jobType: "votes", triggerSource, status: "skipped", recordsWritten: 0, message });
-      return NextResponse.json({ skipped: true, reason: message });
-    }
     const now = new Date();
-    const result = await meter("vote-fetch", () => syncScheduledVotes(now, force));
-    const settled = await closeFinishedGameweeks(now).catch((error: unknown) => ({
-      closed: [] as number[],
-      waiting: [{ number: 0, reason: errorMessage(error) }],
-    }));
-    let entry = voteLog(result, triggerSource);
-    if (settled.closed.length > 0) {
-      const note = `Calcolate le giornate ${settled.closed.join(", ")}.`;
-      entry = entry.status === "error"
-        ? entry
-        : { ...entry, status: "success", recordsWritten: Math.max(entry.recordsWritten, settled.closed.length), message: entry.status === "skipped" ? note : `${entry.message} ${note}` };
+
+    if (force) {
+      try {
+        const report = await meter("vote-fetch", () => syncDueMatchVotes(now));
+        await finished(report, "manual", now);
+        return NextResponse.json(report);
+      } catch (error) {
+        await failed(error, "manual");
+        throw error;
+      }
     }
-    await writeSyncLog(entry);
-    const detail = settled.closed.length > 0
-      ? { changed: settled.closed.length, samples: settled.closed.map((number) => `Giornata ${number} calcolata`) }
-      : "changed" in result ? { changed: result.changed, samples: result.samples } : undefined;
-    await alertVoteSync(entry, force, now, detail);
-    return NextResponse.json({ ...result, settled });
+
+    // Fuori dai momenti previsti: una sola lettura, nessuna scrittura, nessun contatto con le fonti.
+    const { snapshot, plan } = await prepareVoteClock(now);
+    if (planIsEmpty(plan)) {
+      return NextResponse.json({ skipped: true, reason: snapshot.auto ? "Niente da fare adesso." : "Sincronizzazione automatica disattivata." });
+    }
+    after(async () => {
+      try {
+        const report = await meter("vote-fetch", () => runPlannedReads(snapshot, plan, now));
+        // Se un'altra chiamata ha già preso le stesse letture, non c'è niente da registrare.
+        if (report.reads.length > 0 || report.scored.length > 0 || report.errors.length > 0) {
+          await finished(report, "cron", now);
+        }
+      } catch (error) {
+        await failed(error, "cron");
+      }
+    });
+    return NextResponse.json({
+      accepted: true,
+      reads: plan.reads.map((task) => ({ kind: task.kind, attempt: task.attempt })),
+      alerts: plan.alerts.length,
+      calculations: plan.calculations.length,
+    });
   } catch (error) {
-    const entry: SyncLogEntry = {
-      jobType: "votes",
-      triggerSource,
-      status: "error",
-      recordsWritten: 0,
-      message: errorMessage(error),
-    };
-    await writeSyncLog(entry);
-    await alertVoteSync(entry, force);
     return NextResponse.json({ error: errorMessage(error) }, { status: errorStatus(error) });
   }
 }

@@ -177,14 +177,13 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
         body: JSON.stringify({ leagueId }),
       });
       const body = await readJson<{
-        voteDelayMinutes: number;
         votes: { synced: { players: number }[]; scored: number[]; errors: { message: string }[] };
       }>(response);
       setVotesStamp((stamp) => stamp + 1);
       const players = body.votes.synced.reduce((sum, match) => sum + match.players, 0);
       if (body.votes.errors.length > 0) throw new Error(body.votes.errors[0]?.message ?? "Recupero voti non riuscito.");
       if (body.votes.synced.length === 0) {
-        return "Nessun voto nuovo: le partite non sono ancora oltre i 130 minuti, oppure i voti sono già salvati.";
+        return "Nessun voto ufficiale nuovo: il turno non è concluso, i voti non sono completi o sono già salvati.";
       }
       const scored = [...new Set(body.votes.scored)];
       return scored.length > 0
@@ -335,7 +334,7 @@ export function MatchdayDesk({ initial }: { initial: TestLabSnapshot }) {
       <section className="card stack" id="voti">
         <h2>Voti della giornata</h2>
         <p className="small muted">
-          Recupera i voti ufficiali delle partite iniziate da almeno 130 minuti, oppure carica un file. Sotto controlli chi ha già un voto.
+          Legge subito la fonte: i voti diventano ufficiali dalle 08:00 successive al turno. Puoi anche caricare un file. Sotto controlli chi ha già un voto.
         </p>
         <div className="row">
           <button className="primary" type="button" disabled={pending !== null || !leagueId} aria-busy={pending !== null} onClick={() => void importVotes()}>

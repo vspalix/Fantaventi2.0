@@ -70,8 +70,6 @@ type KickoffRefresh = {
   reason: string | null;
   updated: number;
   kept: number;
-  results?: number;
-  goalsColumn?: boolean;
   deadlines: number;
   rounds: number;
   lockColumn: boolean;
@@ -104,7 +102,6 @@ type ResetResult = {
 
 type MatchdayRun = {
   skipped?: boolean;
-  voteDelayMinutes: number;
   votes: {
     synced: { gameweekNumber: number; players: number }[];
     waiting: { gameweekNumber: number; reason: string }[];
@@ -124,12 +121,12 @@ function matchdaySummary(run: MatchdayRun) {
   const players = run.votes.synced.reduce((sum, match) => sum + match.players, 0);
   const scored = [...new Set(run.votes.scored)];
   const lines = [
-    `Controllo con la regola dei ${run.voteDelayMinutes} minuti dal calcio d'inizio.`,
+    "Lettura manuale: i voti diventano ufficiali solo dalle 08:00 successive al turno.",
   ];
   if (downloaded > 0) {
     lines.push(`Recuperati i voti di ${downloaded} partite, ${players} calciatori.`);
   } else {
-    lines.push("Nessuna partita nuova da scaricare: o non sono passati 130 minuti, o i voti sono già salvati.");
+    lines.push("Nessun voto ufficiale nuovo: il turno non è concluso, i voti non sono completi o sono già salvati.");
   }
   if (scored.length > 0) lines.push(`Calcolate le giornate ${scored.join(", ")}. Apri Audit calcolo per bonus, malus e sostituzioni.`);
   else if (run.skipped) lines.push("Nessun punteggio ufficiale ricalcolato: le giornate già calcolate restano ferme.");
@@ -894,10 +891,10 @@ export function TestLab({ initial }: { initial: TestLabSnapshot }) {
               {pending === "Simulo la giornata…" ? <span className="muted">Genero i voti e calcolo…</span> : null}
               {pending === "Annulla il calcolo…" ? <span className="muted">Tolgo punti e voti…</span> : null}
               {pending === "Calcolo i voti caricati…" ? <span className="muted">Calcolo i voti caricati…</span> : null}
-              {pending === "Recupero i voti…" ? <span className="muted">Controllo le partite oltre i 130 minuti…</span> : null}
+              {pending === "Recupero i voti…" ? <span className="muted">Leggo la fonte dei voti…</span> : null}
             </div>
             <p className="muted small">
-              Recupera voti e calcola esegue lo stesso passaggio del calcolo automatico: scarica solo le partite iniziate da almeno 130 minuti e, quando la giornata è completa, calcola bonus, malus e sostituzioni. Poi apri Audit calcolo sulla squadra.
+              Recupera voti e calcola legge subito la fonte. I voti diventano ufficiali dalle 08:00 successive al turno e, quando sono completi, la giornata viene calcolata con bonus, malus e sostituzioni. Poi apri Audit calcolo sulla squadra.
             </p>
             {matchdayRun ? (
               <p className={matchdayRun.votes.errors.length > 0 ? "banner" : "banner ok"}>
@@ -948,14 +945,14 @@ export function TestLab({ initial }: { initial: TestLabSnapshot }) {
       <article className="card stack">
         <h2>Calendario {snapshot.seasonCode}</h2>
         <p>
-          Partite della competizione attiva. Dopo l&apos;import, le partite si segnano da sole due ore dopo il calcio d&apos;inizio.
-          Aggiorna orari e risultati legge Sky, per la Serie A, e scrive il punteggio delle gare già finite.
+          Partite della competizione attiva. Per la Serie A una partita risulta finita quando arrivano i voti completi.
+          Aggiorna orari legge Sky e cambia solo gli orari.
           Sulla riga puoi correggere risultato e stato a mano: in programma oppure finita.
         </p>
         <p className="muted small">
           Gli orari pubblicati sono quelli della prima giornata, di Napoli-Como e di tutte le gare dal turno 11.
           Le giornate lontane hanno ancora lo stesso orario su tutte le partite: Sky lo precisa avvicinandosi al turno.
-          Il job settimanale e il pulsante qui sotto rileggono quegli orari. Un orario che salvi a mano resta fermo.
+          La lettura giornaliera delle 08:00 e il pulsante qui sotto rileggono quegli orari. Un orario che salvi a mano resta fermo.
         </p>
         <div className="row">
           <button
@@ -1004,7 +1001,7 @@ export function TestLab({ initial }: { initial: TestLabSnapshot }) {
               chooseGameweek(gameweekId, lab);
             })}
           >
-            Aggiorna orari e risultati
+            Aggiorna orari
           </button>
         </div>
         <div className="row admin-controls">
@@ -1043,8 +1040,7 @@ export function TestLab({ initial }: { initial: TestLabSnapshot }) {
           <p className="banner ok">
             {refresh.skipped
               ? refresh.reason
-              : `Sky riletto su ${refresh.rounds} giornate. Orari aggiornati: ${refresh.updated}. Risultati segnati: ${refresh.results ?? 0}. Inizio giornata ricalcolato su ${refresh.deadlines}.`}
-            {refresh.goalsColumn === false ? " Per vedere i punteggi esegui schema_sync.sql." : ""}
+              : `Sky riletto su ${refresh.rounds} giornate. Orari aggiornati: ${refresh.updated}. Inizio giornata ricalcolato su ${refresh.deadlines}.`}
             {refresh.kept > 0 ? ` ${refresh.kept} orari già precisi o fissati a mano sono rimasti.` : ""}
             {refresh.lockColumn ? "" : " Per tenere fermo un orario salvato a mano esegui kickoff_refresh.sql."}
           </p>

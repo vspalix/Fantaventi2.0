@@ -14,7 +14,7 @@ export default async function LeaguePage({
   searchParams,
 }: {
   params: Promise<{ leagueId: string }>;
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string; giornata?: string }>;
 }) {
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
   const user = await getSessionUser();
@@ -28,7 +28,9 @@ export default async function LeaguePage({
   }
 
   const { leagueId } = await params;
-  const requested = (await searchParams).tab;
+  const query = await searchParams;
+  const requested = query.tab;
+  const round = Number.parseInt(query.giornata ?? "", 10);
   try {
     const hub = await loadLeagueHub(user.id, leagueId);
     const hostMode = (await hostAccess(user.id)).hostMode;
@@ -36,6 +38,7 @@ export default async function LeaguePage({
       <LeagueHub
         initial={hub}
         initialTab={isHubTab(requested) ? requested : "home"}
+        initialRound={Number.isInteger(round) && round > 0 ? round : undefined}
         hostMode={hostMode && (hub.league.isManager || hub.league.platformOverride)}
         allowTestFill={hostMode && process.env.NODE_ENV === "development" && hub.league.isOwner}
       />

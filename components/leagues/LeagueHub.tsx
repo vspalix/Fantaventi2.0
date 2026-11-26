@@ -330,11 +330,14 @@ export function LeagueHub({
   allowTestFill = false,
   hostMode = false,
   initialTab = "home",
+  initialRound,
 }: {
   initial: LeagueHubData;
   allowTestFill?: boolean;
   hostMode?: boolean;
   initialTab?: HubTab;
+  /** Giornata da mostrare in «Risultati di giornata» quando si arriva da un link. */
+  initialRound?: number;
 }) {
   const [hub, setHub] = useState(initial);
   const [tab, setTab] = useState<HubTab>(initialTab);
@@ -1001,7 +1004,7 @@ export function LeagueHub({
       ) : null}
 
       {shownTab === "risultati" ? (
-        <MatchdayResults hub={hub} />
+        <MatchdayResults hub={hub} initialRound={initialRound} />
       ) : null}
 
       {shownTab === "classifica" ? (

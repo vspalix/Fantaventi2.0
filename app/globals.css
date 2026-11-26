@@ -1799,7 +1799,7 @@ table.standings tr[data-mine="true"] { box-shadow: inset 3px 0 0 var(--accent); 
   display: grid;
   width: 100%;
   min-width: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
@@ -1818,9 +1818,16 @@ table.standings tr[data-mine="true"] { box-shadow: inset 3px 0 0 var(--accent); 
 .versus small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-size: var(--fs-sm); font-weight: 600; }
 .versus strong { font-size: 24px; font-weight: 600; color: var(--accent); }
 .versus .mid { color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
-.total-round { display: flex; flex-direction: column; gap: 6px; }
-.total-round strong { display: block; font-size: 44px; font-weight: 500; line-height: 1; color: var(--accent); }
-.total-round p { margin: 0; color: var(--muted); font-size: var(--fs-md); }
+/* Ultima giornata: punteggio, confronto con la media e andamento */
+.round-score { display: flex; flex-direction: column; gap: 6px; }
+.round-score strong { display: flex; align-items: baseline; gap: 6px; font-size: 32px; font-weight: 500; line-height: 1; color: var(--text); }
+.round-score strong small { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
+.card p.round-delta { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--muted); }
+.card p.round-delta[data-tone="up"] { color: var(--ok); }
+.card p.round-delta[data-tone="down"] { color: var(--danger); }
+.recent-block { display: flex; flex-direction: column; gap: 10px; padding-top: 14px; border-top: 1px solid var(--line); }
+.card p.recent-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.recent-label span { font-weight: 500; letter-spacing: 0; text-transform: none; }
 .face-mark {
   display: grid;
   place-items: center;
@@ -1832,9 +1839,9 @@ table.standings tr[data-mine="true"] { box-shadow: inset 3px 0 0 var(--accent); 
   color: var(--accent);
   font-weight: 600;
 }
-.round-foot { display: flex; justify-content: flex-end; padding-top: 12px; border-top: 1px solid var(--line); }
+.round-foot { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; padding-top: 12px; border-top: 1px solid var(--line); }
 .round-foot a, .text-link { display: inline-flex; align-items: center; min-height: 44px; color: var(--accent); font-weight: 600; }
-.round-foot a { min-height: 32px; }
+.round-foot a { min-height: 44px; }
 .current-round .dash-block-head { text-align: left; }
 .current-round .clock-pill { margin: 0 auto; }
 .clock-pill { margin: 8px auto 0; width: fit-content; display: flex; align-items: baseline; gap: 8px; padding: 8px 16px; border-radius: var(--r-btn); background: var(--surface-2); border: 1px solid var(--line); color: var(--accent); font-size: 24px; font-weight: 600; }
@@ -1857,7 +1864,9 @@ table.standings tr[data-mine="true"] { box-shadow: inset 3px 0 0 var(--accent); 
 }
 .recent-row::-webkit-scrollbar, .press-row::-webkit-scrollbar { display: none; }
 .recent-row { justify-content: space-between; }
-.recent-dot { flex: 0 0 56px; display: grid; justify-items: center; gap: 6px; scroll-snap-align: start; }
+.recent-dot { flex: 0 0 56px; display: grid; justify-items: center; gap: 6px; padding: 4px 0; border-radius: 12px; color: var(--text); text-decoration: none; scroll-snap-align: start; }
+.recent-dot:hover .recent-mark, .recent-dot:focus-visible .recent-mark { background: color-mix(in srgb, currentColor 12%, var(--surface-2)); }
+.recent-dot[data-current="true"] .recent-mark { box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent); }
 .recent-mark {
   display: grid;
   place-items: center;
@@ -1915,8 +1924,10 @@ table.standings tr[data-mine="true"] { box-shadow: inset 3px 0 0 var(--accent); 
 @media (max-width: 360px) {
   .hero-top { grid-template-columns: auto minmax(0, 1fr); }
   .hero-top .hero-settings { grid-column: 1 / -1; width: 100%; }
-  .stat-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
-  .recent-row { justify-content: flex-start; }
+  .stat-strip strong { font-size: 21px; }
+  .recent-row { gap: 4px; }
+  .recent-dot { flex-basis: 50px; }
+  .recent-mark { width: 36px; height: 36px; }
 }
 .sponsor-block { display: grid; gap: 8px; }
 .sponsor-block h2 { margin: 0; font-size: 16px; }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { InfoTip } from "@/components/InfoTip";
 import { CompactLineup, type CompactPlayer, type LineBonuses } from "@/components/lineups/CompactLineup";
 import type { LeagueHubData, LiveLineupSheet, OpponentLineup } from "@/lib/types";
@@ -72,7 +72,7 @@ function fromLive(sheet: LiveLineupSheet): { starters: CompactPlayer[]; bench: C
   return { starters: sheet.starters.map(map), bench: sheet.bench.map(map) };
 }
 
-export function MatchdayResults({ hub }: { hub: LeagueHubData }) {
+export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; initialRound?: number }) {
   const weeks = [...hub.gameweeks].sort((left, right) => left.number - right.number);
   const [week, setWeek] = useState<CalendarWeek | null>(null);
   const [pending, setPending] = useState(false);
@@ -95,6 +95,7 @@ export function MatchdayResults({ hub }: { hub: LeagueHubData }) {
   const gameweekId = current?.id ?? "";
   const mine = teams.find((team) => team.isMine) ?? null;
   const mineStanding = mine ? pointsById.get(mine.fantasyTeamId) : undefined;
+  const requestedRound = useRef(initialRound);
 
   useEffect(() => {
     setWeek(null);
@@ -134,6 +135,16 @@ export function MatchdayResults({ hub }: { hub: LeagueHubData }) {
       setPending(false);
     }
   }
+
+  // Arrivando da un link con una giornata (per esempio dai pallini della Home), apre quella giornata una volta sola.
+  useEffect(() => {
+    const number = requestedRound.current;
+    requestedRound.current = undefined;
+    if (number == null) return;
+    const target = weeks.find((item) => item.number === number);
+    if (target) void choose(target.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section className="stack">

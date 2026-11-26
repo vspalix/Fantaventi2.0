@@ -39,6 +39,13 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
   const initial = (board.teamName.trim()[0] ?? "F").toUpperCase();
   const last = focus?.lastRound ?? null;
   const duel = Boolean(last?.otherName);
+  const gap = last ? last.points - last.average : 0;
+  const roundTone = !last ? "mid" : Math.abs(gap) < 1 ? "mid" : gap > 0 ? "up" : "down";
+  const roundDelta = !last
+    ? ""
+    : roundTone === "mid"
+      ? `In linea con la media di lega (${points(last.average)})`
+      : `${gap > 0 ? "+" : "−"}${points(Math.abs(gap))} rispetto alla media di lega (${points(last.average)})`;
   const crest = (
     <Crest name={board.teamName} primary={board.teamPrimary} secondary={board.teamSecondary} logoUrl={board.teamLogoUrl} />
   );
@@ -75,39 +82,8 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
         </div>
         <div className="stat-strip">
           <div className="stat-cell stat-main"><strong>{place(focus.rank)}</strong><span>Posizione</span></div>
-          <div className="stat-cell"><strong>{points(last?.points ?? null)}</strong><span>{last ? `Giornata ${last.number}` : "Ultima"}</span></div>
-          <div className="stat-cell"><strong>{focus.played}</strong><span>Giornate</span></div>
-          <div className="stat-cell"><strong>{points(focus.total)}</strong><span>Pt. totali</span></div>
-        </div>
-      </article>
-
-      <article className="card dash-block">
-        <div className="dash-block-head">
-          <h2>Giornata precedente</h2>
-          <span>{duel ? "Scontro diretto" : focus.rank != null ? `${focus.rank}° sul totale` : "Sul totale"}</span>
-        </div>
-        {last && duel ? (
-          <div className="versus">
-            <div className="side">
-              <Mark letter={initial} />
-              <small>{board.teamName}</small>
-              <strong>{points(last.points)}</strong>
-            </div>
-            <span className="mid">G{last.number}</span>
-            <div className="side">
-              <Mark letter={last.otherName ?? "A"} />
-              <small>{last.otherName}</small>
-              <strong>{points(last.otherPoints)}</strong>
-            </div>
-          </div>
-        ) : last ? (
-          <div className="total-round">
-            <strong>{points(last.points)}</strong>
-            <p>Giornata {last.number} · {Math.abs(last.points - last.average) < 1 ? "in linea con" : last.points > last.average ? "sopra" : "sotto"} la media di lega ({points(last.average)})</p>
-          </div>
-        ) : <p>Nessuna giornata calcolata.</p>}
-        <div className="round-foot">
-          <Link href={voti}>Voti e pagelle</Link>
+          <div className="stat-cell"><strong>{points(focus.total)}</strong><span>Punti totali</span></div>
+          <div className="stat-cell"><strong>{focus.played}</strong><span>Giornate giocate</span></div>
         </div>
       </article>
 
@@ -144,21 +120,59 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
         </a>
       ) : null}
 
-      {focus.recent.length > 0 ? (
-        <article className="card dash-block">
-          <div className="dash-block-head">
-            <h2>Ultime giornate</h2>
+      <article className="card dash-block last-round">
+        <div className="dash-block-head">
+          <h2>{last ? `Giornata ${last.number}` : "Giornata precedente"}</h2>
+          <span>{duel ? "Scontro diretto" : "Ultima giocata"}</span>
+        </div>
+        {last && duel ? (
+          <div className="versus">
+            <div className="side">
+              <Mark letter={initial} />
+              <small>{board.teamName}</small>
+              <strong>{points(last.points)}</strong>
+            </div>
+            <span className="mid">G{last.number}</span>
+            <div className="side">
+              <Mark letter={last.otherName ?? "A"} />
+              <small>{last.otherName}</small>
+              <strong>{points(last.otherPoints)}</strong>
+            </div>
           </div>
-          <div className="recent-row">
-            {focus.recent.map((dot) => (
-              <div key={dot.number} className="recent-dot" data-tone={dot.tone}>
-                <span className="recent-mark">{dot.number}</span>
-                <strong>{dot.otherPoints != null ? `${points(dot.points)}–${points(dot.otherPoints)}` : points(dot.points)}</strong>
-              </div>
-            ))}
+        ) : last ? (
+          <div className="round-score">
+            <strong>{points(last.points)}<small>punti</small></strong>
+            <p className="round-delta" data-tone={roundTone}>{roundDelta}</p>
           </div>
-        </article>
-      ) : null}
+        ) : <p>Nessuna giornata calcolata.</p>}
+        {focus.recent.length > 0 ? (
+          <div className="recent-block">
+            <p className="recent-label">Andamento <span>Tocca per la classifica</span></p>
+            <div className="recent-row">
+              {focus.recent.map((dot) => {
+                const score = dot.otherPoints != null ? `${points(dot.points)}–${points(dot.otherPoints)}` : points(dot.points);
+                return (
+                  <Link
+                    key={dot.number}
+                    className="recent-dot"
+                    data-tone={dot.tone}
+                    data-current={dot.number === last?.number}
+                    href={`/leghe/${focus.id}?tab=risultati&giornata=${dot.number}`}
+                    aria-label={`Giornata ${dot.number}, ${score} punti: apri la classifica di giornata`}
+                  >
+                    <span className="recent-mark">{dot.number}</span>
+                    <strong>{score}</strong>
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
+        <div className="round-foot">
+          {last ? <Link href={`/leghe/${focus.id}?tab=risultati&giornata=${last.number}`}>Classifica di giornata</Link> : null}
+          <Link href={voti}>Voti e pagelle</Link>
+        </div>
+      </article>
 
       {focus.insights.length > 0 ? (
         <article className="card dash-block press-room">

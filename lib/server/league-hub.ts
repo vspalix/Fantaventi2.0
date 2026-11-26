@@ -1211,7 +1211,12 @@ export async function saveLeagueLineup(
   leagueId: string,
   input: { gameweekId: string; playerIds: string[]; benchIds: string[]; captainId: string | null; viceId: string | null },
 ) {
-  const hub = await loadLeagueHub(userId, leagueId, input.gameweekId);
+  const { assertWritesOpen } = await import("@/lib/server/maintenance");
+  // Lettura dei dati e controllo della manutenzione insieme, per risparmiare un giro.
+  const [hub] = await Promise.all([
+    loadLeagueHub(userId, leagueId, input.gameweekId),
+    assertWritesOpen(),
+  ]);
   if (!hub.selectedGameweekId || hub.selectedGameweekId !== input.gameweekId) {
     throw httpError("Questa giornata non è nel range della lega.", 400);
   }
@@ -1228,9 +1233,6 @@ export async function saveLeagueLineup(
       409,
     );
   }
-  const { assertWritesOpen } = await import("@/lib/server/maintenance");
-  await assertWritesOpen();
-
   const admin = createAdminSupabase();
   const team = teamOf(userId, hub.league.participants);
   if (!team) throw httpError("Prima salva la rosa: la formazione usa quei calciatori.", 400);
@@ -1269,12 +1271,27 @@ export async function saveLeagueLineup(
     throw new Error(error.message);
   }
 
+  const savedAt = new Date().toISOString();
   const stamped = await admin
     .from("lineups")
-    .update({ saved_at: new Date().toISOString() })
+    .update({ saved_at: savedAt })
     .eq("fantasy_team_id", team.id)
     .eq("gameweek_id", input.gameweekId);
   if (stamped.error && !/saved_at|schema cache/i.test(stamped.error.message)) throw new Error(stamped.error.message);
 
-  return loadLeagueHub(userId, leagueId, input.gameweekId);
+  // Niente seconda lettura completa: si risponde con i dati già letti e la formazione appena salvata.
+  // Il resto (formazioni degli altri, classifiche) l'app lo rilegge in sottofondo.
+  const saved: LeagueHubData = {
+    ...hub,
+    lineup: {
+      playerIds,
+      benchIds,
+      captainId: input.captainId,
+      viceId: playerIds.length === 1 ? null : input.viceId,
+    },
+    lineupOrigin: "saved",
+    carriedFromMatchday: null,
+    home: { ...hub.home, lineupSaved: true, lineupSavedAt: stamped.error ? hub.home.lineupSavedAt : savedAt },
+  };
+  return saved;
 }

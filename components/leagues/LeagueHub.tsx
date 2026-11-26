@@ -415,6 +415,16 @@ export function LeagueHub({
   );
   const canEdit = hub.editable && countdownOpen && !selectedStarted;
 
+  // Panchina sempre completa: chi non è in campo entra in fondo alla panchina, poi si riordina trascinando.
+  useEffect(() => {
+    if (!canEdit) return;
+    const missing = hub.roster
+      .filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id))
+      .sort((left, right) => BENCH_ROLES.indexOf(left.role) - BENCH_ROLES.indexOf(right.role))
+      .map((player) => player.id);
+    if (missing.length > 0) setBenchIds((current) => [...current, ...missing.filter((id) => !current.includes(id))]);
+  }, [canEdit, hub.roster, playerIds, benchIds]);
+
   useEffect(() => {
     if (!roundLive && board === "live") setBoard("generale");
   }, [roundLive, board]);
@@ -636,9 +646,11 @@ export function LeagueHub({
         body: JSON.stringify({ gameweekId: selected.id, playerIds, benchIds, captainId, viceId }),
       }));
       applyHub(body.hub);
-      setMessage("Rosa salvata per questa giornata.");
-      pushToast("ok", "Rosa salvata per questa giornata.");
+      const savedText = `Formazione salvata per la giornata ${selected.number}.`;
+      setMessage(savedText);
+      pushToast("ok", savedText);
       void triggerHaptic();
+      void refreshAfterSave(selected.id);
     } catch (reason) {
       const text = readableError(reason, "Salvataggio non riuscito. La formazione non è cambiata: riprova da questa schermata.");
       setError(text);
@@ -646,6 +658,18 @@ export function LeagueHub({
     } finally {
       flight.current = false;
       setPending(false);
+    }
+  }
+
+  /** Dopo il salvataggio rilegge in sottofondo il resto della lega, senza toccare la formazione sullo schermo. */
+  async function refreshAfterSave(gameweekId: string) {
+    try {
+      const body = await readJson<{ hub: LeagueHubData }>(
+        await fetch(`/api/leagues/${hub.league.id}/hub?gameweek=${gameweekId}`),
+      );
+      setHub((current) => (current.selectedGameweekId === body.hub.selectedGameweekId ? body.hub : current));
+    } catch {
+      // La formazione è già salvata e mostrata: se questa lettura non riesce, si aggiorna alla prossima apertura.
     }
   }
 
@@ -1088,7 +1112,7 @@ export function LeagueHub({
               <button className="ghost" type="button" onClick={() => setReplacingId(null)}>Chiudi</button>
             </div>
             <p className="small muted">
-              {ROLE_LABEL[replacing.role]} non in campo. Chi esce torna tra i disponibili, non in panchina.
+              {ROLE_LABEL[replacing.role]} non in campo. Chi esce va in fondo alla panchina.
             </p>
             {replacementPlayers.length === 0 ? <p>Nessun calciatore libero in questo ruolo.</p> : (
               <div className="stack">

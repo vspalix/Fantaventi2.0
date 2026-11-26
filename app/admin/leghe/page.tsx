@@ -1,6 +1,7 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
 import { PlatformControl } from "@/components/admin/PlatformControl";
 import { SetupNotice } from "@/components/SetupNotice";
+import { readAdminLeagueId } from "@/lib/server/admin-area";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
@@ -14,7 +15,7 @@ export default async function PlatformLeaguesPage() {
         <h1 className="section-title">Leghe della piattaforma</h1>
         <p className="lede">Elenco completo e override. Le regole si modificano dentro la lega; da qui nomini gli admin e riapri le formazioni.</p>
       </header>
-      <PlatformControl />
+      <PlatformControl initialLeagueId={await readAdminLeagueId()} />
     </section>
   );
 }

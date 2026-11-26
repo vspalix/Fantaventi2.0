@@ -22,8 +22,8 @@ async function readJson<T>(response: Response): Promise<T> {
   return payload;
 }
 
-export function RegulationEditor({ leagues }: { leagues: LeagueOption[] }) {
-  const [leagueId, setLeagueId] = useState(leagues[0]?.id ?? "");
+export function RegulationEditor({ leagues, initialLeagueId = null }: { leagues: LeagueOption[]; initialLeagueId?: string | null }) {
+  const [leagueId, setLeagueId] = useState(leagues.find((league) => league.id === initialLeagueId)?.id ?? leagues[0]?.id ?? "");
   const [draft, setDraft] = useState("");
   const [official, setOfficial] = useState("");
   const [schemaReady, setSchemaReady] = useState(true);

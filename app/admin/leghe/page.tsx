@@ -1,10 +1,12 @@
-import { AdminNav } from "@/components/admin/AdminNav";
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { PlatformControl } from "@/components/admin/PlatformControl";
 import { SetupNotice } from "@/components/SetupNotice";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 
-export default function PlatformLeaguesPage() {
+export default async function PlatformLeaguesPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
   return (
     <section className="stack">
@@ -12,7 +14,6 @@ export default function PlatformLeaguesPage() {
         <h1 className="section-title">Leghe della piattaforma</h1>
         <p className="lede">Elenco completo e override. Le regole si modificano dentro la lega; da qui nomini gli admin e riapri le formazioni.</p>
       </header>
-      <AdminNav />
       <PlatformControl />
     </section>
   );

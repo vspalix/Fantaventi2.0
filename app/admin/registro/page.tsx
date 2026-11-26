@@ -1,9 +1,7 @@
-import { AdminNav } from "@/components/admin/AdminNav";
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { EmptyState } from "@/components/EmptyState";
 import { listAdminAudit } from "@/lib/server/audit";
-import { isSuperAdmin } from "@/lib/server/platform-role";
 import { publicError } from "@/lib/server/api-error";
-import { getSessionUser } from "@/lib/server/session";
 
 const WHEN = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "short",
@@ -30,8 +28,8 @@ const ACTION_LABEL: Record<string, string> = {
 };
 
 export default async function AdminAuditPage() {
-  const user = await getSessionUser();
-  if (!user || !(await isSuperAdmin(user.id))) return null;
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   try {
     const log = await listAdminAudit();
     return (
@@ -40,7 +38,6 @@ export default async function AdminAuditPage() {
           <h1 className="section-title">Registro</h1>
           <p className="lede">Ogni ricalcolo, modifica voti, cambio regole ed espulsione resta qui con data, ora e id dell&apos;admin.</p>
         </header>
-        <AdminNav />
         {!log.ready ? (
           <p className="banner">Per attivare il registro esegui admin_audit.sql nell&apos;editor SQL di Supabase.</p>
         ) : log.rows.length === 0 ? (
@@ -81,7 +78,6 @@ export default async function AdminAuditPage() {
     return (
       <section className="stack">
         <h1 className="section-title">Registro</h1>
-        <AdminNav />
         <p className="banner">{publicError("Admin: Registro", error).message}</p>
       </section>
     );

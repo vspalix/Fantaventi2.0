@@ -9,7 +9,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Supabase: il client browser fa solo auth. Letture e scritture dati passano da `createAdminSupabase()` (service role, bypassa RLS). Le policy restano nel SQL che l'utente esegue a mano nell'editor Supabase.
 - GitHub Actions per i cron. Vercel Hobby solo per il deploy web.
 - `vercel.json` resta `{}`. Non aggiungere mai una chiave `crons`: Vercel Hobby non regge job sub-giornalieri e un cron lì cancellerebbe o duplicherebbe la pianificazione su GitHub.
-- Capacitor avvolge il sito di produzione (`capacitor.config.ts`, `server.url` su `https://fantaventi2-0.vercel.app`, `cleartext: false`). `ios/` e `android/` restano fuori dal repo. Per generarle in locale: `npx cap add ios`, `npx cap add android`, poi `npx cap sync` dopo ogni cambio di config o plugin. Il kit store (comandi, checklist App Store e Play, APNs/FCM) è in `docs/STORE_READINESS.md`. Il bridge è in `lib/native/bridge.ts` (condivisione, aptico, push nativa). I token nativi stanno in `device_push_tokens`: lo SQL `supabase/device_push_tokens.sql` lo esegue l'utente nell'editor Supabase.
+- Capacitor avvolge il sito di produzione (`capacitor.config.ts`, `server.url` su `https://fantaventi2-0.vercel.app`, `cleartext: false`). `ios/` e `android/` restano fuori dal repo. Per generarle in locale: `npx cap add ios`, `npx cap add android`, poi `npx cap sync` dopo ogni cambio di config o plugin. Il kit store (comandi, checklist App Store e Play, APNs/FCM) è in `docs/STORE_READINESS.md`. Il bridge è in `lib/native/bridge.ts` (condivisione, aptico, push nativa). I token nativi stanno nella tabella `device_push_tokens`.
 
 ## Cartelle
 
@@ -18,16 +18,16 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - `components/admin/` — desk del Laboratorio (client component).
 - `lib/server/` — logica server: voti, indisponibilità, finestre, settings, log.
 - `scripts/` — suite motore (`npm run test:engine`, anche in `prebuild`) e probe cron.
-- `supabase/` — SQL da incollare nell'editor Supabase. Non eseguirlo da qui.
+- `supabase/` — database (regole in `supabase/README.md`). `migrations/` contiene il file di partenza e le modifiche future, un nuovo file numerato per ogni modifica; l'utente li esegue a mano nell'editor Supabase dopo un backup. `archivio/` contiene i vecchi file SQL: non vanno più eseguiti. Non eseguire SQL da qui.
 - `.github/workflows/` — `sync-votes.yml` ogni 15 minuti, `sync-availability.yml` alle 11:00 e 20:00 UTC.
 
 ## Cron chirurgici
 
 - Auth: `Authorization: Bearer CRON_SECRET` oppure `x-cron-secret`. Segreto solo in env (Vercel, GitHub Actions, `.env.local`). Mai nel codice, nei log o nel browser.
 - `system_settings` (riga `id = 1`) è la fonte di URL voti, league/season API-Sports, `auto_sync_enabled`, `halftime_read_enabled` e `notify_on_sync_success`. Le colonne delle vecchie finestre non decidono più niente. Se la tabella manca, si usano i default.
-- Logo e icone stanno nel bucket pubblico `brand-assets` (SQL `supabase/brand_storage.sql`, lo esegue l'utente). Le API caricano con la service role. `brand_logo_url`, `brand_icon_192_url`, `brand_icon_512_url` e `brand_accent_color` sono in `system_settings`. Se un URL è vuoto si usano `/icons/icon-192.png` e `/icons/icon-512.png`, e il colore `#c6f531`. Il pannello è `/admin/laboratorio/brand`.
+- Logo e icone stanno nel bucket pubblico `brand-assets`. Le API caricano con la service role. `brand_logo_url`, `brand_icon_192_url`, `brand_icon_512_url` e `brand_accent_color` sono in `system_settings`. Se un URL è vuoto si usano `/icons/icon-192.png` e `/icons/icon-512.png`, e il colore `#c6f531`. Il pannello è `/admin/laboratorio/brand`.
 - Ogni giro che fa qualcosa va in `sync_logs` (`success`, `skipped`, `error`). Le chiamate dei voti a vuoto e i 401 non si loggano.
-- Voti: decide `lib/server/vote-schedule.ts`, esegue `lib/server/vote-engine.ts`. La fonte si contatta solo a fine primo tempo (50 minuti dal calcio d'inizio, spegnibile), a fine partita (120 minuti) e alle 08:00 Europe/Rome del giorno dopo l'ultima partita del turno. Una lettura per giornata e momento, un solo nuovo tentativo, poi avviso Telegram. I tentativi sono in `vote_reads` (SQL `supabase/vote_schedule.sql`, lo esegue l'utente). Fuori dai momenti previsti: una sola chiamata (`vote_clock`), nessuna scrittura.
+- Voti: decide `lib/server/vote-schedule.ts`, esegue `lib/server/vote-engine.ts`. La fonte si contatta solo a fine primo tempo (50 minuti dal calcio d'inizio, spegnibile), a fine partita (120 minuti) e alle 08:00 Europe/Rome del giorno dopo l'ultima partita del turno. Una lettura per giornata e momento, un solo nuovo tentativo, poi avviso Telegram. I tentativi sono nella tabella `vote_reads`. Fuori dai momenti previsti: una sola chiamata (`vote_clock`), nessuna scrittura.
 - Le letture di primo tempo e fine partita sono provvisorie: non segnano partite finite. Voti ufficiali e calcolo (dalla giornata 12) solo con la lettura della mattina e tutte le partite complete: pagina che le segna finite, risultato e almeno 11 voti per squadra. Un rinvio fa attendere il recupero.
 - Calendario: una volta al giorno alle 08:00, solo orari. `refreshSerieAKickoffs` non segna mai partite finite e non scrive risultati.
 - Sveglia esterna (`Europe/Rome`): `0,30 8 * * *` e `0,5,15,20,30,35,45,50 13-23 * * *`.

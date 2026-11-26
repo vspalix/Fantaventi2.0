@@ -1,13 +1,12 @@
-import { AdminNav } from "@/components/admin/AdminNav";
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { UserDesk } from "@/components/admin/UserDesk";
 import { listPlatformUsers } from "@/lib/server/platform-users";
-import { isSuperAdmin } from "@/lib/server/platform-role";
 import { publicError } from "@/lib/server/api-error";
-import { getSessionUser } from "@/lib/server/session";
 
 export default async function AdminUsersPage() {
-  const user = await getSessionUser();
-  if (!user || !(await isSuperAdmin(user.id))) return null;
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
+  const { user } = gate;
   try {
     const users = await listPlatformUsers();
     return (
@@ -16,7 +15,6 @@ export default async function AdminUsersPage() {
           <h1 className="section-title">Utenti</h1>
           <p className="lede">Account registrati. Da qui nomini un altro super admin: avrà laboratorio e registro, come te. Non puoi toglierti il ruolo da solo.</p>
         </header>
-        <AdminNav />
         <UserDesk initial={users} currentUserId={user.id} />
       </section>
     );
@@ -24,7 +22,6 @@ export default async function AdminUsersPage() {
     return (
       <section className="stack">
         <h1 className="section-title">Utenti</h1>
-        <AdminNav />
         <p className="banner">{publicError("Admin: Utenti", error).message}</p>
       </section>
     );

@@ -1,33 +1,19 @@
-import { AdminNav } from "@/components/admin/AdminNav";
+import { checkAdminPage } from "@/components/admin/AdminGate";
 import { LiveSyncDesk } from "@/components/admin/LiveSyncDesk";
 import { MatchdayDesk } from "@/components/admin/MatchdayDesk";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadTestLab } from "@/lib/server/test-lab";
 import { publicError } from "@/lib/server/api-error";
-import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
-import Link from "next/link";
 
 export default async function AdminPage() {
+  const gate = await checkAdminPage();
+  if (!gate.ok) return gate.screen;
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
 
-  const user = await getSessionUser();
-  if (!user) {
-    return (
-      <section className="stack">
-        <header>
-          <h1 className="section-title">Admin</h1>
-          <p className="lede">Entra per gestire voti, classifica, rinvii e formazioni.</p>
-        </header>
-        <AdminNav />
-        <Link className="primary" href="/accesso">Entra</Link>
-      </section>
-    );
-  }
-
   try {
-    const lab = await loadTestLab(user.id);
+    const lab = await loadTestLab(gate.user.id);
     return (
       <section className="stack">
         <header>
@@ -36,7 +22,6 @@ export default async function AdminPage() {
             Stagione {lab.seasonCode}. Stato del sync live, voti della giornata, ricalcolo della classifica, rinvii e formazioni consegnate.
           </p>
         </header>
-        <AdminNav />
         <LiveSyncDesk />
         <MatchdayDesk initial={lab} />
       </section>

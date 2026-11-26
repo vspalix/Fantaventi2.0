@@ -47,10 +47,12 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
     return (
       <section className="home-dash">
         <article className="hero-card">
-          {crest}
-          <div className="hero-copy">
-            <p className="hero-kicker">{board.competitionName}</p>
-            <h1>{board.teamName}</h1>
+          <div className="hero-top">
+            {crest}
+            <div className="hero-copy">
+              <p className="hero-kicker">{board.competitionName}</p>
+              <h1>{board.teamName}</h1>
+            </div>
           </div>
         </article>
         <LeagueOnboarding variant="card" />
@@ -61,22 +63,23 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
   return (
     <section className="home-dash">
       <article className="hero-card">
-        {crest}
-        <div className="hero-copy">
-          <p className="hero-kicker">{focus.name}</p>
-          <h1>{board.teamName}</h1>
+        <div className="hero-top">
+          {crest}
+          <div className="hero-copy">
+            <p className="hero-kicker">{focus.name}</p>
+            <h1>{board.teamName}</h1>
+          </div>
+          {board.teamId ? (
+            <TeamSettings look={{ teamId: board.teamId, name: board.teamName, primary: board.teamPrimary, secondary: board.teamSecondary, logoUrl: board.teamLogoUrl }} />
+          ) : null}
         </div>
-        {board.teamId ? (
-          <TeamSettings look={{ teamId: board.teamId, name: board.teamName, primary: board.teamPrimary, secondary: board.teamSecondary, logoUrl: board.teamLogoUrl }} />
-        ) : null}
+        <div className="stat-strip">
+          <div className="stat-cell stat-main"><strong>{place(focus.rank)}</strong><span>Posizione</span></div>
+          <div className="stat-cell"><strong>{points(last?.points ?? null)}</strong><span>{last ? `Giornata ${last.number}` : "Ultima"}</span></div>
+          <div className="stat-cell"><strong>{focus.played}</strong><span>Giornate</span></div>
+          <div className="stat-cell"><strong>{points(focus.total)}</strong><span>Pt. totali</span></div>
+        </div>
       </article>
-
-      <div className="stat-strip">
-        <article><strong>{place(focus.rank)}</strong><span>Posizione</span></article>
-        <article><strong>{points(last?.points ?? null)}</strong><span>{last ? `G${last.number}` : "Ultima"}</span></article>
-        <article><strong>{focus.played}</strong><span>Giornate</span></article>
-        <article><strong>{points(focus.total)}</strong><span>Pt. totali</span></article>
-      </div>
 
       <article className="card dash-block">
         <div className="dash-block-head">
@@ -130,7 +133,7 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
         ) : <p>Nessuna deadline aperta.</p>}
         <div className="dash-actions">
           <Link className="primary" href={formazione}>Inserisci Formazione</Link>
-          <a className="text-link" href={board.probabiliHref} target="_blank" rel="noreferrer">Probabili e altro</a>
+          <a className="ghost" href={board.probabiliHref} target="_blank" rel="noreferrer">Probabili e altro</a>
         </div>
       </article>
 
@@ -143,7 +146,9 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
 
       {focus.recent.length > 0 ? (
         <article className="card dash-block">
-          <h2>Ultime giornate</h2>
+          <div className="dash-block-head">
+            <h2>Ultime giornate</h2>
+          </div>
           <div className="recent-row">
             {focus.recent.map((dot) => (
               <div key={dot.number} className="recent-dot" data-tone={dot.tone}>
@@ -156,13 +161,15 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
       ) : null}
 
       {focus.insights.length > 0 ? (
-        <article className="press-room">
-          <h2>La tua sala stampa</h2>
+        <article className="card dash-block press-room">
+          <div className="dash-block-head">
+            <h2>La tua sala stampa</h2>
+          </div>
           <div className="press-row">
             {focus.insights.map((line) => (
               <p className="press-card" data-tone={line.tone} key={line.text}>
                 <span className="press-badge">{line.badge}</span>
-                {line.text}
+                <span className="press-text">{line.text}</span>
               </p>
             ))}
           </div>

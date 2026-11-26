@@ -1,3 +1,4 @@
+import { forgetShared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -186,5 +187,6 @@ export async function correctListoneRole(
     throw httpError("Per correggere il ruolo esegui role_correction.sql nell'editor SQL di Supabase.", 409);
   }
   if (updateError) throw new Error(updateError.message);
+  forgetShared(SHARED_TAGS.listone);
   return { id: registrationId, role, roleLabel: roleLabelValue, roleLocked: true };
 }

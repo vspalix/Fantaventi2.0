@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { Announcement, AnnouncementKind } from "@/lib/announcements";
+import { forgetShared, shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type { Announcement, AnnouncementKind };
@@ -41,17 +42,24 @@ function mapRow(row: {
   };
 }
 
+async function queryActiveAnnouncements(): Promise<Announcement[]> {
+  const admin = createAdminSupabase();
+  const rows = await admin
+    .from("app_announcements")
+    .select("id, kind, title, body, image_url, cta_label, cta_href, is_active, once_per_user")
+    .eq("is_active", true)
+    .order("updated_at", { ascending: false })
+    .limit(3);
+  if (rows.error) throw new Error(rows.error.message);
+  return (rows.data ?? []).map((row) => mapRow(row as Parameters<typeof mapRow>[0]));
+}
+
+// Gli annunci attivi sono uguali per tutti: chi li ha già visti lo ricorda il telefono o il browser.
+const sharedActiveAnnouncements = shared(SHARED_TAGS.announcements, 300, queryActiveAnnouncements);
+
 export const loadActiveAnnouncements = cache(async (): Promise<Announcement[]> => {
   try {
-    const admin = createAdminSupabase();
-    const rows = await admin
-      .from("app_announcements")
-      .select("id, kind, title, body, image_url, cta_label, cta_href, is_active, once_per_user")
-      .eq("is_active", true)
-      .order("updated_at", { ascending: false })
-      .limit(3);
-    if (rows.error) return [];
-    return (rows.data ?? []).map((row) => mapRow(row as Parameters<typeof mapRow>[0]));
+    return await sharedActiveAnnouncements();
   } catch {
     return [];
   }
@@ -129,10 +137,12 @@ export async function saveAnnouncement(input: unknown) {
     if (missing(saved.error.message)) throw httpError("Manca la tabella. Esegui app_announcements.sql nell'editor SQL.", 503);
     throw new Error(saved.error.message);
   }
+  forgetShared(SHARED_TAGS.announcements);
 }
 
 export async function setAnnouncementActive(id: string, isActive: boolean) {
   const admin = createAdminSupabase();
   const saved = await admin.from("app_announcements").update({ is_active: isActive, updated_at: new Date().toISOString() }).eq("id", id);
   if (saved.error) throw new Error(saved.error.message);
+  forgetShared(SHARED_TAGS.announcements);
 }

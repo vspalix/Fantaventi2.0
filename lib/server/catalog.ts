@@ -189,20 +189,18 @@ export async function ensureProfile(admin: SupabaseClient, userId: string, email
   if (error) throw new Error(error.message);
 }
 
-const catalogForSeason = cache(async (seasonId: string): Promise<CatalogResponse> => {
-  assertServiceEnv();
+/** Club e calciatori di una stagione. Qui non vanno dati che cambiano spesso, come indisponibili e voti. */
+async function queryListone(seasonId: string) {
   const admin = createAdminSupabase();
-  const season = await getCurrentSeason(admin, seasonId);
-
   const [clubQuery, registrationQuery] = await Promise.all([
     admin
       .from("season_clubs")
       .select("club_id, clubs(code, club_translations(locale, name, short_name))")
-      .eq("season_id", season.id),
+      .eq("season_id", seasonId),
     admin
       .from("player_registrations")
       .select("player_id, role, club_id, players(full_name), clubs(code, club_translations(locale, name, short_name))")
-      .eq("season_id", season.id)
+      .eq("season_id", seasonId)
       .is("effective_to_gameweek", null),
   ]);
   if (clubQuery.error) throw new Error(clubQuery.error.message);
@@ -234,6 +232,19 @@ const catalogForSeason = cache(async (seasonId: string): Promise<CatalogResponse
     };
   }).sort((a, b) => a.fullName.localeCompare(b.fullName, "it"));
 
+  return { clubs, players };
+}
+
+// Import e correzione di un ruolo svuotano questa memoria. La scadenza copre le modifiche fatte a mano su Supabase.
+const sharedListone = shared(SHARED_TAGS.listone, 24 * 60 * 60, queryListone);
+
+const catalogForSeason = cache(async (seasonId: string): Promise<CatalogResponse> => {
+  assertServiceEnv();
+  const season = await getCurrentSeason(createAdminSupabase(), seasonId);
+  const stored = await sharedListone(season.id);
+  // Un listone vuoto in memoria non fa testo: così un primo caricamento fatto a mano si vede subito.
+  const { clubs, players } = stored.players.length > 0 ? stored : await queryListone(season.id);
+  // Codice e regole restano fuori dalla memoria del listone: seguono quella delle stagioni.
   return { seasonId: season.id, seasonCode: season.code, clubs, players, rules: season.rules };
 });
 

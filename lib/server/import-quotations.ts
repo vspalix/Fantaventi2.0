@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { listoneProviders, resolveListoneAdapter, votesProviders } from "@/lib/adapters";
 import type { AdapterSource, NormalizedPlayer } from "@/lib/adapters";
 import { getCurrentSeason } from "@/lib/server/catalog";
+import { forgetShared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -272,39 +273,44 @@ export async function importQuotations(
   let moved = 0;
   let released = 0;
 
-  for (const player of book.active) {
-    const club = await ensureClub(admin, input.competitionId, input.seasonId, clubs.bySlug, player.clubName);
-    if (club.created) clubsCreated += 1;
-    const playerId = await upsertPlayer(admin, input.competitionId, player);
-    const result = await keepRegistration(
-      admin,
-      input.seasonId,
-      playerId,
-      club.club.id,
-      player.role,
-      currentGameweek,
-    );
-    if (result === "created") created += 1;
-    if (result === "updated") updated += 1;
-    if (result === "moved") moved += 1;
-  }
-
-  for (const player of book.released) {
-    const { data, error } = await admin
-      .from("players")
-      .select("id")
-      .eq("competition_id", input.competitionId)
-      .eq("external_ref", player.externalRef)
-      .maybeSingle();
-    if (error) {
-      if (competitionColumnMissing(error.message)) {
-        throw httpError("Esegui multi_competition.sql: il codice calciatore deve essere unico dentro la competizione.", 409);
-      }
-      throw new Error(error.message);
+  try {
+    for (const player of book.active) {
+      const club = await ensureClub(admin, input.competitionId, input.seasonId, clubs.bySlug, player.clubName);
+      if (club.created) clubsCreated += 1;
+      const playerId = await upsertPlayer(admin, input.competitionId, player);
+      const result = await keepRegistration(
+        admin,
+        input.seasonId,
+        playerId,
+        club.club.id,
+        player.role,
+        currentGameweek,
+      );
+      if (result === "created") created += 1;
+      if (result === "updated") updated += 1;
+      if (result === "moved") moved += 1;
     }
-    const playerId = data?.id ? data.id as string : await upsertPlayer(admin, input.competitionId, player);
-    const closed = await releasePlayer(admin, input.seasonId, playerId, currentGameweek);
-    if (closed) released += 1;
+
+    for (const player of book.released) {
+      const { data, error } = await admin
+        .from("players")
+        .select("id")
+        .eq("competition_id", input.competitionId)
+        .eq("external_ref", player.externalRef)
+        .maybeSingle();
+      if (error) {
+        if (competitionColumnMissing(error.message)) {
+          throw httpError("Esegui multi_competition.sql: il codice calciatore deve essere unico dentro la competizione.", 409);
+        }
+        throw new Error(error.message);
+      }
+      const playerId = data?.id ? data.id as string : await upsertPlayer(admin, input.competitionId, player);
+      const closed = await releasePlayer(admin, input.seasonId, playerId, currentGameweek);
+      if (closed) released += 1;
+    }
+  } finally {
+    // Anche un import interrotto a metà ha già scritto delle righe.
+    forgetShared(SHARED_TAGS.listone);
   }
 
   return {

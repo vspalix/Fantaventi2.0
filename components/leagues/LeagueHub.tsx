@@ -37,6 +37,7 @@ import { triggerHaptic } from "@/lib/native/bridge";
 import { readAction, readableError } from "@/lib/feedback";
 
 const BENCH_ROLES: PlayerRole[] = ["GK", "DEF", "MID", "FWD"];
+const ROLE_LETTER: Record<PlayerRole, string> = { GK: "P", DEF: "D", MID: "C", FWD: "A" };
 const deadlineFormat = new Intl.DateTimeFormat("it-IT", {
   dateStyle: "medium",
   timeStyle: "short",
@@ -756,7 +757,16 @@ export function LeagueHub({
         <header>
           <h1 className="section-title">{shownTab === "classifica" ? "Classifica" : "Risultati di giornata"}</h1>
         </header>
-      ) : shownTab === "formazione" || shownTab === "pagelle" ? null : (
+      ) : shownTab === "formazione" ? (
+        <header className="lineup-head">
+          <h1 className="section-title">Formazione</h1>
+          {selected ? (
+            <p className="small muted">
+              Giornata {selected.number}{canEdit ? " · modificabile fino alla deadline" : ""}
+            </p>
+          ) : null}
+        </header>
+      ) : shownTab === "pagelle" ? null : (
       <header>
         <p className="small muted">
           {hub.league.seasonCode} · Giornate {hub.league.startMatchday}–{hub.league.endMatchday}
@@ -846,7 +856,7 @@ export function LeagueHub({
 
           {hub.liveSheet ? <PlayedLineup sheet={hub.liveSheet} /> : null}
           {hub.liveSheet ? null : (
-            <section className="panel roster-main" data-pending={pending || picks.locked}>
+            <section className="roster-main lineup-panel" data-pending={pending || picks.locked}>
               {canEdit && saveBlocked ? (
                 <p className="banner">Non puoi salvare: {saveReason}.</p>
               ) : null}
@@ -855,34 +865,42 @@ export function LeagueHub({
                   Senza calciatori in rosa non puoi schierare.
                 </EmptyState>
               ) : (
-                <Pitch
-                  formation={formation}
-                  players={hub.roster}
-                  playerIds={playerIds}
-                  captainId={captainId}
-                  viceId={viceId}
-                  editable={canEdit && !pending && !picks.locked}
-                  hideMarks
-                  onReplace={setReplacingId}
-                  onPickRole={setPickerRole}
-                />
+                <div className="lineup-field">
+                  {canEdit ? (
+                    <div className="lineup-tools">
+                      <label className="module-pick">
+                        <span>Modulo</span>
+                        <select
+                          aria-label="Modulo"
+                          value={formationId}
+                          disabled={pending || picks.locked}
+                          onChange={(event) => chooseFormation(event.target.value as FormationId)}
+                        >
+                          {FORMATIONS.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
+                        </select>
+                      </label>
+                      <p className="small muted">Tocca un giocatore per cambiarlo</p>
+                    </div>
+                  ) : null}
+                  <Pitch
+                    formation={formation}
+                    players={hub.roster}
+                    playerIds={playerIds}
+                    captainId={captainId}
+                    viceId={viceId}
+                    editable={canEdit && !pending && !picks.locked}
+                    onReplace={setReplacingId}
+                    onPickRole={setPickerRole}
+                  />
+                  {shapeIssue ? <p className="small">{shapeIssue}</p> : null}
+                </div>
               )}
-              {canEdit ? (
-                <label className="module-pick">
-                  Modulo
-                  <select
-                    aria-label="Modulo"
-                    value={formationId}
-                    disabled={pending || picks.locked}
-                    onChange={(event) => chooseFormation(event.target.value as FormationId)}
-                  >
-                    {FORMATIONS.map((item) => <option key={item.id} value={item.id}>{item.id}</option>)}
-                  </select>
-                </label>
-              ) : null}
-              {shapeIssue ? <p className="small">{shapeIssue}</p> : null}
               {fielded.length > 0 ? (
-                <div className="arm-box">
+                <div className="arm-box lineup-card">
+                  <div className="lineup-card-head">
+                    <h2>Capitano e vice</h2>
+                  </div>
+                  <p className="small muted">Scegli la scheda, poi tocca un giocatore.</p>
                   <div className="tabs" role="tablist" aria-label="Capitano e vice">
                     <button className="tab" type="button" data-active={arm === "captain"} onClick={() => setArm("captain")}>Capitano</button>
                     <button className="tab" type="button" data-active={arm === "vice"} onClick={() => setArm("vice")} disabled={fielded.length < 2}>Vice</button>
@@ -898,26 +916,40 @@ export function LeagueHub({
                           disabled={!canEdit || pending || picks.locked}
                           onClick={() => mark(player.id, arm)}
                         >
-                          {player.fullName}
-                          <span>{ROLE_LABEL[player.role]}</span>
+                          <span className="role-chip" data-role={player.role}>{ROLE_LETTER[player.role]}</span>
+                          <strong>{player.fullName}</strong>
+                          {captainId === player.id ? <em className="arm-mark">C</em> : viceId === player.id ? <em className="arm-mark">V</em> : null}
                         </button>
                       );
                     })}
                   </div>
                 </div>
               ) : null}
-              <h2>Panchina</h2>
+              <div className="lineup-card">
+              <div className="lineup-card-head">
+                <h2>Panchina</h2>
+                <span>{bench.length}</span>
+              </div>
+              {canEdit && bench.length > 0 ? <p className="small muted">In ordine di ingresso. Tocca per toglierlo.</p> : null}
               {bench.length === 0 ? <p className="small">Nessuno in panchina.</p> : (
                 <ol className="bench-order">
                   {bench.map((player, index) => (
                     <li key={player.id}>
                       {canEdit ? (
-                        <button type="button" disabled={pending || picks.locked} onClick={() => dropFromBench(player.id)}>
-                          {index + 1}. {player.fullName}
-                          <span className="small muted"> · {ROLE_LABEL[player.role]} · {player.clubShort}</span>
+                        <button type="button" disabled={pending || picks.locked} onClick={() => dropFromBench(player.id)} aria-label={`Togli ${player.fullName} dalla panchina`}>
+                          <span className="bench-num">{index + 1}</span>
+                          <span className="role-chip" data-role={player.role}>{ROLE_LETTER[player.role]}</span>
+                          <strong>{player.fullName}</strong>
+                          <span className="bench-club">{player.clubShort}</span>
+                          <span className="bench-drop" aria-hidden="true">×</span>
                         </button>
                       ) : (
-                        <span>{index + 1}. <TeamBadge teamName={player.clubShort} /> {player.fullName}</span>
+                        <span className="bench-static">
+                          <span className="bench-num">{index + 1}</span>
+                          <span className="role-chip" data-role={player.role}>{ROLE_LETTER[player.role]}</span>
+                          <strong>{player.fullName}</strong>
+                          <span className="bench-club"><TeamBadge teamName={player.clubShort} /> {player.clubShort}</span>
+                        </span>
                       )}
                     </li>
                   ))}
@@ -927,8 +959,8 @@ export function LeagueHub({
                 const players = available.filter((player) => player.role === role);
                 if (players.length === 0) return null;
                 return (
-                  <div key={`avail-${role}`}>
-                    <p className="small">{ROLE_LABEL[role]}</p>
+                  <div key={`avail-${role}`} className="bench-add">
+                    <p className="bench-add-head"><span className="role-chip" data-role={role}>{ROLE_LETTER[role]}</span>Da aggiungere · {ROLE_LABEL[role]}</p>
                     <div className="side-list">
                       {players.map((player) => (
                         <button
@@ -946,6 +978,7 @@ export function LeagueHub({
                   </div>
                 );
               }) : null}
+              </div>
             </section>
           )}
           {canEdit && !hub.liveSheet ? (
@@ -958,7 +991,7 @@ export function LeagueHub({
                 }}
               >
                 <button className="primary" type="button" disabled={pending || picks.locked || saveBlocked} aria-busy={pending} onClick={() => void saveLineup()}>
-                  <BusyLabel pending={pending} idle="Salva rosa" busy="Salvataggio..." />
+                  <BusyLabel pending={pending} idle="Salva formazione" busy="Salvataggio..." />
                 </button>
               </span>
               <button

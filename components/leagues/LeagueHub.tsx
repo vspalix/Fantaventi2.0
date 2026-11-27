@@ -23,6 +23,7 @@ import {
   formationById,
   formationIssue,
   inferFormation,
+  missingStarters,
   roleCap,
   trimToFormation,
   type FormationId,
@@ -880,7 +881,7 @@ export function LeagueHub({
 
   const shapeIssue = formationIssue(hub.roster, playerIds);
   const hasCaptain = Boolean(captainId && playerIds.includes(captainId));
-  const hasVice = playerIds.length <= 1 || Boolean(viceId && viceId !== captainId && playerIds.includes(viceId));
+  const hasVice = Boolean(viceId && viceId !== captainId && playerIds.includes(viceId));
   const missingCaptainOrVice = !hasCaptain || !hasVice;
   const formation = formationById(formationId);
   const bench = benchIds
@@ -906,11 +907,14 @@ export function LeagueHub({
       : hub.lineupOrigin === "previous" && hub.carriedFromMatchday
         ? `Formazione proposta per la giornata ${selected.number}, presa dalla giornata ${hub.carriedFromMatchday}: non ancora salvata. Premi «Salva formazione» per confermarla.`
         : `Giornata ${selected.number}: formazione non ancora salvata.`;
-  const saveBlocked = missingCaptainOrVice || missingBench;
-  const saveReason = [
-    missingCaptainOrVice ? "manca capitano o vice" : "",
-    missingBench ? "manca la panchina" : "",
-  ].filter(Boolean).join(" e ");
+  const saveProblems = [
+    missingStarters(fielded.length),
+    missingCaptainOrVice ? "manca capitano o vice" : null,
+    missingBench ? "manca la panchina" : null,
+  ].filter((problem): problem is string => Boolean(problem));
+  const saveBlocked = saveProblems.length > 0;
+  /** «a», «a e b», «a, b e c». */
+  const saveReason = saveProblems.join(", ").replace(/, ([^,]*)$/, " e $1");
   const pickerPlayers = pickerRole
     ? hub.roster.filter((player) => player.role === pickerRole && !playerIds.includes(player.id))
     : [];

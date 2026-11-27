@@ -23,6 +23,12 @@ export function surname(name: string) {
   return parts.at(-1) ?? "";
 }
 
+/** Nel listone gli omonimi hanno l'iniziale in coda: «Davis K.», «Pellegrini Lo.». */
+function splitInitial(name: string) {
+  const found = /^(.*\S)\s+(\p{L}{1,3})\.$/u.exec(name.normalize("NFC").trim());
+  return found ? { base: found[1], initial: fold(found[2]) } : { base: name, initial: "" };
+}
+
 export function resolveClub(label: string) {
   const folded = fold(label);
   if (!folded) return null;
@@ -46,14 +52,34 @@ export function matchAvailability(
       matched.push({ playerId: alias.playerId, row });
       continue;
     }
-    const last = surname(row.name);
-    const hits = known.filter((player) => surname(player.fullName) === last && (!club || player.clubCode === club));
-    const unique = hits.length === 1 ? hits : known.filter((player) => surname(player.fullName) === last);
-    if (hits.length === 1 || (hits.length === 0 && unique.length === 1)) {
-      matched.push({ playerId: (hits[0] ?? unique[0]).id, row });
+    const found = findBySurname(row.name, club, known);
+    if (found) {
+      matched.push({ playerId: found.id, row });
     } else {
       unmatched.push(row);
     }
   }
   return { matched, unmatched };
+}
+
+/** Il calciatore solo se il cognome ne indica uno e uno soltanto. */
+function findBySurname(name: string, club: string | null, known: KnownPlayer[]) {
+  const wanted = splitInitial(name);
+  const last = surname(wanted.base);
+  const sameSurname = wanted.initial ? [] : known.filter((player) => surname(player.fullName) === last);
+  const hits = sameSurname.filter((player) => !club || player.clubCode === club);
+  if (hits.length > 0) return hits.length === 1 ? hits[0] : null;
+  // «Davis» è «Davis K.», ma solo dentro il suo club: due candidati restano da scegliere a mano.
+  if (club) {
+    const shortened = known.filter((player) => {
+      const listed = splitInitial(player.fullName);
+      return player.clubCode === club
+        && listed.initial !== ""
+        && surname(listed.base) === last
+        && (listed.initial.startsWith(wanted.initial) || wanted.initial.startsWith(listed.initial));
+    });
+    if (shortened.length > 0) return shortened.length === 1 ? shortened[0] : null;
+  }
+  // Nessuno in quel club: vale il cognome unico in tutto il listone.
+  return sameSurname.length === 1 ? sameSurname[0] : null;
 }

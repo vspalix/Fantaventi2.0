@@ -74,11 +74,16 @@ export async function waitingEntries(
   return waiting;
 }
 
+/** Le voci speciali di una formazione calcolata con le regole della lega. */
+export type ScoreParts = { captain: number; defense: number; fairPlay: number };
+
 export async function fantasyPointsForLeague(
   leagueId: string,
   seasonId: string,
   teamIds: string[],
   gameweeks: { id: string; number: number }[],
+  /** Se passata, si riempie con le voci speciali (chiave `squadra:giornata`). */
+  parts?: Map<string, ScoreParts>,
 ) {
   if (teamIds.length === 0 || gameweeks.length === 0) return new Map<string, number>();
   const admin = createAdminSupabase();
@@ -261,7 +266,10 @@ export async function fantasyPointsForLeague(
       holeIdsKeepingHeldPlayers(slots, stats, definition.lineup_size ?? 11),
     );
     const officePenalty = rules.missedLineup === "penalty" && (lineup as { origin?: string }).origin === "office";
-    points.set(`${lineup.fantasy_team_id as string}:${gameweekId}`, officePenalty ? rules.missedLineupPenalty : score.total);
+    const key = `${lineup.fantasy_team_id as string}:${gameweekId}`;
+    points.set(key, officePenalty ? rules.missedLineupPenalty : score.total);
+    // Chi prende la penalità non ha capitano, difesa né fair play in quella giornata.
+    if (!officePenalty) parts?.set(key, { captain: score.captainModifier, defense: score.defenseModifier, fairPlay: score.fairPlay });
   }
   if (rules.missedLineup === "penalty") {
     for (const teamId of teamIds) {

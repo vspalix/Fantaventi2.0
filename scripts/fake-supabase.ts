@@ -14,6 +14,7 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
   seasons: { rulesets: { table: "rulesets", kind: "one", local: "ruleset_id", foreign: "id" } },
   clubs: { club_translations: { table: "club_translations", kind: "many", local: "id", foreign: "club_id" } },
   season_clubs: { clubs: { table: "clubs", kind: "one", local: "club_id", foreign: "id" } },
+  private_league_members: { fantasy_teams: { table: "fantasy_teams", kind: "one", local: "fantasy_team_id", foreign: "id" } },
 };
 
 /** Vincoli di unicità come nel database vero. */

@@ -140,6 +140,40 @@ export async function runLiveGapChecks() {
   const diaz = matchAvailability([{ name: "Díaz", club: "Fiorentina", status: "injured", playProbability: null, reason: null }], players, []);
   add("Díaz e Diaz sono lo stesso cognome", diaz.matched[0]?.playerId === "diaz", diaz.matched.map((item) => item.playerId).join(","));
 
+  const listed: KnownPlayer[] = [
+    { id: "davis", fullName: "Davis K.", clubCode: "udinese", clubName: "Udinese" },
+    { id: "pellegrini-lo", fullName: "Pellegrini Lo.", clubCode: "roma", clubName: "Roma" },
+    { id: "pellegrini-lu", fullName: "Pellegrini Lu.", clubCode: "lazio", clubName: "Lazio" },
+    { id: "azzouzi", fullName: "El Azzouzi O.", clubCode: "bologna", clubName: "Bologna" },
+    { id: "kone-i", fullName: "Konè I.", clubCode: "sassuolo", clubName: "Sassuolo" },
+    { id: "kone-m", fullName: "Konè M.", clubCode: "roma", clubName: "Roma" },
+    { id: "martinez-l", fullName: "Martinez L.", clubCode: "inter", clubName: "Inter" },
+    { id: "martinez-jo", fullName: "Martinez Jo.", clubCode: "inter", clubName: "Inter" },
+    { id: "verdi", fullName: "Verdi", clubCode: "como", clubName: "Como" },
+    { id: "verdi-s", fullName: "Verdi S.", clubCode: "como", clubName: "Como" },
+    { id: "bianchi", fullName: "Neri L.", clubCode: "torino", clubName: "Torino" },
+  ];
+  const pick = (name: string, club: string) => matchAvailability(
+    [{ name, club, status: "injured", playProbability: null, reason: null }],
+    listed,
+    [],
+  ).matched[0]?.playerId ?? "non abbinato";
+  const expect = (title: string, name: string, club: string, playerId: string) => {
+    const got = pick(name, club);
+    add(title, got === playerId, got);
+  };
+  expect("Davis si abbina a Davis K. del suo club", "Davis", "Udinese", "davis");
+  expect("Pellegrini della Roma è Lo.", "Pellegrini", "Roma", "pellegrini-lo");
+  expect("Pellegrini della Lazio è Lu.", "Pellegrini", "Lazio", "pellegrini-lu");
+  expect("Cognome in due parole con iniziale", "El Azzouzi", "Bologna", "azzouzi");
+  expect("Konè sceglie quello del club", "Konè", "Sassuolo", "kone-i");
+  expect("Due Martinez nello stesso club restano da scegliere", "Martinez", "Inter", "non abbinato");
+  expect("L'iniziale della fonte distingue due omonimi", "Martinez L.", "Inter", "martinez-l");
+  expect("Il cognome senza iniziale ha la precedenza", "Verdi", "Como", "verdi");
+  expect("Con l'iniziale non vale un altro club", "Davis", "Roma", "non abbinato");
+  expect("Un'iniziale non si scambia per cognome", "Rossi L.", "Torino", "non abbinato");
+  expect("Senza club un nome con iniziale in listone resta da scegliere", "Davis", "", "non abbinato");
+
   add("API-Football con errors non è una lista vuota", (apiFootballFailure({ plan: "season not covered" }) ?? "").includes("plan"), apiFootballFailure({ plan: "season not covered" }) ?? "vuoto");
   add("API-Football senza errors non è un fallimento", apiFootballFailure(null) === null && apiFootballFailure({}) === null, "null");
 

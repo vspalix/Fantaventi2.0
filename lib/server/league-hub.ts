@@ -10,7 +10,7 @@ import { entryCredit } from "@/lib/late-entry";
 import { fantasyPointsForLeague, waitingEntries } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
-import { loadWeekMatchState, type WeekMatchState } from "@/lib/server/roster";
+import { loadWeekMatchState, weekUnderway } from "@/lib/server/roster";
 import { reportError } from "@/lib/server/error-report";
 import { LINEUP_LOCK_CODES, submitLineupSerialized } from "@/lib/server/lineup-submit";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -69,13 +69,6 @@ function isLocked(gameweek: GameweekRow, now: number, inPlay: Set<number>) {
   return CLOSED.has(gameweek.status)
     || inPlay.has(gameweek.number)
     || new Date(gameweek.deadline_at).getTime() <= now;
-}
-
-function weekUnderway(gameweek: GameweekRow, now: number, state: WeekMatchState) {
-  if (gameweek.status === "scored" || gameweek.status === "final") return false;
-  const started = state.inPlay.has(gameweek.number) || new Date(gameweek.deadline_at).getTime() <= now;
-  if (!started || !state.withMatches.has(gameweek.number)) return false;
-  return !state.finished.has(gameweek.number);
 }
 
 function slotsOf(row: LineupRow): SlotRow[] {

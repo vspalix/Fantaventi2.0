@@ -1950,6 +1950,7 @@ button.shirt-empty:disabled { cursor: default; }
 .current-round .dash-block-head { text-align: left; }
 .current-round .clock-pill { margin: 0 auto; }
 .clock-pill { margin: 8px auto 0; width: fit-content; display: flex; align-items: baseline; gap: 8px; padding: 8px 16px; border-radius: var(--r-btn); background: var(--surface-2); border: 1px solid var(--line); color: var(--accent); font-size: 24px; font-weight: 600; }
+.clock-pill[data-live] { font-size: var(--fs-md); }
 .clock-tick { color: var(--muted); font-size: var(--fs-sm); font-weight: 500; }
 .dash-actions { display: grid; gap: 8px; }
 .dash-actions .primary, .dash-actions .ghost { width: 100%; min-height: 48px; justify-content: center; }

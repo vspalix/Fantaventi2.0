@@ -3,9 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { InfoTip } from "@/components/InfoTip";
 import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
+import { compactFromLive, LIVE_NOTE } from "@/lib/lineups/compact-sheet";
 import { TeamDetail } from "@/components/scores/TeamDetail";
 import type { ScoreAudit } from "@/lib/engine/score-audit";
-import type { LeagueHubData, LiveLineupSheet, OpponentLineup } from "@/lib/types";
+import type { LeagueHubData, OpponentLineup } from "@/lib/types";
 import { readableError } from "@/lib/feedback";
 
 /** Quante squadre alla volta: la classifica resta veloce anche con tantissimi iscritti. */
@@ -59,22 +60,6 @@ function fromSlots(opponent: OpponentLineup): { starters: CompactPlayer[]; bench
       events: [],
     })),
   };
-}
-
-function fromLive(sheet: LiveLineupSheet): { starters: CompactPlayer[]; bench: CompactPlayer[] } {
-  const map = (row: LiveLineupSheet["starters"][number]): CompactPlayer => ({
-    id: row.playerId,
-    name: row.fullName,
-    role: row.role,
-    club: row.clubShort,
-    vote: row.voto,
-    fanta: row.fantavoto,
-    captain: row.isCaptain,
-    played: row.voto != null,
-    entered: false,
-    events: [],
-  });
-  return { starters: sheet.starters.map(map), bench: sheet.bench.map(map) };
 }
 
 /** La giornata chiesta da un link e se mostrare subito la propria formazione. */
@@ -169,7 +154,6 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
       opponent={team}
       scored={Boolean(scored)}
       detail={details[detailKey(team.fantasyTeamId)] ?? null}
-      live={team.isMine && current && hub.home.gameweekNumber === current.number ? hub.liveSheet : null}
       onRetry={() => void loadDetail(team.fantasyTeamId)}
     />
   );
@@ -358,13 +342,11 @@ function TeamBlock({
   opponent,
   scored,
   detail,
-  live,
   onRetry,
 }: {
   opponent: OpponentLineup;
   scored: boolean;
   detail: Detail | null;
-  live: LiveLineupSheet | null;
   onRetry: () => void;
 }) {
   if (!opponent.filed || detail?.state === "none") return <p className="small muted cal-note">Non ha schierato.</p>;
@@ -388,16 +370,23 @@ function TeamBlock({
     }
     return <TeamDetail audit={detail.audit} />;
   }
-  const rows = live ? fromLive(live) : fromSlots(opponent);
+  const live = opponent.sheet;
+  const rows = live ? compactFromLive(live) : fromSlots(opponent);
   return (
     <div className="cal-lineup">
       {opponent.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
       <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
-      <p className="small muted">
-        {live
-          ? `Proiezione ${points(live.partialTotal)}. Il totale ufficiale arriva al calcolo della giornata.`
-          : "I voti compaiono quando la giornata è calcolata."}
-      </p>
+      {live ? (
+        <>
+          <p className="small">Totale in diretta: <strong>{points(live.partialTotal)}</strong></p>
+          {live.penalty != null ? (
+            <p className="small muted">In questa lega chi non salva la formazione prende la penalità: {points(live.penalty)} punti.</p>
+          ) : null}
+          <p className="small muted">{LIVE_NOTE}</p>
+        </>
+      ) : (
+        <p className="small muted">I voti compaiono quando la giornata è calcolata.</p>
+      )}
     </div>
   );
 }

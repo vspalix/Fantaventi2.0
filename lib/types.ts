@@ -146,6 +146,8 @@ export type OpponentLineup = {
     role: PlayerRole;
     clubShort: string;
   }[];
+  /** Voti in diretta: solo a giornata iniziata, non ancora calcolata e con la formazione visibile. */
+  sheet?: LiveLineupSheet;
 };
 
 export type SquadPlayer = {
@@ -186,6 +188,8 @@ export type LivePlayerRow = {
   malus: number | null;
   fantavoto: number | null;
   formula: string | null;
+  /** Il voto della sua squadra non è ancora arrivato: non è un «senza voto». */
+  waiting: boolean;
 };
 
 export type LiveLineupSheet = {

@@ -2761,6 +2761,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .al-who b { color: var(--medal); font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .al-cup { color: var(--accent); }
 .al-cup svg { width: 34px; height: 34px; }
+.al-record-icon svg { width: 20px; height: 20px; }
 .al-step { display: grid; place-items: center; height: 48px; border: 1px solid color-mix(in srgb, var(--medal) 55%, transparent); border-bottom: 0; border-radius: 12px 12px 0 0; background: color-mix(in srgb, var(--medal) 14%, var(--surface-deep)); color: var(--medal); font-size: var(--fs-lg); font-weight: 700; }
 .al-podium li[data-rank="1"] .al-step { height: 78px; font-size: 24px; }
 .al-podium li[data-rank="2"] .al-step { height: 60px; }

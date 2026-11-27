@@ -1,4 +1,5 @@
 import { publicHandle } from "@/lib/public-name";
+import { inChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type PodiumPlace = {
@@ -14,15 +15,26 @@ export type NamedScore = {
   gameweek: number;
 };
 
+/** Chi primeggia in una statistica: più nomi se sono pari. */
+export type Leader = { teams: string[]; value: number };
+
+export type LeagueAwards = {
+  /** Giornate chiuse con il punteggio più alto della lega. */
+  roundWins: Leader | null;
+  /** Punti presi dalla fascia di capitano. */
+  captain: Leader | null;
+  /** Punti presi dal modificatore difesa. */
+  defense: Leader | null;
+  /** Giornate con il bonus fair play (nessuna ammonizione). */
+  fairPlay: Leader | null;
+};
+
 export type LeagueArchive = {
   leagueId: string;
   leagueName: string;
   podium: PodiumPlace[];
   bestWeek: NamedScore | null;
-  worstDefense: NamedScore | null;
-  defenseUsed: boolean;
-  topScorer: { playerName: string; goals: number } | null;
-};
+} & LeagueAwards;
 
 export type SeasonArchive = {
   seasonId: string;
@@ -41,15 +53,59 @@ type Member = {
   userId: string;
 };
 
-type ScoreRow = {
+export type ScoreRow = {
   fantasy_team_id: string;
   gameweek_id: string;
   total: number | string;
+  captain_modifier?: number | string | null;
   defense_modifier?: number | string | null;
+  fair_play?: number | string | null;
 };
 
 function round2(value: number) {
   return Math.round(value * 100) / 100;
+}
+
+function leader(values: Map<string, number>, names: Map<string, string>): Leader | null {
+  const top = Math.max(0, ...[...values.values()].map(round2));
+  // Se nessuno ha preso niente (regola spenta in quella lega) la statistica non si mostra.
+  if (top <= 0) return null;
+  const teams = [...values]
+    .filter(([, value]) => round2(value) === top)
+    .map(([teamId]) => names.get(teamId) ?? "Squadra")
+    .sort((left, right) => left.localeCompare(right, "it"));
+  return { teams, value: top };
+}
+
+/** Le statistiche di una lega, dai punteggi salvati di ogni giornata. */
+export function leagueAwards(scores: ScoreRow[], names: Map<string, string>): LeagueAwards {
+  const add = (map: Map<string, number>, teamId: string, value: number) => map.set(teamId, (map.get(teamId) ?? 0) + value);
+  const wins = new Map<string, number>();
+  const captain = new Map<string, number>();
+  const defense = new Map<string, number>();
+  const fairPlay = new Map<string, number>();
+  const weeks = new Map<string, ScoreRow[]>();
+  for (const row of scores) {
+    add(captain, row.fantasy_team_id, Number(row.captain_modifier ?? 0));
+    add(defense, row.fantasy_team_id, Number(row.defense_modifier ?? 0));
+    add(fairPlay, row.fantasy_team_id, Number(row.fair_play ?? 0) > 0 ? 1 : 0);
+    const week = weeks.get(row.gameweek_id);
+    if (week) week.push(row);
+    else weeks.set(row.gameweek_id, [row]);
+  }
+  for (const rows of weeks.values()) {
+    const best = Math.max(...rows.map((row) => Number(row.total ?? 0)));
+    if (best <= 0) continue;
+    for (const row of rows) {
+      if (Number(row.total ?? 0) === best) add(wins, row.fantasy_team_id, 1);
+    }
+  }
+  return {
+    roundWins: leader(wins, names),
+    captain: leader(captain, names),
+    defense: leader(defense, names),
+    fairPlay: leader(fairPlay, names),
+  };
 }
 
 function one<T>(value: T | T[] | null | undefined): T | null {
@@ -124,7 +180,6 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
   const weekIds = weekRows.map((week) => week.id);
   const teamIds = [...new Set(memberRows.map((member) => member.teamId))];
   const scoreRows = await loadScores(weekIds, teamIds);
-  const scorers = await loadTopScorers(weekIds, teamIds, memberRows);
 
   const bySeason = new Map<string, SeasonArchive>();
   for (const season of seasonRows) {
@@ -145,8 +200,6 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
     const scores = scoreRows.filter((row) => teamSet.has(row.fantasy_team_id) && inRange(row.gameweek_id));
     const totals = new Map<string, number>();
     let best: NamedScore | null = null;
-    let worst: NamedScore | null = null;
-    let defenseUsed = false;
     const teamName = new Map(roster.map((member) => [member.teamId, member.teamName]));
     for (const row of scores) {
       const total = Number(row.total ?? 0);
@@ -154,12 +207,6 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
       const week = weekById.get(row.gameweek_id);
       const candidate = { teamName: teamName.get(row.fantasy_team_id) ?? "Squadra", points: round2(total), gameweek: week?.number ?? 0 };
       if (!best || candidate.points > best.points) best = candidate;
-      if (row.defense_modifier !== undefined && row.defense_modifier !== null) {
-        const modifier = Number(row.defense_modifier);
-        if (modifier !== 0) defenseUsed = true;
-        const defense = { ...candidate, points: round2(modifier) };
-        if (!worst || defense.points < worst.points) worst = defense;
-      }
     }
     const ranked = roster
       .map((member) => ({
@@ -174,9 +221,7 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
       leagueName: league.name,
       podium: scores.length === 0 ? [] : podium,
       bestWeek: best,
-      worstDefense: defenseUsed ? worst : null,
-      defenseUsed,
-      topScorer: scorers.get(league.id) ?? null,
+      ...leagueAwards(scores, teamName),
     });
   }
 
@@ -189,112 +234,21 @@ export async function loadHallOfFame(): Promise<HallOfFame> {
 }
 
 async function loadScores(weekIds: string[], teamIds: string[]) {
-  if (weekIds.length === 0 || teamIds.length === 0) return [] as ScoreRow[];
-  const admin = createAdminSupabase();
   const rows: ScoreRow[] = [];
-  for (let index = 0; index < teamIds.length; index += 80) {
-    const slice = teamIds.slice(index, index + 80);
-    const withDefense = await admin
+  if (weekIds.length === 0) return rows;
+  const admin = createAdminSupabase();
+  // Una stagione intera supera presto le righe di una sola richiesta: si legge a blocchi e a pagine.
+  for (const ids of inChunks(teamIds, 80)) {
+    const page = await readAllRows<ScoreRow>((from, to) => admin
       .from("team_gameweek_scores")
-      .select("fantasy_team_id, gameweek_id, total, defense_modifier")
+      .select("fantasy_team_id, gameweek_id, total, captain_modifier, defense_modifier, fair_play")
       .in("gameweek_id", weekIds)
-      .in("fantasy_team_id", slice)
-      .limit(5000);
-    const plain = withDefense.error && /defense_modifier|schema cache|could not find/i.test(withDefense.error.message)
-      ? await admin
-        .from("team_gameweek_scores")
-        .select("fantasy_team_id, gameweek_id, total")
-        .in("gameweek_id", weekIds)
-        .in("fantasy_team_id", slice)
-        .limit(5000)
-      : withDefense;
-    if (plain.error) throw new Error(plain.error.message);
-    rows.push(...((plain.data ?? []) as ScoreRow[]));
+      .in("fantasy_team_id", ids)
+      .order("fantasy_team_id")
+      .order("gameweek_id")
+      .range(from, to));
+    if (page.error) throw new Error(page.error.message);
+    rows.push(...page.data);
   }
   return rows;
-}
-
-async function loadTopScorers(weekIds: string[], teamIds: string[], members: Member[]) {
-  const result = new Map<string, { playerName: string; goals: number }>();
-  if (weekIds.length === 0 || teamIds.length === 0) return result;
-  const admin = createAdminSupabase();
-  const lineups: { id: string; fantasy_team_id: string; gameweek_id: string }[] = [];
-  for (let index = 0; index < teamIds.length; index += 80) {
-    const listed = await admin
-      .from("lineups")
-      .select("id, fantasy_team_id, gameweek_id")
-      .in("gameweek_id", weekIds)
-      .in("fantasy_team_id", teamIds.slice(index, index + 80))
-      .limit(5000);
-    if (listed.error) return result;
-    lineups.push(...((listed.data ?? []) as { id: string; fantasy_team_id: string; gameweek_id: string }[]));
-  }
-  if (lineups.length === 0) return result;
-
-  const lineupById = new Map(lineups.map((lineup) => [lineup.id, lineup]));
-  const started = new Set<string>();
-  const lineupIds = lineups.map((lineup) => lineup.id);
-  for (let index = 0; index < lineupIds.length; index += 150) {
-    const slots = await admin
-      .from("lineup_slots")
-      .select("lineup_id, player_id, is_starter")
-      .in("lineup_id", lineupIds.slice(index, index + 150));
-    if (slots.error) return result;
-    for (const slot of slots.data ?? []) {
-      if (slot.is_starter === false) continue;
-      const lineup = lineupById.get(slot.lineup_id as string);
-      if (!lineup) continue;
-      started.add(`${lineup.fantasy_team_id}:${lineup.gameweek_id}:${slot.player_id as string}`);
-    }
-  }
-
-  const stats = await admin
-    .from("player_gameweek_stats")
-    .select("player_id, gameweek_id, goals")
-    .in("gameweek_id", weekIds)
-    .gt("goals", 0)
-    .limit(5000);
-  if (stats.error) return result;
-
-  const leaguesByTeam = new Map<string, string[]>();
-  for (const member of members) {
-    const list = leaguesByTeam.get(member.teamId) ?? [];
-    list.push(member.leagueId);
-    leaguesByTeam.set(member.teamId, list);
-  }
-  const goals = new Map<string, number>();
-  const seen = new Set<string>();
-  for (const stat of stats.data ?? []) {
-    const playerId = stat.player_id as string;
-    const gameweekId = stat.gameweek_id as string;
-    for (const [teamId, leagueIds] of leaguesByTeam) {
-      if (!started.has(`${teamId}:${gameweekId}:${playerId}`)) continue;
-      for (const leagueId of leagueIds) {
-        const once = `${leagueId}:${playerId}:${gameweekId}`;
-        if (seen.has(once)) continue;
-        seen.add(once);
-        const key = `${leagueId}:${playerId}`;
-        goals.set(key, (goals.get(key) ?? 0) + Number(stat.goals ?? 0));
-      }
-    }
-  }
-
-  const bestByLeague = new Map<string, { playerId: string; goals: number }>();
-  for (const [key, total] of goals) {
-    const [leagueId, playerId] = key.split(":");
-    const current = bestByLeague.get(leagueId);
-    if (!current || total > current.goals) bestByLeague.set(leagueId, { playerId, goals: total });
-  }
-  const playerIds = [...new Set([...bestByLeague.values()].map((row) => row.playerId))];
-  const playerNames = new Map<string, string>();
-  if (playerIds.length > 0) {
-    const players = await admin.from("players").select("id, full_name").in("id", playerIds);
-    if (!players.error) {
-      for (const player of players.data ?? []) playerNames.set(player.id as string, (player.full_name as string) || "Calciatore");
-    }
-  }
-  for (const [leagueId, best] of bestByLeague) {
-    result.set(leagueId, { playerName: playerNames.get(best.playerId) ?? "Calciatore", goals: best.goals });
-  }
-  return result;
 }

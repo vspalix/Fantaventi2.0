@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { ScoreIcon } from "@/components/scores/ScoreIcons";
-import type { LeagueArchive, SeasonArchive } from "@/lib/server/hall-of-fame";
+import type { Leader, LeagueArchive, SeasonArchive } from "@/lib/server/hall-of-fame";
 
 const points = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
 
@@ -36,8 +36,12 @@ function Record({ icon, label, who, value }: { icon: React.ReactNode; label: str
   );
 }
 
+function who(leader: Leader) {
+  return leader.teams.length <= 2 ? leader.teams.join(" · ") : `${leader.teams.length} squadre a pari merito`;
+}
+
 function League({ league }: { league: LeagueArchive }) {
-  const { bestWeek, topScorer, worstDefense } = league;
+  const { bestWeek, roundWins, captain, defense, fairPlay } = league;
   return (
     <article className="card al-league">
       <h2>{league.leagueName}</h2>
@@ -59,16 +63,22 @@ function League({ league }: { league: LeagueArchive }) {
           ))}
         </ol>
       )}
-      {bestWeek || topScorer || worstDefense ? (
+      {bestWeek || roundWins || captain || defense || fairPlay ? (
         <ul className="al-records">
           {bestWeek ? (
             <Record icon={<Bolt />} label={`Record di giornata · giornata ${bestWeek.gameweek}`} who={bestWeek.teamName} value={points.format(bestWeek.points)} />
           ) : null}
-          {topScorer ? (
-            <Record icon={<ScoreIcon kind="goal" />} label="Capocannoniere" who={topScorer.playerName} value={`${topScorer.goals} gol`} />
+          {roundWins ? (
+            <Record icon={<Cup />} label="Più volte primo di giornata" who={who(roundWins)} value={`${roundWins.value} ${roundWins.value === 1 ? "volta" : "volte"}`} />
           ) : null}
-          {worstDefense ? (
-            <Record icon={<ScoreIcon kind="defense" />} label={`Peggior difesa · giornata ${worstDefense.gameweek}`} who={worstDefense.teamName} value={points.format(worstDefense.points)} />
+          {captain ? (
+            <Record icon={<ScoreIcon kind="captain" />} label="Capitano d'oro · punti dalla fascia" who={who(captain)} value={`+${points.format(captain.value)}`} />
+          ) : null}
+          {defense ? (
+            <Record icon={<ScoreIcon kind="defense" />} label="Muro difensivo · punti dal modificatore" who={who(defense)} value={`+${points.format(defense.value)}`} />
+          ) : null}
+          {fairPlay ? (
+            <Record icon={<ScoreIcon kind="fairplay" />} label="Re del fair play · giornate senza ammonizioni" who={who(fairPlay)} value={`${fairPlay.value}`} />
           ) : null}
         </ul>
       ) : null}

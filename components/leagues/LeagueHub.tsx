@@ -8,7 +8,7 @@ import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueRulesReadout } from "@/components/leagues/LeagueRulesReadout";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
-import { MatchdayResults } from "@/components/leagues/MatchdayResults";
+import { MatchdayResults, type Arrival } from "@/components/leagues/MatchdayResults";
 import { MyPagelle } from "@/components/leagues/MyPagelle";
 import { Pitch } from "@/components/leagues/Pitch";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -344,6 +344,7 @@ export function LeagueHub({
   hostMode = false,
   initialTab = "home",
   initialRound,
+  initialOpenMine = false,
 }: {
   initial: LeagueHubData;
   allowTestFill?: boolean;
@@ -351,9 +352,15 @@ export function LeagueHub({
   initialTab?: HubTab;
   /** Giornata da mostrare in «Risultati di giornata» quando si arriva da un link. */
   initialRound?: number;
+  /** Con quella giornata si apre subito anche la propria formazione (pallini della Home). */
+  initialOpenMine?: boolean;
 }) {
   const [hub, setHub] = useState(initial);
   const [tab, setTab] = useState<HubTab>(initialTab);
+  /** Vale una volta sola: tornando su «Calendario» si rivede la giornata abituale. */
+  const [arrival, setArrival] = useState<Arrival | null>(
+    initialRound === undefined ? null : { round: initialRound, openMine: initialOpenMine },
+  );
   const shownTab = tab === "gestione" ? "lega" : tab;
   const [board, setBoard] = useState<"parziale" | "generale" | "live">("generale");
   const [boardQuery, setBoardQuery] = useState("");
@@ -1190,7 +1197,7 @@ export function LeagueHub({
       ) : null}
 
       {shownTab === "risultati" ? (
-        <MatchdayResults hub={hub} initialRound={initialRound} />
+        <MatchdayResults hub={hub} arrival={arrival} onArrived={() => setArrival(null)} />
       ) : null}
 
       {shownTab === "classifica" ? (

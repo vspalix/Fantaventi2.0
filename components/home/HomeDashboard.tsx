@@ -157,8 +157,8 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
                     className="recent-dot"
                     data-tone={dot.tone}
                     data-current={dot.number === last?.number}
-                    href={`/leghe/${focus.id}?tab=risultati&giornata=${dot.number}`}
-                    aria-label={`Giornata ${dot.number}, ${score} punti: apri la classifica di giornata`}
+                    href={`/leghe/${focus.id}?tab=risultati&giornata=${dot.number}&formazione=mia`}
+                    aria-label={`Giornata ${dot.number}, ${score} punti: apri la giornata con la tua formazione`}
                   >
                     <span className="recent-mark">{dot.number}</span>
                     <strong>{score}</strong>

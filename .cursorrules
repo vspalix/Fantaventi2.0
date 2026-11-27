@@ -32,6 +32,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Nessuna schermata contatta la fonte. Le schermate leggono i voti ufficiali (`player_gameweek_stats`) e quelli provvisori salvati dalle letture programmate (`lib/server/provisional-votes.ts`: una riga di `vote_imports` con `source = fantacalcio-live-provvisorio`). Il calcolo ufficiale non usa i provvisori, e chi controlla se esistono voti ufficiali deve escludere quella riga.
 - Rigori: segnato +3, parato +3, sbagliato −3. Nell'Excel `Rf` = segnati, `Rp` = parati, `Rs` = sbagliati; `Gf` non comprende i rigori.
 - Formazione d'ufficio e proposta a video usano `carryLineup` (`lib/formations.ts`): solo calciatori in rosa, modulo sempre ammesso.
+- Ogni lega conta solo le sue giornate (`start_matchday`–`end_matchday`): schermate, premi e formazioni d'ufficio non creano e non sommano niente fuori da quelle.
 - Calendario: una volta al giorno alle 08:00, solo orari. `refreshSerieAKickoffs` non segna mai partite finite e non scrive risultati.
 - Sveglia esterna (`Europe/Rome`): `0,30 8 * * *` e `0,5,15,20,30,35,45,50 13-23 * * *`.
 - Indisponibili: se la giornata aperta ha deadline passata e non è ancora calcolata, skip senza chiamata API-Sports.

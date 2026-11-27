@@ -18,6 +18,22 @@ function vapidReady() {
   return Boolean(vapidPublicKey() && process.env.VAPID_PRIVATE_KEY?.trim());
 }
 
+/** Vero quando il server ha entrambe le chiavi per firmare le notifiche. */
+export function webPushReady() {
+  return vapidReady();
+}
+
+/** Quanti dispositivi di una persona sono iscritti alle notifiche web. */
+export async function countPushDevices(userId: string, client?: SupabaseClient) {
+  const admin = client ?? createAdminSupabase();
+  const result = await admin
+    .from("push_subscriptions")
+    .select("endpoint", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (result.error) throw new Error(result.error.message);
+  return result.count ?? 0;
+}
+
 export async function sendPushToUsers(
   userIds: string[],
   payload: PushPayload,

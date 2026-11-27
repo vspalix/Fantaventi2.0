@@ -2506,7 +2506,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .card .lg-progress p { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; margin: 0; }
 .lg-progress p span { font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .lg-progress p strong { color: var(--text); font-size: var(--fs-md); font-weight: 600; }
-.lg-progress div { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.lg-progress div { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 6px; }
 .lg-progress i { height: 4px; border-radius: 999px; background: var(--surface-2); }
 .lg-progress i[data-done="true"] { background: var(--accent); }
 
@@ -2534,6 +2534,13 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .lg-stepper button:disabled { opacity: 0.4; cursor: not-allowed; }
 .lg-stepper input { width: 64px; min-height: 44px; padding: 4px; border-color: transparent; background: transparent; text-align: center; font-size: var(--fs-lg); font-weight: 600; appearance: textfield; -moz-appearance: textfield; }
 .lg-stepper input::-webkit-inner-spin-button, .lg-stepper input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.lg-bonus-row { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.lg-bonus-row > input { flex: none; width: 24px; height: 24px; min-height: 24px; padding: 0; accent-color: var(--accent); }
+.lg-bonus-row > .lg-stepper { flex: 1; min-width: 0; padding-left: 10px; gap: 6px; }
+.lg-bonus-row .lg-stepper input { width: 46px; }
+.lg-bonus-row:has(> input:not(:checked)) .lg-stepper > * { opacity: 0.45; }
+.lg-pair { display: grid; gap: 8px; min-width: 0; padding: 10px; border: 1px solid var(--line); border-radius: 16px; }
 
 .lg-actions { display: flex; gap: 10px; }
 .lg-card .lg-actions .ghost { flex: 0 0 auto; width: auto; }
@@ -2563,3 +2570,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
   .lg-stepper button { width: 40px; }
   .lg-stepper input { width: 44px; }
 }
+
+/* Notifiche: passi per iPhone (Account e invito in Home). */
+.push-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: var(--fs-sm, 14px); line-height: 1.45; }
+#notifiche { scroll-margin-top: 90px; }

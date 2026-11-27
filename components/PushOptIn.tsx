@@ -1,52 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { readableError } from "@/lib/feedback";
+import { enablePush, PUSH_CHANGED_EVENT, readPushState, type PushState } from "@/lib/web-push-client";
 
-function urlBase64ToUint8Array(value: string) {
-  const padding = "=".repeat((4 - (value.length % 4)) % 4);
-  const base64 = (value + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const raw = atob(base64);
-  return Uint8Array.from(raw, (char) => char.charCodeAt(0));
-}
-
+/** Versione compatta per la scheda Live: il riquadro completo è in Account. */
 export function PushOptIn() {
+  const [state, setState] = useState<PushState>("loading");
   const [message, setMessage] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+
+  useEffect(() => {
+    let stop = false;
+    const load = () => void readPushState().then((next) => { if (!stop) setState(next); });
+    load();
+    window.addEventListener(PUSH_CHANGED_EVENT, load);
+    return () => {
+      stop = true;
+      window.removeEventListener(PUSH_CHANGED_EVENT, load);
+    };
+  }, []);
 
   async function enable() {
     setPending(true);
     setMessage(null);
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        setMessage("Questo browser non riceve le notifiche push.");
-        return;
-      }
-      const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
-        setMessage("Permesso notifiche non concesso.");
-        return;
-      }
-      const keyResponse = await fetch("/api/push/subscribe");
-      const keyBody = (await keyResponse.json()) as { publicKey?: string | null; error?: string };
-      if (!keyBody.publicKey) {
-        setMessage("Il server non ha ancora la chiave pubblica delle notifiche.");
-        return;
-      }
-      const registration = await navigator.serviceWorker.register("/sw.js");
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(keyBody.publicKey),
-      });
-      const json = subscription.toJSON();
-      const saved = await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ endpoint: json.endpoint, keys: json.keys }),
-      });
-      const body = (await saved.json()) as { error?: string };
-      if (!saved.ok) throw new Error(body.error ?? "Iscrizione non riuscita.");
-      setMessage("Notifiche attive su questo dispositivo.");
+      const next = await enablePush();
+      setState(next);
+      setMessage(next === "on" ? "Notifiche attive su questo dispositivo." : null);
     } catch (error) {
       setMessage(readableError(error, "Notifiche non attivate."));
     } finally {
@@ -54,9 +36,14 @@ export function PushOptIn() {
     }
   }
 
+  if (state === "loading" || state === "native" || (state === "on" && !message)) return null;
   return (
     <div className="row">
-      <button className="ghost" type="button" disabled={pending} onClick={() => void enable()}>Attiva notifiche</button>
+      {state === "off" ? (
+        <button className="ghost" type="button" disabled={pending} onClick={() => void enable()}>Attiva notifiche</button>
+      ) : state !== "on" ? (
+        <Link className="ghost" href="/account#notifiche">Come attivare le notifiche</Link>
+      ) : null}
       {message ? <span className="small muted">{message}</span> : null}
     </div>
   );

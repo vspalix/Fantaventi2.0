@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { headToHeadPairings, weekScoreMode, fantapuntiToGoals } from "@/lib/league-rules";
+import { headToHeadPairings, weekScoreMode, fantapuntiToGoals, inLeagueRange } from "@/lib/league-rules";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { readLeagueSettings } from "@/lib/server/league-settings";
@@ -182,7 +182,9 @@ async function leagueCard(
       };
     });
     const teamIds = teams.map((item) => item.id);
-    const scored = calendar.filter((week) => week.status === "scored" || week.status === "final");
+    // Contano solo le giornate della lega: quelle prima dell'inizio non fanno storia.
+    const ownWeeks = calendar.filter((week) => inLeagueRange(settings.range, Number(week.number)));
+    const scored = ownWeeks.filter((week) => week.status === "scored" || week.status === "final");
     const counted = scored.filter((week) => weekScoreMode(settings.rules, Number(week.number)) !== "knockout");
     const fantasy = await fantasyPointsForLeague(
       leagueId,
@@ -243,8 +245,9 @@ async function leagueCard(
       }
     }
     const ranking = [...totals.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-    const place = myTeamId ? ranking.findIndex(([teamId]) => teamId === myTeamId) : -1;
-    const upcoming = calendar.find((week) => (
+    // Senza giornate giocate non c'è ancora una classifica.
+    const place = myTeamId && counted.length > 0 ? ranking.findIndex(([teamId]) => teamId === myTeamId) : -1;
+    const upcoming = ownWeeks.find((week) => (
       week.status !== "scored"
       && week.status !== "final"
       && new Date(week.deadline_at).getTime() > Date.now()

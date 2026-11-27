@@ -7,6 +7,7 @@ import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/
 import { runErrorReportChecks } from "./test-error-report";
 import { runLeagueStartChecks } from "./test-league-start";
 import { runLineupAndPointsChecks } from "./test-lineup-and-points";
+import { runLineupSaveChecks } from "./test-lineup-save";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
 import { runLineupReminderChecks } from "./test-lineup-reminder";
 import { runLiveGapChecks } from "./test-live-gaps";
@@ -90,6 +91,10 @@ async function main() {
   console.log(`Formazioni, rigori e voti salvati: ${lineups.failures.length === 0 ? "PASSED" : "FAILED"} ${lineups.passed}/${lineups.total}`);
   for (const failure of lineups.failures) console.log(`- ${failure}`);
 
+  const lineupSave = await runLineupSaveChecks();
+  console.log(`Salvataggi contemporanei: ${lineupSave.failures.length === 0 ? "PASSED" : "FAILED"} ${lineupSave.passed}/${lineupSave.total}`);
+  for (const failure of lineupSave.failures) console.log(`- ${failure}`);
+
   const reminders = await runLineupReminderChecks();
   console.log(`Promemoria formazioni: ${reminders.failures.length === 0 ? "PASSED" : "FAILED"} ${reminders.passed}/${reminders.total}`);
   for (const failure of reminders.failures) console.log(`- ${failure}`);
@@ -102,11 +107,11 @@ async function main() {
   console.log(`Formazione d'ufficio in diretta: ${office.failures.length === 0 ? "PASSED" : "FAILED"} ${office.passed}/${office.total}`);
   for (const failure of office.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + reminders.total + leagueStart.total + office.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + reminders.passed + leagueStart.passed + office.passed;
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || total < 100) process.exit(1);
 }
 
 /**

@@ -1,5 +1,5 @@
 import { after, NextResponse } from "next/server";
-import { assertRealJobs } from "@/lib/outbound";
+import { assertRealJobs, DELIVERY_HEADER, deliveryState } from "@/lib/outbound";
 import { apiError } from "@/lib/server/api-error";
 import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { assertServiceEnv } from "@/lib/server/catalog";
@@ -80,7 +80,7 @@ async function run(request: Request) {
   const force = await requestedForce(request);
   try {
     if (!(await authorized(request))) {
-      return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401 });
+      return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401, headers: { [DELIVERY_HEADER]: deliveryState() } });
     }
     assertServiceEnv();
     const now = new Date();

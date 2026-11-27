@@ -123,6 +123,37 @@ export async function loadWeekMatchState(admin: SupabaseClient, seasonId: string
   return { inPlay: active, withMatches, finished };
 }
 
+/**
+ * La giornata è in corso: iniziata (deadline passata o primo calcio d'inizio), non calcolata
+ * e con partite ancora da finire. Finché è così non si schiera per nessuna giornata.
+ */
+export function weekUnderway(
+  gameweek: { number: number; status: string; deadline_at: string },
+  now: number,
+  state: WeekMatchState,
+) {
+  if (gameweek.status === "scored" || gameweek.status === "final") return false;
+  const started = state.inPlay.has(gameweek.number) || new Date(gameweek.deadline_at).getTime() <= now;
+  if (!started || !state.withMatches.has(gameweek.number)) return false;
+  return !state.finished.has(gameweek.number);
+}
+
+/** Tra le giornate di una lega: quella in corso e la prima la cui deadline deve ancora arrivare. */
+export function currentRounds<Week extends { number: number; status: string; deadline_at: string }>(
+  weeks: Week[],
+  now: number,
+  state: WeekMatchState,
+): { live: Week | null; upcoming: Week | null } {
+  return {
+    live: weeks.find((week) => weekUnderway(week, now, state)) ?? null,
+    upcoming: weeks.find((week) => (
+      week.status !== "scored"
+      && week.status !== "final"
+      && new Date(week.deadline_at).getTime() > now
+    )) ?? null,
+  };
+}
+
 export async function inPlayGameweeks(admin: SupabaseClient, seasonId: string, now = Date.now()) {
   return (await loadWeekMatchState(admin, seasonId, now)).inPlay;
 }

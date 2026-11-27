@@ -227,6 +227,15 @@ export async function runOutboundChecks() {
     add("Sveglia indisponibili in locale: saltata", first.status === 200 && firstBody.skipped === true, `${first.status}`);
     add("Forza voti in locale: rifiutato con spiegazione", second.status === 409, `${second.status}`);
     add("Le due sveglie in locale non scrivono nel registro sincronizzazioni", sent.length === 0, sent.map((item) => `${item.method} ${item.url}`).join(" "));
+
+    // Il segnale che si controlla dopo la pubblicazione.
+    const anonymous = () => votesRoute.POST(new Request("http://localhost/api/cron/sync-match-votes", { method: "POST" }));
+    const localSign = await anonymous();
+    add("Sveglia senza segreto in locale: 401 e «finti»", localSign.status === 401 && localSign.headers.get("x-fantaventi-invii") === "finti", `${localSign.status} ${localSign.headers.get("x-fantaventi-invii")}`);
+    await asVercel(async () => {
+      const liveSign = await anonymous();
+      add("Sveglia senza segreto sul sito: 401 e «veri»", liveSign.status === 401 && liveSign.headers.get("x-fantaventi-invii") === "veri", `${liveSign.status} ${liveSign.headers.get("x-fantaventi-invii")}`);
+    });
   } finally {
     globalThis.fetch = realFetch;
     https.get = realGet;

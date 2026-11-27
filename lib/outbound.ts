@@ -44,6 +44,13 @@ export function realJobsAllowed(env: Env = process.env, platform: string = proce
   return realNotificationsAllowed(env, platform) && realExternalCallsAllowed(env, platform);
 }
 
+/** Intestazione della risposta della sveglia rifiutata: «veri» solo se tutto parte davvero. */
+export const DELIVERY_HEADER = "x-fantaventi-invii";
+
+export function deliveryState(env: Env = process.env, platform: string = process.platform) {
+  return realJobsAllowed(env, platform) ? "veri" : "finti";
+}
+
 /** La riga del registro che prende il posto di un invio o di una chiamata. */
 export function logFake(channel: string, detail: string) {
   console.info(`[finto] ${channel}: ${detail}`);

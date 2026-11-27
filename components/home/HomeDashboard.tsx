@@ -1,6 +1,7 @@
 import Link from "next/link";
-import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
+import { CurrentRound } from "@/components/home/CurrentRound";
 import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
+import { Mark } from "@/components/home/Mark";
 import { TeamSettings } from "@/components/home/TeamSettings";
 import type { HomeBoard } from "@/lib/server/home-board";
 
@@ -27,14 +28,9 @@ function Crest({ name, primary, secondary, logoUrl }: { name: string; primary: s
   );
 }
 
-function Mark({ letter }: { letter: string }) {
-  return <span className="face-mark" aria-hidden="true">{letter.slice(0, 1).toUpperCase()}</span>;
-}
-
 export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string }) {
   const focus = board.focus;
   const leagueId = focus?.id ?? null;
-  const formazione = leagueId ? `/leghe/${leagueId}?tab=formazione` : "/rosa";
   const voti = leagueId ? `/leghe/${leagueId}?tab=pagelle` : "/leghe";
   const initial = (board.teamName.trim()[0] ?? "F").toUpperCase();
   const last = focus?.lastRound ?? null;
@@ -87,31 +83,17 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
         </div>
       </article>
 
-      <article className="card dash-block current-round">
-        <div className="dash-block-head">
-          <h2>Giornata corrente</h2>
-          <span>{[board.deadlineLabel, focus.nextRival ? "scontro diretto" : "sul totale"].filter(Boolean).join(" · ")}</span>
-        </div>
-        {focus.nextRival ? (
-          <div className="versus">
-            <div className="side">
-              <Mark letter={initial} />
-              <small>{board.teamName}</small>
-            </div>
-            {board.deadlineAt ? <DeadlineCountdown deadlineAt={board.deadlineAt} label="" compact /> : <span className="mid">—</span>}
-            <div className="side">
-              <Mark letter={focus.nextRival} />
-              <small>{focus.nextRival}</small>
-            </div>
-          </div>
-        ) : board.deadlineAt ? (
-          <DeadlineCountdown deadlineAt={board.deadlineAt} label="" compact />
-        ) : <p>Nessuna deadline aperta.</p>}
-        <div className="dash-actions">
-          <Link className="primary" href={formazione}>Inserisci Formazione</Link>
-          <a className="ghost" href={board.probabiliHref} target="_blank" rel="noreferrer">Probabili e altro</a>
-        </div>
-      </article>
+      <CurrentRound
+        key={focus.id}
+        leagueId={focus.id}
+        teamName={board.teamName}
+        rival={focus.nextRival}
+        liveRound={focus.liveRound}
+        nextRound={focus.nextRound}
+        deadlineAt={board.deadlineAt}
+        deadlineRound={board.deadlineRound}
+        probabiliHref={board.probabiliHref}
+      />
 
       {board.promo ? (
         <a className="promo-banner" href={board.promo.href ?? undefined} target={board.promo.href ? "_blank" : undefined} rel="noreferrer">

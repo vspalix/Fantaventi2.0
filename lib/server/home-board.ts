@@ -6,6 +6,7 @@ import { getCurrentSeason } from "@/lib/server/catalog";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { fantasyPointsForLeague, leagueEntries, waitingEntries } from "@/lib/server/league-scores";
 import { listLeaguesForUser } from "@/lib/server/leagues";
+import { currentRounds, loadWeekMatchState, type WeekMatchState } from "@/lib/server/roster";
 import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
 import { readSponsors } from "@/lib/server/sponsors";
 import { readTeamLook } from "@/lib/server/team-look";
@@ -42,7 +43,12 @@ export type HomeLeagueCard = {
   total: number | null;
   played: number;
   nextLabel: string | null;
+  /** L'avversario della giornata mostrata: quella in corso, altrimenti la prossima. */
   nextRival: string | null;
+  /** La giornata della lega in corso: la formazione è chiusa e la Dashboard porta al Live. */
+  liveRound: number | null;
+  /** La prossima giornata della lega, se ha partite in calendario: alla sua deadline diventa in corso. */
+  nextRound: number | null;
   average: number | null;
   lastRound: { number: number; points: number; average: number; otherName: string | null; otherPoints: number | null } | null;
   recent: HomeRoundDot[];
@@ -59,6 +65,7 @@ export type HomeBoard = {
   sponsors: { scrollSeconds: number; items: { id: string; label: string; imageUrl: string; href: string }[] };
   deadlineAt: string | null;
   deadlineLabel: string | null;
+  deadlineRound: number | null;
   fixtures: HomeFixture[];
   /** La lega mostrata: i suoi numeri sono gli unici che la Dashboard calcola. */
   focus: HomeLeagueCard | null;
@@ -76,7 +83,7 @@ function clubLabel(row: { code?: string; club_translations?: { locale: string; s
 export async function loadHomeBoard(userId: string, wantedId?: string): Promise<HomeBoard> {
   const admin = createAdminSupabase();
   const seasonRead = getCurrentSeason(admin);
-  const [season, leagues, promo, jar, weeks] = await Promise.all([
+  const [season, leagues, promo, jar, weeks, matchState] = await Promise.all([
     seasonRead,
     listLeaguesForUser(userId),
     loadHomePromo(),
@@ -88,6 +95,7 @@ export async function loadHomeBoard(userId: string, wantedId?: string): Promise<
       .gte("number", 1)
       .lte("number", 38)
       .order("number", { ascending: true })),
+    seasonRead.then((current) => loadWeekMatchState(admin, current.id)),
   ]);
   const saved = wantedId ?? jar.get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
   // Una lega chiesta per codice deve essere tra le proprie.
@@ -129,7 +137,7 @@ export async function loadHomeBoard(userId: string, wantedId?: string): Promise<
       }));
     })(),
     focusLeague
-      ? leagueCard(admin, season.id, focusLeague.id, focusLeague.name, focusLeague.teamId, calendar)
+      ? leagueCard(admin, season.id, focusLeague.id, focusLeague.name, focusLeague.teamId, calendar, matchState)
       : Promise.resolve(null),
     readTeamLook(focusLeague?.teamId ?? null, focusLeague?.teamName || "La tua squadra"),
     readSponsors(),
@@ -144,6 +152,7 @@ export async function loadHomeBoard(userId: string, wantedId?: string): Promise<
     sponsors,
     deadlineAt: nextWeek ? nextWeek.deadline_at as string : null,
     deadlineLabel: nextWeek ? `Giornata ${nextWeek.number}` : null,
+    deadlineRound: nextWeek ? Number(nextWeek.number) : null,
     fixtures,
     focus,
     promo: promo.banner,
@@ -158,6 +167,7 @@ async function leagueCard(
   leagueName: string,
   myTeamId: string | null,
   calendar: { id: string; number: number; deadline_at: string; status: string }[],
+  matchState: WeekMatchState,
 ): Promise<HomeLeagueCard> {
   const empty: HomeLeagueCard = {
     id: leagueId,
@@ -168,6 +178,8 @@ async function leagueCard(
     played: 0,
     nextLabel: null,
     nextRival: null,
+    liveRound: null,
+    nextRound: null,
     average: null,
     lastRound: null,
     recent: [],
@@ -260,25 +272,22 @@ async function leagueCard(
     const ranking = [...totals.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
     // Senza giornate giocate non c'è ancora una classifica.
     const place = myTeamId && counted.length > 0 ? ranking.findIndex(([teamId]) => teamId === myTeamId) : -1;
-    const upcoming = ownWeeks.find((week) => (
-      week.status !== "scored"
-      && week.status !== "final"
-      && new Date(week.deadline_at).getTime() > Date.now()
-    ));
+    const { live, upcoming } = currentRounds(ownWeeks, Date.now(), matchState);
+    const shown = live ?? upcoming;
     let nextLabel: string | null = upcoming ? `Prossima: giornata ${upcoming.number}` : null;
     let nextRival: string | null = null;
-    if (upcoming && myTeamId && weekScoreMode(settings.rules, Number(upcoming.number)) === "head_to_head") {
-      const { pairs, bye } = headToHeadPairings(teamIds, Number(upcoming.number));
+    if (shown && myTeamId && weekScoreMode(settings.rules, Number(shown.number)) === "head_to_head") {
+      const { pairs, bye } = headToHeadPairings(teamIds, Number(shown.number));
       if (bye === myTeamId) {
         nextRival = "Riposo";
-        nextLabel = `Giornata ${upcoming.number}: riposo`;
+        nextLabel = `Giornata ${shown.number}: riposo`;
       }
       const pair = pairs.find((item) => item.home === myTeamId || item.away === myTeamId);
       if (pair) {
         const opponentId = pair.home === myTeamId ? pair.away : pair.home;
         const opponent = teams.find((item) => item.id === opponentId)?.name ?? "Avversario";
         nextRival = opponent;
-        nextLabel = `Giornata ${upcoming.number} contro ${opponent}`;
+        nextLabel = `Giornata ${shown.number} contro ${opponent}`;
       }
     }
     const total = place >= 0 ? Math.round((totals.get(myTeamId as string) ?? 0) * 100) / 100 : null;
@@ -295,6 +304,8 @@ async function leagueCard(
       played: myTeamId ? trail.length : counted.length,
       nextLabel,
       nextRival,
+      liveRound: live ? Number(live.number) : null,
+      nextRound: upcoming && matchState.withMatches.has(Number(upcoming.number)) ? Number(upcoming.number) : null,
       average: total != null && trail.length > 0 ? Math.round((myReal / trail.length) * 100) / 100 : null,
       lastRound: last ? { number: last.number, points: last.points, average: last.average, otherName: last.otherName, otherPoints: last.otherPoints } : null,
       recent: trail.slice(-5).map((row) => ({

@@ -30,6 +30,8 @@ export type AuditPlayer = {
   malusFactor: number;
   fantavoto: number | null;
   captain: boolean;
+  /** Il vice scelto in formazione, finché non è lui a fare il capitano. */
+  vice: boolean;
   source: "starter" | "substitute" | "bench";
   slotKind: "starter" | "bench";
   slotOrder: number;
@@ -226,6 +228,7 @@ export function explainScore(input: {
       malusFactor: scored?.malusFactor ?? 1,
       fantavoto: scored?.playerPoints ?? null,
       captain: Boolean(scored?.isEffectiveCaptain),
+      vice: !projection && slot.isVice && !scored?.isEffectiveCaptain,
       source: replacedId ? "substitute" : "starter",
       ...placement(slot.playerId),
       replacedId,
@@ -247,6 +250,7 @@ export function explainScore(input: {
       malusFactor: 1,
       fantavoto: null,
       captain: false,
+      vice: !projection && Boolean(slot.isVice),
       source: "bench",
       ...placement(slot.playerId),
       replacedId: null,

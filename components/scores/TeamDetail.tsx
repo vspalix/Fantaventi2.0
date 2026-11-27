@@ -61,6 +61,7 @@ function Row({ player, counts, replaced = false }: { player: AuditPlayer; counts
       <span className="td-who">
         <strong>{player.name}</strong>
         {player.captain ? <span className="td-captain" title="Capitano" aria-label="Capitano">C</span> : null}
+        {player.vice ? <span className="td-captain td-vice" title="Vice capitano" aria-label="Vice capitano">V</span> : null}
         {player.replacedName ? (
           <span className="td-mark" data-kind="in" title={`Entrato per ${player.replacedName}`} aria-label={`Entrato per ${player.replacedName}`}>
             <ScoreIcon kind="in" />

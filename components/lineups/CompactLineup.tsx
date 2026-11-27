@@ -94,7 +94,8 @@ function Row({ player, empty }: { player: CompactPlayer; empty: string }) {
       <span className="xi-who">
         <TeamBadge teamName={player.club || player.name} />
         <strong>{player.name}</strong>
-        {player.captain ? <em className="xi-cap">C</em> : null}
+        {player.captain ? <em className="xi-cap" title="Capitano" aria-label="Capitano">C</em> : null}
+        {player.vice ? <em className="xi-cap" title="Vice capitano" aria-label="Vice capitano">V</em> : null}
         {player.entered ? <em className="xi-in">IN</em> : null}
         {player.events.length > 0 ? (
           <span className="xi-events">
@@ -104,8 +105,8 @@ function Row({ player, empty }: { player: CompactPlayer; empty: string }) {
           </span>
         ) : null}
       </span>
-      <span className="xi-vote">{voteText(player.vote, empty)}</span>
-      <span className="xi-fanta">{voteText(player.fanta, empty)}</span>
+      <span className="xi-vote">{voteText(player.vote, player.emptyText ?? empty)}</span>
+      <span className="xi-fanta">{voteText(player.fanta, player.emptyText ?? empty)}</span>
     </div>
   );
 }

@@ -83,8 +83,8 @@ function seed(): Tables {
     ],
     fantasy_teams: TEAMS.map((team) => ({ id: `team-${team}`, season_id: SEASON, user_id: `user-${team}`, name: `Squadra ${team}` })),
     private_leagues: [
-      { id: "league-carry", settings: { missedLineup: "carry", defenseEnabled: false, captainEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
-      { id: "league-penalty", settings: { missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
+      { id: "league-carry", settings: { missedLineup: "carry", defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
+      { id: "league-penalty", settings: { missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
     ],
     private_league_members: [
       ...["A", "B", "C"].map((team) => ({ private_league_id: "league-carry", fantasy_team_id: `team-${team}` })),
@@ -199,6 +199,29 @@ export async function runOfficeLineupLiveChecks() {
     check("B ha punti parziali", (score("team-B")?.provisionalTotal ?? 0) > 0 && (score("team-B")?.ratedPlayersCount ?? 0) === 11, JSON.stringify(score("team-B")?.provisionalTotal));
     check("I punti del ceduto non contano", !score("team-B")?.players.some((player) => player.playerId === "B-FWD1"));
 
+    // --- «Senza voto» e «voto non ancora arrivato»
+    const { playersWithVotesRead } = await import("../lib/lineups/votes-read");
+    const { compactFromLive } = await import("../lib/lineups/compact-sheet");
+    const clubs = new Map([["con-voto", "club-1"], ["compagno", "club-1"], ["altro", "club-2"], ["rinviato", "club-3"]]);
+    const stat = (playerId: string, postponed = false) => [playerId, { playerId, role: "MID" as const, voto: postponed ? null : 6, postponed }] as const;
+    const read = playersWithVotesRead(new Map([stat("con-voto"), stat("rinviato", true)]), clubs);
+    check("Club con i voti: anche il compagno senza voto risulta letto", read.has("con-voto") && read.has("compagno"), [...read].join());
+    check("Club senza voti o con partita rinviata: voto non ancora arrivato", !read.has("altro") && !read.has("rinviato"), [...read].join());
+    check("Anteprima: dice per chi i voti sono arrivati", live.votesRead.has("B-GK1"));
+
+    const row = (playerId: string, voto: number | null, waiting: boolean) => ({
+      playerId, fullName: playerId, role: "MID" as const, clubShort: "X", isCaptain: false, isVice: false,
+      voto, bonus: voto === null ? null : 0, malus: voto === null ? null : 0, fantavoto: voto, formula: null, waiting,
+    });
+    const shown = compactFromLive({
+      starters: [row("t1", 6, false), row("t2", null, false), row("t3", null, true)],
+      bench: [row("p1", 7, false)],
+      partialTotal: 6,
+    });
+    check("Diretta: il senza voto è «S.V.», quello in attesa un trattino", shown.starters[1].emptyText === "S.V." && shown.starters[2].emptyText === "—");
+    check("Diretta: in evidenza solo il titolare con voto", shown.starters.map((player) => player.played).join() === "true,false,false");
+    check("Diretta: la panchina mostra il voto ma resta in secondo piano", shown.bench[0].vote === 7 && shown.bench[0].played === false);
+
     check("Anteprima: nessuna formazione scritta", tables.lineups.length === lineupsBefore && tables.lineup_slots.length === slotsBefore, `${tables.lineups.length} formazioni`);
     check("Anteprima: nessuna scrittura nel database", fake.writes().length === writesBefore, fake.writes().slice(writesBefore).map((call) => `${call.method} ${call.table}`).join());
 
@@ -212,8 +235,8 @@ export async function runOfficeLineupLiveChecks() {
       rules,
       participants: teams.map((team) => ({ userId: `user-${team}`, fantasyTeamId: `team-${team}`, teamName: `Squadra ${team}`, displayName: team })),
     } as unknown as LeagueDetail);
-    const carryLeague = league("league-carry", ["A", "B", "C"], parseLeagueRules({ missedLineup: "carry", defenseEnabled: false, captainEnabled: false }));
-    const penaltyLeague = league("league-penalty", ["B", "D", "E"], parseLeagueRules({ missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false }));
+    const carryLeague = league("league-carry", ["A", "B", "C"], parseLeagueRules({ missedLineup: "carry", defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }));
+    const penaltyLeague = league("league-penalty", ["B", "D", "E"], parseLeagueRules({ missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }));
     const centerB = await loadLiveCenter(carryLeague, "user-B", AFTER);
     check("Live: B vede la sua formazione d'ufficio", centerB.mine?.office === true && (centerB.mine?.starters.length ?? 0) === 11, JSON.stringify(centerB.mine?.office));
     check("Live: B vede i suoi punti parziali", centerB.mine?.total === score("team-B")?.provisionalTotal, `${centerB.mine?.total} / ${score("team-B")?.provisionalTotal}`);

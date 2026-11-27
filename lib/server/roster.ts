@@ -205,7 +205,7 @@ export async function saveRoster(userId: string, email: string | undefined, team
     if (!leagues.some((league) => league.id === leagueId)) {
       throw httpError("Non fai parte di questa lega.", 403);
     }
-    teamId = (await ensureLeagueTeam(userId, leagueId, trimmed)).id;
+    teamId = (await ensureLeagueTeam(userId, leagueId, trimmed, { carry: false })).id;
   } else {
     teamId = await ensureFantasyTeam(admin, userId, season.id, trimmed);
   }

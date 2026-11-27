@@ -185,9 +185,10 @@ export const listLeaguesForUser = cache(async (userId: string): Promise<LeagueSu
   return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name, "it"));
 });
 
-export async function ensureLeagueTeam(userId: string, leagueId: string, preferredName?: string) {
+/** `carry: false` quando chi chiama scrive subito la rosa (scelta o importata). */
+export async function ensureLeagueTeam(userId: string, leagueId: string, preferredName?: string, options?: { carry?: boolean }) {
   const admin = createAdminSupabase();
-  const league = await admin.from("private_leagues").select("id, season_id").eq("id", leagueId).maybeSingle();
+  const league = await admin.from("private_leagues").select("id, season_id, start_matchday").eq("id", leagueId).maybeSingle();
   if (league.error) throw new Error(league.error.message);
   if (!league.data) throw httpError("Lega non trovata.", 404);
   const seasonId = league.data.season_id as string;
@@ -208,10 +209,24 @@ export async function ensureLeagueTeam(userId: string, leagueId: string, preferr
     : await admin.from("private_league_members").select("fantasy_team_id").in("fantasy_team_id", teams.map((team) => team.id));
   if (taken.error) throw new Error(taken.error.message);
   const used = new Set((taken.data ?? []).map((row) => row.fantasy_team_id as string));
-  const free = teams.find((team) => !used.has(team.id));
+  // Chi entra in una lega già iniziata deve entrare «nuovo»: una squadra che ha già formazioni
+  // o rosa nelle giornate chiuse di questa lega le porterebbe con sé e salterebbe la media.
+  const available = teams.filter((team) => !used.has(team.id));
+  const closed = await closedWeeksOf(admin, seasonId, Number(league.data.start_matchday ?? 1));
+  let free: (typeof available)[number] | undefined;
+  for (const candidate of available) {
+    if (await carriesHistory(admin, candidate.id, closed)) continue;
+    free = candidate;
+    break;
+  }
+  /** La squadra libera lasciata da parte: resta com'è, la sua rosa si può copiare in quella nuova. */
+  const setAside = free ? undefined : available[0];
   const team = free
     ? { id: free.id, name: free.name }
-    : { id: await createDedicatedTeam(admin, userId, seasonId, name || "La mia squadra"), name: name || "La mia squadra" };
+    : {
+      id: await createDedicatedTeam(admin, userId, seasonId, name || setAside?.name || "La mia squadra"),
+      name: name || setAside?.name || "La mia squadra",
+    };
   if (free && name && name !== free.name) {
     const { error } = await admin.from("fantasy_teams").update({ name }).eq("id", free.id).eq("user_id", userId);
     if (error) throw new Error(error.message);
@@ -222,7 +237,55 @@ export async function ensureLeagueTeam(userId: string, leagueId: string, preferr
     fantasy_team_id: team.id,
   });
   if (error && error.code !== "23505") throw new Error(error.message);
+  if (setAside && options?.carry !== false) await carryRoster(admin, leagueId, seasonId, team.id, setAside.id);
   return team;
+}
+
+/** Le giornate di una lega che sono già chiuse per chi entra adesso. */
+async function closedWeeksOf(admin: ReturnType<typeof createAdminSupabase>, seasonId: string, startMatchday: number) {
+  const next = await rosterAppliesFrom(admin, seasonId);
+  if (next <= startMatchday) return { from: startMatchday, ids: [] as string[] };
+  const weeks = await admin
+    .from("gameweeks")
+    .select("id")
+    .eq("season_id", seasonId)
+    .gte("number", startMatchday)
+    .lt("number", next);
+  if (weeks.error) throw new Error(weeks.error.message);
+  return { from: startMatchday, next, ids: (weeks.data ?? []).map((row) => row.id as string) };
+}
+
+async function carriesHistory(
+  admin: ReturnType<typeof createAdminSupabase>,
+  teamId: string,
+  closed: { from: number; next?: number; ids: string[] },
+) {
+  if (closed.ids.length === 0 || closed.next === undefined) return false;
+  const [lineups, stints] = await Promise.all([
+    admin.from("lineups").select("id").eq("fantasy_team_id", teamId).in("gameweek_id", closed.ids).limit(1),
+    admin.from("roster_stints").select("active_from_gameweek, active_until_gameweek").eq("fantasy_team_id", teamId),
+  ]);
+  if (lineups.error) throw new Error(lineups.error.message);
+  if (stints.error) throw new Error(stints.error.message);
+  const next = closed.next;
+  return (lineups.data ?? []).length > 0 || (stints.data ?? []).some((row) => (
+    Number(row.active_from_gameweek) < next
+    && (row.active_until_gameweek === null || Number(row.active_until_gameweek) >= closed.from)
+  ));
+}
+
+/** Se per entrare è nata una squadra nuova, ci porta la rosa attuale di quella lasciata da parte. */
+async function carryRoster(
+  admin: ReturnType<typeof createAdminSupabase>,
+  leagueId: string,
+  seasonId: string,
+  teamId: string,
+  sourceTeamId: string,
+) {
+  // Nelle leghe a rose esclusive la rosa si ricompone: potrebbe contenere calciatori già presi.
+  if ((await readLeagueSettings(admin, leagueId)).rules.exclusiveRosters) return;
+  const playerIds = await openRosterIds(admin, sourceTeamId);
+  if (playerIds.length > 0) await copyOpenRoster(admin, teamId, seasonId, playerIds);
 }
 
 /** Le giornate tra cui si può scegliere per una lega nuova. */
@@ -482,7 +545,7 @@ export async function joinLeague(
     await assertCanJoin(admin, league.id as string, league.season_id as string);
     if (importFromLeagueId) imported = await rosterToImport(admin, userId, league.id as string, importFromLeagueId);
   }
-  const squad = already ?? await ensureLeagueTeam(userId, league.id as string);
+  const squad = already ?? await ensureLeagueTeam(userId, league.id as string, undefined, { carry: !imported });
   if (imported) await copyOpenRoster(admin, squad.id, league.season_id as string, imported);
 
   return {
@@ -673,7 +736,7 @@ export async function joinPublicLeague(
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!league) throw httpError("Lega non trovata.", 404);
-  const squad = already ?? await ensureLeagueTeam(userId, leagueId);
+  const squad = already ?? await ensureLeagueTeam(userId, leagueId, undefined, { carry: !imported });
   if (imported) await copyOpenRoster(admin, squad.id, season.id, imported);
   return {
     id: league.id as string,

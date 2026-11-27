@@ -4,6 +4,7 @@ import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { errorMessage } from "@/lib/server/session";
+import { runLineupReminderSafely } from "@/lib/server/lineup-reminder";
 import { alertVoteSync } from "@/lib/server/telegram-alert";
 import { writeSyncLog, type SyncLogEntry } from "@/lib/server/system-settings";
 import { prepareVoteClock, runPlannedReads, syncDueMatchVotes } from "@/lib/server/sync-match-votes";
@@ -104,9 +105,13 @@ async function run(request: Request) {
     // Fuori dai momenti previsti: una sola lettura, nessuna scrittura, nessun contatto con le fonti.
     const { snapshot, plan } = await prepareVoteClock(now);
     if (planIsEmpty(plan)) {
+      // Il promemoria delle formazioni usa la stessa sveglia e parte dopo la risposta.
+      after(() => runLineupReminderSafely(now.getTime()));
       return NextResponse.json({ skipped: true, reason: snapshot.auto ? "Niente da fare adesso." : "Sincronizzazione automatica disattivata." });
     }
     after(async () => {
+      // Prima il promemoria: è breve e non deve aspettare le letture dei voti.
+      await runLineupReminderSafely(now.getTime());
       try {
         const report = await meter("vote-fetch", () => runPlannedReads(snapshot, plan, now));
         // Se un'altra chiamata ha già preso le stesse letture, non c'è niente da registrare.

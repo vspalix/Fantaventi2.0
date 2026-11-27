@@ -5,6 +5,7 @@ import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/lib/testing/scoringEngineTestSuite";
 import { runErrorReportChecks } from "./test-error-report";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
+import { runLineupReminderChecks } from "./test-lineup-reminder";
 import { runLiveGapChecks } from "./test-live-gaps";
 import { runRulesCoverage } from "./test-rules-coverage";
 import { runSubstitutionChecks } from "./test-substitutions";
@@ -82,11 +83,15 @@ async function main() {
   console.log(`Errori e avvisi: ${errors.failures.length === 0 ? "PASSED" : "FAILED"} ${errors.passed}/${errors.total}`);
   for (const failure of errors.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed;
+  const reminders = await runLineupReminderChecks();
+  console.log(`Promemoria formazioni: ${reminders.failures.length === 0 ? "PASSED" : "FAILED"} ${reminders.passed}/${reminders.total}`);
+  for (const failure of reminders.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + reminders.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + reminders.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || reminders.failures.length > 0 || total < 100) process.exit(1);
 }
 
 main().catch((error: unknown) => {

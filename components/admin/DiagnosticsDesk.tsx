@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { DiagnosticJob, OpsDiagnostics } from "@/lib/server/ops-diagnostics";
 import type { SyncLogRow } from "@/lib/server/system-settings";
 
-const JOB = { votes: "Voti", availability: "Indisponibili", kickoffs: "Orari" };
+const JOB = { votes: "Voti", availability: "Indisponibili", kickoffs: "Orari", reminders: "Promemoria" };
 const ORIGIN = { cron: "Cron", manual: "Manuale" };
 const STATUS = { success: "Ok", skipped: "Saltato", error: "Errore", missing: "Mai eseguito" };
 

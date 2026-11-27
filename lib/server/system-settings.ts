@@ -22,7 +22,7 @@ export type SystemSettings = {
 };
 
 export type SyncLogEntry = {
-  jobType: "votes" | "availability" | "kickoffs";
+  jobType: "votes" | "availability" | "kickoffs" | "reminders";
   triggerSource: "cron" | "manual";
   status: "success" | "skipped" | "error";
   recordsWritten: number;
@@ -117,7 +117,7 @@ export function clockMinutes(value: string, fallback: number) {
 export type SyncLogRow = {
   id: string;
   createdAt: string;
-  jobType: "votes" | "availability" | "kickoffs";
+  jobType: "votes" | "availability" | "kickoffs" | "reminders";
   triggerSource: "cron" | "manual";
   status: "success" | "skipped" | "error";
   recordsWritten: number;
@@ -228,7 +228,7 @@ export async function readSyncLogs(limit = 20): Promise<SyncLogRow[]> {
   return (rows.data ?? []).map((row) => ({
     id: String(row.id),
     createdAt: String(row.created_at),
-    jobType: row.job_type === "availability" ? "availability" : row.job_type === "kickoffs" ? "kickoffs" : "votes",
+    jobType: row.job_type === "availability" ? "availability" : row.job_type === "kickoffs" ? "kickoffs" : row.job_type === "reminders" ? "reminders" : "votes",
     triggerSource: row.trigger_source === "manual" ? "manual" : "cron",
     status: row.status === "success" || row.status === "error" ? row.status : "skipped",
     recordsWritten: Number(row.records_written) || 0,

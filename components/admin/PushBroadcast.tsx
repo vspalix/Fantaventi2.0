@@ -36,7 +36,8 @@ export function PushBroadcast() {
       const body = (await response.json().catch(() => ({}))) as { sent?: number; skipped?: number; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Invio non riuscito.");
       const missed = body.skipped ? ` ${body.skipped} non raggiunti (iscrizioni scadute vengono tolte).` : "";
-      setNote(`Inviata a ${body.sent ?? 0} dispositivi.${missed}`);
+      const sent = body.sent ?? 0;
+      setNote(`Inviata a ${sent} ${sent === 1 ? "dispositivo" : "dispositivi"}.${missed}`);
       setTitle("");
       setMessage("");
       void count().catch(() => undefined);

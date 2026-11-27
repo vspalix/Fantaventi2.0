@@ -4,7 +4,7 @@ import { headToHeadPairings, headToHeadPoints, weekScoreMode, inLeagueRange } fr
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { readLeagueSettings } from "@/lib/server/league-settings";
-import { fantasyPointsForLeague, leagueEntries } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, leagueEntries, waitingEntries } from "@/lib/server/league-scores";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
 import { readSponsors } from "@/lib/server/sponsors";
@@ -203,6 +203,12 @@ async function leagueCard(
       entryByTeam: entries.entryByTeam,
       startMatchday: settings.range.from,
       allowed: settings.rules.enrollment !== "closed",
+      waiting: await waitingEntries(
+        teamIds,
+        entries.entryByTeam,
+        ownWeeks.map((week) => ({ number: Number(week.number), deadlineAt: week.deadline_at })),
+        settings.range.from,
+      ),
     };
     const myEntry = myTeamId ? lateEntryOf(entryContext, myTeamId) : null;
     let myReal = 0;

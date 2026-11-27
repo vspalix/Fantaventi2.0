@@ -1,7 +1,7 @@
 // Giornata di inizio di una lega e impostazioni scelte alla creazione. Solo dati inventati.
 import { pathToFileURL } from "node:url";
 import path from "node:path";
-import { entryCredit, lateEntryOf, presentAverage, weekGain } from "../lib/late-entry";
+import { entryCredit, lateEntryOf, presentAverage, waitingWeek, weekGain } from "../lib/late-entry";
 import { defaultPhases, inLeagueRange, newLeagueRange, parseLeagueRules, DEFAULT_LEAGUE_RULES, scoringPhase } from "../lib/league-rules";
 
 export function runLeagueStartChecks() {
@@ -70,6 +70,16 @@ export function runLeagueStartChecks() {
   check("Lega a numero chiuso: nessun punto di ingresso", entryCredit({ ...entry, allowed: false }, "D", weeks, pointsOf).points === 0);
   const from13 = { ...entry, startMatchday: 3 };
   check("Entrare alla giornata di inizio della lega non è un ingresso in corsa", lateEntryOf(from13, "D") === null);
+
+  const joined = { ...entry, waiting: new Map([["E", 4]]) };
+  const early = entryCredit(joined, "E", weeks, pointsOf);
+  check("Appena iscritto, senza formazioni: riceve subito la media", lateEntryOf(joined, "E") === 4 && early.skipped === 3 && early.points > 0, JSON.stringify(early));
+  check("Appena iscritto: non entra nella media degli altri", entryCredit(joined, "D", weeks, pointsOf).points === credit.points);
+  check("La prima formazione vale più della data di iscrizione", lateEntryOf({ ...entry, waiting: new Map([["D", 2]]) }, "D") === 3);
+  check("Iscritto dopo la chiusura: parte dalla giornata della sua rosa", waitingWeek(14, 14, 1) === 14);
+  check("Iscritto senza rosa: parte dalla prima giornata ancora aperta", waitingWeek(null, 13, 1) === 13);
+  check("In rosa dall'inizio e mai schierato: non è un ingresso in corsa", waitingWeek(1, 13, 1) === null);
+  check("Lega che parte adesso: nessun ingresso in corsa", waitingWeek(null, 13, 13) === null && waitingWeek(1, 13, 13) === null);
 
   return { total, passed: total - failures.length, failures };
 }

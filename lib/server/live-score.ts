@@ -293,6 +293,7 @@ export async function calculateProvisionalForTeam(fantasyTeamId: string, gamewee
 export async function previewProvisional(gameweekId: string, now = new Date()) {
   const context = await loadContext(gameweekId, { provisional: true, office: true, now });
   return {
+    gameweekNumber: Number(context.gameweek.number),
     definition: context.definition,
     stats: context.stats,
     lineups: context.lineups,

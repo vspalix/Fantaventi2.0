@@ -665,7 +665,7 @@ async function squadsFor(
 async function loadPreview(gameweekId: string, leagueId: string) {
   try {
     const preview = await previewProvisional(gameweekId);
-    const { definition, rules } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition);
+    const { definition, rules } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition, preview.gameweekNumber);
     const stats = preview.stats;
     return {
       definition,

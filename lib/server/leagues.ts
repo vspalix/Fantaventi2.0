@@ -6,7 +6,8 @@ import { leagueActor } from "@/lib/server/access-policy";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { readLeagueSettings } from "@/lib/server/league-settings";
-import type { LeagueDetail, LeagueSummary, RosterImportSource } from "@/lib/types";
+import { changedScoring, nextScoringHistory, scoringLabel } from "@/lib/scoring-history";
+import type { LeagueDetail, LeagueSummary, RosterImportSource, ScoringChoice } from "@/lib/types";
 import { createDedicatedTeam, ensureProfile, getCurrentSeason, listSeasonTeams, teamInLeague } from "@/lib/server/catalog";
 import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
@@ -323,7 +324,8 @@ export async function createLeague(
   if (trimmed.length < 2 || trimmed.length > 40) {
     throw new Error("Il nome della lega deve avere tra 2 e 40 caratteri.");
   }
-  const rules = parseLeagueRules(rulesInput);
+  // Una lega nuova non ha giornate passate con regole diverse.
+  const rules = { ...parseLeagueRules(rulesInput), scoringHistory: [] };
 
   const admin = createAdminSupabase();
   await ensureProfile(admin, userId, email);
@@ -750,6 +752,22 @@ export async function joinPublicLeague(
   };
 }
 
+/** La prima giornata che non è ancora cominciata. A calendario finito, quella dopo l'ultima. */
+async function firstOpenMatchday(admin: ReturnType<typeof createAdminSupabase>, seasonId: string) {
+  const open = await admin
+    .from("gameweeks")
+    .select("number")
+    .eq("season_id", seasonId)
+    .in("status", ["scheduled", "open"])
+    .gt("deadline_at", new Date().toISOString())
+    .order("number", { ascending: true })
+    .limit(1);
+  if (open.error) throw new Error(open.error.message);
+  if (open.data?.[0]) return Number(open.data[0].number);
+  const rounds = await seasonRoundCount(admin, seasonId);
+  return (rounds > 0 ? rounds : 38) + 1;
+}
+
 export async function updateLeague(
   userId: string,
   leagueId: string,
@@ -759,6 +777,8 @@ export async function updateLeague(
     startMatchday?: number;
     endMatchday?: number;
     rules?: Partial<LeagueRules>;
+    /** Se cambia un bonus a lega iniziata: vale da ora o per tutte le giornate. */
+    scoringApply?: unknown;
     grantDelegateUserId?: string;
     revokeDelegateUserId?: string;
   },
@@ -805,6 +825,25 @@ export async function updateLeague(
     phases: input.rules.phases ?? current.phases,
     checkpoints: input.rules.checkpoints ?? current.checkpoints,
   }, input.rules.format ?? current.format) : null;
+  if (rules) {
+    // Lo storico dei bonus lo scrive solo il server: quello arrivato dalla richiesta non conta.
+    rules.scoringHistory = current.scoringHistory;
+    if (rules.enrollment === "closed" && detail.participants.length > (rules.maxMembers ?? 0)) {
+      throw httpError(`Nella lega ci sono già ${detail.participants.length} squadre: i posti non possono essere di meno.`, 409);
+    }
+    const changed = changedScoring(current, rules);
+    if (changed.length > 0) {
+      const start = patch.start_matchday ?? detail.startMatchday;
+      const from = await firstOpenMatchday(admin, detail.seasonId);
+      const apply = input.scoringApply === "from-now" || input.scoringApply === "all" ? input.scoringApply : null;
+      // Senza giornate già iniziate non c'è niente da scegliere.
+      if (from > start && !apply) {
+        const choice: ScoringChoice = { fromMatchday: from, changed: changed.map(scoringLabel) };
+        throw Object.assign(httpError("Scegli se la modifica vale da ora o per tutte le giornate.", 409), { scoringChoice: choice });
+      }
+      rules.scoringHistory = nextScoringHistory(current, rules, from > start ? apply ?? "all" : "all", from);
+    }
+  }
   if (input.grantDelegateUserId || input.revokeDelegateUserId) {
     if (!detail.isOwner && !detail.platformOverride) throw httpError("Solo chi ha creato la lega può nominare un admin.", 403);
     if (input.grantDelegateUserId) {

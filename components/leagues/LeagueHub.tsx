@@ -6,6 +6,7 @@ import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
 import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueRulesReadout } from "@/components/leagues/LeagueRulesReadout";
+import { ScoringChoiceDialog } from "@/components/leagues/ScoringChoiceDialog";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
 import { MatchdayResults, type Arrival } from "@/components/leagues/MatchdayResults";
@@ -32,7 +33,8 @@ import {
 import { isHubTab, LEAGUE_TAB_EVENT, type HubTab } from "@/lib/hub-tabs";
 import { InfoTip } from "@/components/InfoTip";
 import type { LeagueRules } from "@/lib/league-rules";
-import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole, SavedLineup } from "@/lib/types";
+import type { ScoringApply } from "@/lib/scoring-history";
+import type { CatalogPlayer, LeagueDetail, LeagueHubData, LiveLineupSheet, OpponentLineup, PlayerRole, SavedLineup, ScoringChoice } from "@/lib/types";
 import { RegulationPanel } from "@/components/rules/RegulationView";
 import { ROLE_LABEL } from "@/lib/types";
 import { useTapGuard } from "@/components/useTapGuard";
@@ -340,6 +342,16 @@ function MiniTable({
   );
 }
 
+/** Ciò che il pannello dell'admin manda a salvare. */
+type LeagueAdminInput = {
+  name: string;
+  startMatchday: number;
+  endMatchday: number;
+  regenerateCode?: boolean;
+  rules?: LeagueRules;
+  scoringApply?: ScoringApply;
+};
+
 export function LeagueHub({
   initial,
   allowTestFill = false,
@@ -379,6 +391,7 @@ export function LeagueHub({
   const [armOpen, setArmOpen] = useState<"captain" | "vice" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [scoringAsk, setScoringAsk] = useState<{ input: LeagueAdminInput; choice: ScoringChoice } | null>(null);
   const [pending, setPending] = useState(false);
   const [squads, setSquads] = useState(initial.squads);
   const [squadsLoading, setSquadsLoading] = useState(false);
@@ -793,29 +806,40 @@ export function LeagueHub({
     }
   }
 
-  async function saveLeagueAdmin(input: {
-    name: string;
-    startMatchday: number;
-    endMatchday: number;
-    regenerateCode?: boolean;
-    rules: LeagueRules;
-  }) {
+  async function saveLeagueAdmin(input: LeagueAdminInput) {
     if (flight.current) return;
     flight.current = true;
     setPending(true);
     setError(null);
     setMessage(null);
     try {
-      await readJson<{ league: LeagueDetail }>(await fetch(`/api/leagues/${hub.league.id}`, {
+      const saved = await readJson<{ league?: LeagueDetail; needsScoringChoice?: ScoringChoice }>(await fetch(`/api/leagues/${hub.league.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(input),
       }));
+      // Non ha salvato niente: prima l'admin dice da quando valgono i bonus cambiati.
+      if (saved.needsScoringChoice) {
+        setScoringAsk({ input, choice: saved.needsScoringChoice });
+        return;
+      }
       const body = await readJson<{ hub: LeagueHubData }>(await fetch(`/api/leagues/${hub.league.id}/hub`));
       applyHub(body.hub);
-      setMessage(input.regenerateCode ? "Nuovo codice invito generato." : "Impostazioni della lega salvate.");
+      const done = input.regenerateCode
+        ? "Nuovo codice invito generato."
+        : input.scoringApply === "from-now"
+          ? "Impostazioni salvate. I bonus cambiati valgono da ora."
+          : input.scoringApply === "all"
+            ? "Impostazioni salvate. Tutte le giornate sono ricalcolate."
+            : "Impostazioni della lega salvate.";
+      setScoringAsk(null);
+      setMessage(done);
+      pushToast("ok", done);
     } catch (reason) {
-      setError(readableError(reason, "Salvataggio non riuscito."));
+      setScoringAsk(null);
+      const text = readableError(reason, "Salvataggio non riuscito.");
+      setError(text);
+      pushToast("err", text);
     } finally {
       flight.current = false;
       setPending(false);
@@ -1238,6 +1262,15 @@ export function LeagueHub({
             onRevoke={revokeDelegate}
           />
         ) : <LeagueRulesReadout league={hub.league} />
+      ) : null}
+      {shownTab === "lega" && scoringAsk ? (
+        <ScoringChoiceDialog
+          choice={scoringAsk.choice}
+          lastMatchday={scoringAsk.input.endMatchday}
+          pending={pending}
+          onPick={(scoringApply) => void saveLeagueAdmin({ ...scoringAsk.input, scoringApply })}
+          onCancel={() => setScoringAsk(null)}
+        />
       ) : null}
       {armOpen && canEdit ? (
         <WheelPicker

@@ -62,7 +62,7 @@ async function openWeekAudit(
     .single();
   if (seasonError) throw new Error(seasonError.message);
   const ruleset = one(season.rulesets as { definition?: RulesetDefinition } | { definition?: RulesetDefinition }[] | null);
-  const { rules, definition } = await definitionForLeague(admin, leagueId, (ruleset?.definition ?? {}) as RulesetDefinition);
+  const { rules, definition } = await definitionForLeague(admin, leagueId, (ruleset?.definition ?? {}) as RulesetDefinition, gameweekNumber);
 
   const teamIds = [...namesByTeam.keys()];
   const { data: lineupRows, error: lineupError } = await admin

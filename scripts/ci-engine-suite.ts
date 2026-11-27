@@ -113,6 +113,10 @@ async function main() {
   console.log(`Inizio lega e impostazioni: ${leagueStart.failures.length === 0 ? "PASSED" : "FAILED"} ${leagueStart.passed}/${leagueStart.total}`);
   for (const failure of leagueStart.failures) console.log(`- ${failure}`);
 
+  const history = runIsolated("test-rule-history.ts");
+  console.log(`Bonus cambiati a lega iniziata: ${history.failures.length === 0 ? "PASSED" : "FAILED"} ${history.passed}/${history.total}`);
+  for (const failure of history.failures) console.log(`- ${failure}`);
+
   const office = runIsolated("test-office-lineup-live.ts");
   console.log(`Formazione d'ufficio in diretta: ${office.failures.length === 0 ? "PASSED" : "FAILED"} ${office.passed}/${office.total}`);
   for (const failure of office.failures) console.log(`- ${failure}`);
@@ -129,11 +133,11 @@ async function main() {
   console.log(`Niente invii veri in locale: ${outbound.failures.length === 0 ? "PASSED" : "FAILED"} ${outbound.passed}/${outbound.total}`);
   for (const failure of outbound.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed;
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + history.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + history.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || history.failures.length > 0 || total < 100) process.exit(1);
 }
 
 /**

@@ -2,7 +2,7 @@ import { scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinit
 import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { waitingWeek } from "@/lib/late-entry";
-import { definitionForLeague } from "@/lib/server/league-settings";
+import { leagueDefinitions } from "@/lib/server/league-settings";
 import { inChunks, readAllRows } from "@/lib/server/read-all";
 import type { PlayerRole } from "@/lib/types";
 
@@ -89,7 +89,7 @@ export async function fantasyPointsForLeague(
     .single();
   if (seasonError) throw new Error(seasonError.message);
   const ruleset = Array.isArray(season.rulesets) ? season.rulesets[0] : season.rulesets;
-  const { rules, definition } = await definitionForLeague(admin, leagueId, (ruleset?.definition ?? {}) as RulesetDefinition);
+  const { rules, at } = await leagueDefinitions(admin, leagueId, (ruleset?.definition ?? {}) as RulesetDefinition);
 
   const gameweekIds = gameweeks.map((week) => week.id);
   const numberById = new Map(gameweeks.map((week) => [week.id, week.number]));
@@ -205,6 +205,7 @@ export async function fantasyPointsForLeague(
     const number = numberById.get(gameweekId);
     if (number === undefined) continue;
     const { roles, clubs: clubByPlayer } = rosterAt(number);
+    const definition = at(number);
     const stats = new Map<string, PlayerStat>();
     for (const row of statsByWeek.get(gameweekId) ?? []) {
       const playerId = row.player_id;

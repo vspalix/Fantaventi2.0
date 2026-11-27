@@ -10,6 +10,7 @@ import {
 } from "@/lib/engine/calculator";
 import { fileForgottenLineups, planForgottenLineups, type OfficeSlot } from "@/lib/server/forgotten-lineup";
 import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
+import { playersWithVotesRead } from "@/lib/lineups/votes-read";
 import { isOfficialMatchClosed, isSettledGameweek } from "@/lib/server/match-window";
 import { loadProvisionalVotes, withProvisionalVotes } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -217,6 +218,7 @@ async function loadContext(gameweekId: string, options?: { provisional?: boolean
     lineups,
     stats,
     matchFinished,
+    clubByPlayer,
   };
 }
 
@@ -295,6 +297,7 @@ export async function previewProvisional(gameweekId: string, now = new Date()) {
     stats: context.stats,
     lineups: context.lineups,
     matchFinished: context.matchFinished,
+    votesRead: playersWithVotesRead(context.stats, context.clubByPlayer),
     scores: liveScoresFor(gameweekId, context),
   };
 }

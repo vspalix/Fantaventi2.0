@@ -296,6 +296,10 @@ export async function loadLeagueHub(
       filed: Boolean(row),
       office: Boolean(office),
       revealed,
+      // Prima della chiusura la formazione degli altri resta coperta, voti compresi.
+      sheet: selectedPreview && locked && source.length > 0
+        ? lineupSheet(pickFromSlots(source), byId, selectedPreview, participant.fantasyTeamId)
+        : undefined,
       slots,
       bench,
     };
@@ -329,7 +333,7 @@ export async function loadLeagueHub(
         : partialStandings(admin, league.participants, lastClosed.id, [], standingPack.weekPoints),
   ]);
   const liveSheet = selectedPreview && team
-    ? lineupSheet(lineup, roster, selectedPreview, team.id)
+    ? lineupSheet(lineup, byId, selectedPreview, team.id)
     : null;
 
   let lineupSaved = false;
@@ -553,6 +557,9 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
       filed: Boolean(lineup),
       office: officeTeams.has(participant.fantasyTeamId),
       revealed,
+      sheet: preview && locked && source.length > 0
+        ? lineupSheet(pickFromSlots(source), byId, preview, participant.fantasyTeamId)
+        : undefined,
       slots: source.filter((slot) => slot.is_starter !== false).map(named).sort((left, right) => ROLE_ORDER[left.role] - ROLE_ORDER[right.role] || left.fullName.localeCompare(right.fullName, "it")),
       bench: source.filter((slot) => slot.is_starter === false).sort((left, right) => (left.slot_order ?? 0) - (right.slot_order ?? 0)).map(named),
     };
@@ -671,6 +678,7 @@ async function loadPreview(gameweekId: string, leagueId: string) {
       definition,
       rules,
       stats,
+      votesRead: preview.votesRead,
       lineups: preview.lineups,
       /** Squadre che giocano con la formazione d'ufficio, non ancora registrata. */
       office: new Set(preview.lineups.filter((lineup) => lineup.office).map((lineup) => lineup.fantasyTeamId)),
@@ -733,11 +741,10 @@ function partialFromPreview(
 
 function lineupSheet(
   lineup: LineupPick,
-  roster: CatalogPlayer[],
+  byId: ReadonlyMap<string, CatalogPlayer>,
   preview: NonNullable<Awaited<ReturnType<typeof loadPreview>>>,
   fantasyTeamId: string,
 ): LiveLineupSheet {
-  const byId = new Map(roster.map((player) => [player.id, player]));
   const score = preview.scores.find((item) => item.fantasyTeamId === fantasyTeamId);
   const played = new Map((score?.players ?? []).map((player) => [player.playerId, player]));
   const rowFor = (playerId: string, isCaptain: boolean, isVice: boolean): LivePlayerRow | null => {
@@ -756,6 +763,7 @@ function lineupSheet(
       malus: rated.voto === null ? null : rated.malusPoints,
       fantavoto: rated.fantavoto,
       formula: liveFormula(rated.voto, rated.bonusPoints, rated.malusPoints),
+      waiting: rated.voto === null && !preview.votesRead.has(playerId),
     };
   };
   const onField = score?.players ?? [];
@@ -783,6 +791,7 @@ function lineupSheet(
         malus: rated.malus,
         fantavoto: rated.fantavoto,
         formula: liveFormula(rated.voto, rated.bonus ?? 0, rated.malus ?? 0),
+        waiting: rated.voto === null && !preview.votesRead.has(playerId),
       }];
     }),
     partialTotal: partialTotalOf(preview, fantasyTeamId),

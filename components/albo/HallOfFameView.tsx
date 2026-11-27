@@ -1,0 +1,112 @@
+"use client";
+
+import { useState } from "react";
+import { EmptyState } from "@/components/EmptyState";
+import { ScoreIcon } from "@/components/scores/ScoreIcons";
+import type { LeagueArchive, SeasonArchive } from "@/lib/server/hall-of-fame";
+
+const points = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
+
+function Cup() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 4h10v6a5 5 0 0 1-10 0zM7 6H4.500A2.500 2.500 0 0 0 7.500 10.500M17 6h2.500a2.500 2.500 0 0 1-3 4.500M12 15v3.500M8 20.500h8" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Bolt() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" className="score-icon">
+      <path d="M11 2 4.500 11.200H9L8 18l7-9.800h-4.800z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function Record({ icon, label, who, value }: { icon: React.ReactNode; label: string; who: string; value: string }) {
+  return (
+    <li className="al-record">
+      <span className="al-record-icon">{icon}</span>
+      <span className="al-record-text">
+        <small>{label}</small>
+        <strong>{who}</strong>
+      </span>
+      <b>{value}</b>
+    </li>
+  );
+}
+
+function League({ league }: { league: LeagueArchive }) {
+  const { bestWeek, topScorer, worstDefense } = league;
+  return (
+    <article className="card al-league">
+      <h2>{league.leagueName}</h2>
+      {league.podium.length === 0 ? (
+        <p className="al-empty">Nessun punteggio ufficiale in questa lega.</p>
+      ) : (
+        // In pagina il primo sta al centro; in lettura l'ordine resta 1, 2, 3.
+        <ol className="al-podium">
+          {league.podium.map((place) => (
+            <li key={place.rank} data-rank={place.rank}>
+              <div className="al-who">
+                {place.rank === 1 ? <span className="al-cup"><Cup /></span> : null}
+                <strong>{place.teamName}</strong>
+                {place.displayName ? <small>{place.displayName}</small> : null}
+                <b>{points.format(place.points)}</b>
+              </div>
+              <span className="al-step" aria-label={`${place.rank}° posto`}>{place.rank}°</span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {bestWeek || topScorer || worstDefense ? (
+        <ul className="al-records">
+          {bestWeek ? (
+            <Record icon={<Bolt />} label={`Record di giornata · giornata ${bestWeek.gameweek}`} who={bestWeek.teamName} value={points.format(bestWeek.points)} />
+          ) : null}
+          {topScorer ? (
+            <Record icon={<ScoreIcon kind="goal" />} label="Capocannoniere" who={topScorer.playerName} value={`${topScorer.goals} gol`} />
+          ) : null}
+          {worstDefense ? (
+            <Record icon={<ScoreIcon kind="defense" />} label={`Peggior difesa · giornata ${worstDefense.gameweek}`} who={worstDefense.teamName} value={points.format(worstDefense.points)} />
+          ) : null}
+        </ul>
+      ) : null}
+    </article>
+  );
+}
+
+/** Le stagioni concluse: si sceglie la stagione, poi ogni lega ha podio e record. */
+export function HallOfFameView({ seasons }: { seasons: SeasonArchive[] }) {
+  const [chosen, setChosen] = useState<string | null>(null);
+  const season = seasons.find((item) => item.seasonId === chosen) ?? seasons[0];
+  if (!season) {
+    return (
+      <EmptyState title="Nessuna stagione conclusa">
+        I podi compariranno qui quando finisce una stagione.
+      </EmptyState>
+    );
+  }
+  return (
+    <div className="al">
+      {seasons.length > 1 ? (
+        <div className="al-seasons" role="group" aria-label="Stagione">
+          {seasons.map((item) => (
+            <button key={item.seasonId} type="button" aria-pressed={item.seasonId === season.seasonId} onClick={() => setChosen(item.seasonId)}>
+              {item.seasonCode}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="al-season">Stagione {season.seasonCode}</p>
+      )}
+      {season.leagues.length === 0 ? (
+        <EmptyState title="Nessuna lega in questa stagione">La stagione è conclusa, ma non ha leghe da ricordare.</EmptyState>
+      ) : (
+        <div className="al-leagues">
+          {season.leagues.map((league) => <League key={league.leagueId} league={league} />)}
+        </div>
+      )}
+    </div>
+  );
+}

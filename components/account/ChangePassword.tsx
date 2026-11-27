@@ -55,24 +55,26 @@ export function ChangePassword() {
   }
 
   return (
-    <form className="card stack" onSubmit={(event) => void save(event)}>
-      <h2>Password</h2>
-      <p className="small muted">Servono la password attuale e una nuova di almeno 8 caratteri.</p>
-      <label>
-        Password attuale
-        <input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} autoComplete="current-password" required />
-      </label>
-      <label>
-        Nuova password
-        <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
-      </label>
-      <label>
-        Ripeti la nuova password
-        <input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" minLength={8} required />
-      </label>
-      {error ? <p className="banner">{error}</p> : null}
-      {notice ? <p className="banner ok">{notice}</p> : null}
-      <button className="primary" type="submit" disabled={pending}>Salva password</button>
-    </form>
+    <details className="card ac-fold">
+      <summary><h2>Cambia password</h2></summary>
+      <form className="stack" onSubmit={(event) => void save(event)}>
+        <p className="small muted">La nuova deve avere almeno 8 caratteri.</p>
+        <label>
+          Password attuale
+          <input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} autoComplete="current-password" required />
+        </label>
+        <label>
+          Nuova password
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="new-password" minLength={8} required />
+        </label>
+        <label>
+          Ripeti la nuova password
+          <input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} autoComplete="new-password" minLength={8} required />
+        </label>
+        {error ? <p className="banner">{error}</p> : null}
+        {notice ? <p className="banner ok">{notice}</p> : null}
+        <button className="primary" type="submit" disabled={pending}>Salva password</button>
+      </form>
+    </details>
   );
 }

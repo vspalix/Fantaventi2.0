@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { ToastHost } from "@/components/ToastHost";
 import { SiteHeader, type HeaderSeason, type HeaderSquad } from "@/components/SiteHeader";
+import { MyLeaguesProvider } from "@/components/leagues/MyLeagues";
 import { AnnounceModal } from "@/components/AnnounceModal";
 import { NativeBridge } from "@/components/NativeBridge";
 import { ClubBadgeProvider } from "@/components/TeamBadge";
@@ -24,6 +25,7 @@ import { getSessionUser, SESSION_UNAVAILABLE, sessionUnavailable } from "@/lib/s
 import { hostAccess } from "@/lib/server/view-mode";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
+import type { LeagueSummary } from "@/lib/types";
 import "./globals.css";
 
 const sans = Jost({
@@ -105,6 +107,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   }));
   let activeSeasonId: string | null = null;
   let squads: HeaderSquad[] = [];
+  let myLeagues: LeagueSummary[] | null = null;
   let activeLeagueId: string | null = null;
   let profileLabel = user?.email?.split("@")[0] ?? "";
   if (service && playable.length > 0) {
@@ -117,6 +120,8 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           listLeaguesForUser(user.id),
           admin.from("profiles").select("display_name").eq("id", user.id).maybeSingle(),
         ]);
+        // Il codice invito arriva al telefono solo per le leghe che si amministrano.
+        myLeagues = leagues.map((league) => (league.isManager ? league : { ...league, joinCode: "" }));
         squads = leagues.map((league) => ({
           id: league.id,
           teamName: league.teamName || "La tua squadra",
@@ -133,6 +138,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       seasons = [];
       activeSeasonId = null;
       squads = [];
+      myLeagues = null;
       activeLeagueId = null;
     }
   }
@@ -144,6 +150,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     <html lang="it">
       <body className={sans.variable} style={{ ["--accent" as string]: accent, ["--accent-ink" as string]: accentInk(accent), ["--glow" as string]: `0 0 28px rgba(${red}, ${green}, ${blue}, 0.16)` }}>
         <ClubBadgeProvider badges={badges}>
+        <MyLeaguesProvider leagues={myLeagues}>
         <Suspense fallback={<header className="site-header" />}>
           <SiteHeader
             email={user?.email ?? null}
@@ -169,6 +176,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
         {announcements.length > 0 ? <AnnounceModal items={announcements} /> : null}
         <NativeBridge />
         <ToastHost />
+        </MyLeaguesProvider>
         </ClubBadgeProvider>
       </body>
     </html>

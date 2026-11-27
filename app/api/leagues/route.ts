@@ -8,8 +8,8 @@ export async function GET() {
   try {
     assertServiceEnv();
     const user = await requireSessionUser();
-    const leagues = await listLeaguesForUser(user.id);
-    const publicLeagues = await listPublicLeagues(user.id);
+    const own = listLeaguesForUser(user.id);
+    const [leagues, publicLeagues] = await Promise.all([own, listPublicLeagues(user.id, own)]);
     return NextResponse.json({ leagues, publicLeagues });
   } catch (error) {
     return apiError("API /api/leagues (GET)", error);

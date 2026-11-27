@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AppDrawer } from "@/components/AppDrawer";
 import { InboxBell } from "@/components/InboxBell";
+import { LeagueSwitcher } from "@/components/leagues/LeagueSwitcher";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -37,11 +38,14 @@ export function SiteHeader({
   const search = useSearchParams();
   const router = useRouter();
   const [leagueTab, setLeagueTab] = useState(search.get("tab"));
-  const [open, setOpen] = useState<"menu" | "profile" | "more" | null>(null);
+  const [open, setOpen] = useState<"menu" | "profile" | "more" | "leagues" | null>(null);
   const bar = useRef<HTMLElement>(null);
   const clientTab = useRef<string | null>(null);
   const pathLeague = pathname.match(/^\/leghe\/([^/]+)/)?.[1];
+  /** L'ultima lega scelta o visitata: la parte comune non si rilegge a ogni cambio di schermata. */
+  const [picked, setPicked] = useState<string | null>(null);
   const current = squads.find((squad) => squad.id === pathLeague)
+    ?? squads.find((squad) => squad.id === picked)
     ?? squads.find((squad) => squad.id === activeLeagueId)
     ?? squads[0]
     ?? null;
@@ -56,6 +60,10 @@ export function SiteHeader({
     clientTab.current = tab;
     setLeagueTab(tab);
   }
+
+  useEffect(() => {
+    if (pathLeague) setPicked(pathLeague);
+  }, [pathLeague]);
 
   useEffect(() => {
     if (clientTab.current) {
@@ -110,13 +118,15 @@ export function SiteHeader({
 
   function chooseSquad(leagueId: string) {
     setOpen(null);
-    void fetch("/api/active-league", {
+    setPicked(leagueId);
+    const saved = fetch("/api/active-league", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ leagueId }),
     });
     if (pathname === "/") {
-      router.refresh();
+      // La Dashboard si rilegge solo dopo che la scelta è stata salvata, altrimenti mostra la lega di prima.
+      void saved.finally(() => router.refresh());
       return;
     }
     router.push(`/leghe/${leagueId}`);
@@ -168,20 +178,14 @@ export function SiteHeader({
         ) : <span className="header-menu" />}
 
         {email && squads.length > 1 && current ? (
-          <div className="league-switch" role="tablist" aria-label="Le tue leghe">
-            {squads.map((squad) => (
-              <button
-                key={squad.id}
-                type="button"
-                role="tab"
-                aria-selected={squad.id === current.id}
-                data-active={squad.id === current.id}
-                onClick={() => chooseSquad(squad.id)}
-              >
-                {squad.leagueName}
-              </button>
-            ))}
-          </div>
+          <LeagueSwitcher
+            leagues={squads}
+            currentId={current.id}
+            open={open === "leagues"}
+            onToggle={() => setOpen(open === "leagues" ? null : "leagues")}
+            onClose={() => setOpen(null)}
+            onChoose={chooseSquad}
+          />
         ) : (
           <Link href={email ? (current ? `/leghe/${current.id}` : "/leghe") : "/"} className="league-current">
             {email ? (current?.leagueName ?? "Le tue leghe") : "Fantaventi"}

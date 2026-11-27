@@ -120,18 +120,24 @@ async function seasonCode(admin: ReturnType<typeof createAdminSupabase>, seasonI
 export const listLeaguesForUser = cache(async (userId: string): Promise<LeagueSummary[]> => {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const teams = await listSeasonTeams(admin, userId, season.id);
+  const ownedLeagues = async () => {
+    const scoped = await admin
+      .from("private_leagues")
+      .select("id, name, join_code, season_id")
+      .eq("owner_user_id", userId)
+      .eq("season_id", season.id)
+      .eq("is_sandbox", false);
+    return scoped.error && missingSandboxColumn(scoped.error.message)
+      ? admin.from("private_leagues").select("id, name, join_code, season_id").eq("owner_user_id", userId).eq("season_id", season.id)
+      : scoped;
+  };
+  // Letture indipendenti: partono insieme, ognuna costa un viaggio al database.
+  const [teams, ownedResult, delegated] = await Promise.all([
+    listSeasonTeams(admin, userId, season.id),
+    ownedLeagues(),
+    delegateLeagueIds(admin, userId),
+  ]);
   const teamById = new Map(teams.map((team) => [team.id, team]));
-
-  const ownedQuery = await admin
-    .from("private_leagues")
-    .select("id, name, join_code, season_id")
-    .eq("owner_user_id", userId)
-    .eq("season_id", season.id)
-    .eq("is_sandbox", false);
-  const ownedResult = ownedQuery.error && missingSandboxColumn(ownedQuery.error.message)
-    ? await admin.from("private_leagues").select("id, name, join_code, season_id").eq("owner_user_id", userId).eq("season_id", season.id)
-    : ownedQuery;
   if (ownedResult.error) throw new Error(ownedResult.error.message);
   const owned = ownedResult.data;
 
@@ -143,7 +149,6 @@ export const listLeaguesForUser = cache(async (userId: string): Promise<LeagueSu
       .in("fantasy_team_id", teams.map((team) => team.id));
   if (memberships.error) throw new Error(memberships.error.message);
 
-  const delegated = await delegateLeagueIds(admin, userId);
   const byId = new Map<string, LeagueSummary>();
   for (const row of memberships.data ?? []) {
     const league = one(row.private_leagues as JoinedLeague | JoinedLeague[] | null);
@@ -578,18 +583,22 @@ async function assertCanJoin(
   if (started) throw httpError("Questa lega è a numero chiuso e non accetta ingressi a campionato iniziato.", 409);
 }
 
-export async function listPublicLeagues(userId: string): Promise<LeagueSummary[]> {
+/** `own`: le leghe dell'utente, se chi chiama le sta già leggendo (evita di calcolarle due volte). */
+export async function listPublicLeagues(userId: string, own?: Promise<LeagueSummary[]>): Promise<LeagueSummary[]> {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const extended = await admin
-    .from("private_leagues")
-    .select("id, name, join_code, settings")
-    .eq("season_id", season.id);
+  const [extended, joined] = await Promise.all([
+    admin
+      .from("private_leagues")
+      .select("id, name, join_code, settings")
+      .eq("season_id", season.id),
+    own ?? listLeaguesForUser(userId),
+  ]);
   if (extended.error) {
     if (/settings/i.test(extended.error.message)) return [];
     throw new Error(extended.error.message);
   }
-  const mine = new Set((await listLeaguesForUser(userId)).map((league) => league.id));
+  const mine = new Set(joined.map((league) => league.id));
   return (extended.data ?? []).flatMap((row) => {
     const rules = parseLeagueRules(row.settings);
     if (rules.visibility !== "public" || mine.has(row.id as string)) return [];

@@ -5,7 +5,8 @@ import { BusyLabel } from "@/components/BusyLabel";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
 import { CreateLeagueForm } from "@/components/leagues/CreateLeagueForm";
 import { JoinImportPrompt } from "@/components/leagues/JoinImportPrompt";
-import { EmptyState } from "@/components/EmptyState";
+import { LeagueListCard } from "@/components/leagues/LeagueListCard";
+import { useMyLeagues } from "@/components/leagues/MyLeagues";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { LeagueRules } from "@/lib/league-rules";
@@ -20,15 +21,12 @@ async function readJson<T>(response: Response): Promise<T> {
 /** Dove mostrare un errore: vicino a ciò che l'ha provocato. */
 type Place = "list" | "add" | "public";
 
-function roleLabel(league: LeagueSummary) {
-  if (!league.isManager) return "Giocatore";
-  return league.isOwner ? "Amministratore" : "Admin delegato";
-}
-
-export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: boolean }) {
+export function LeagueManager({ signedIn }: { signedIn: boolean }) {
   const router = useRouter();
+  // L'elenco già letto all'apertura dell'app si vede subito; poi viene aggiornato in sottofondo.
+  const known = useMyLeagues();
   /** null finché l'elenco non è arrivato. */
-  const [leagues, setLeagues] = useState<LeagueSummary[] | null>(null);
+  const [leagues, setLeagues] = useState<LeagueSummary[] | null>(known);
   const [publicLeagues, setPublicLeagues] = useState<LeagueSummary[]>([]);
   const [mode, setMode] = useState<"join" | "create">("join");
   const [code, setCode] = useState("");
@@ -65,7 +63,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
       })
       .catch((reason: unknown) => {
         if (!cancelled) {
-          setLeagues([]);
+          setLeagues((current) => current ?? []);
           setError({ place: "list", text: readableError(reason, "Elenco delle leghe non disponibile.") });
         }
       });
@@ -88,6 +86,8 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
       setCreated(body.league);
       setLeagues((current) => [body.league, ...(current ?? []).filter((league) => league.id !== body.league.id)]);
       pushToast("ok", "Lega creata. Condividi il codice invito.");
+      // La tendina in alto deve conoscere subito la lega nuova.
+      router.refresh();
       return true;
     } catch (reason) {
       const text = readableError(reason, "Creazione non riuscita.");
@@ -118,6 +118,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
       if (!body.league) throw new Error("Iscrizione non riuscita.");
       setOffer(null);
       router.push(`/leghe/${body.league.id}`);
+      router.refresh();
     } catch (reason) {
       const text = readableError(reason, "Iscrizione non riuscita.");
       setError({ place: payload.leagueId ? "public" : "add", text });
@@ -138,55 +139,11 @@ export function LeagueManager({ signedIn }: { signedIn: boolean; hostMode?: bool
     );
   }
 
-  const seasons = [...new Set((leagues ?? []).map((league) => league.seasonCode))];
   const errorAt = (place: Place) => (error?.place === place ? <p className="banner" role="alert">{error.text}</p> : null);
 
   return (
     <div className="lg-layout">
-      <section className="card lg-card">
-        <div className="lg-title">
-          <h2>Le tue leghe</h2>
-          {seasons.length === 1 ? <span>Stagione {seasons[0]}</span> : null}
-        </div>
-        {errorAt("list")}
-        {leagues === null ? (
-          <div className="stack" aria-busy="true" aria-label="Carico le tue leghe">
-            <div className="skeleton lg-skeleton" />
-            <div className="skeleton lg-skeleton" />
-          </div>
-        ) : leagues.length === 0 ? (
-          error?.place === "list" ? null : (
-            <EmptyState title="Nessuna lega">
-              Crea una lega nuova oppure entra con un codice invito. Chi apre il link di invito entra dopo l&apos;accesso, senza ridigitare il codice.
-            </EmptyState>
-          )
-        ) : (
-          <ul className="lg-list">
-            {leagues.map((league) => (
-              <li key={league.id}>
-                <Link className="lg-row" href={`/leghe/${league.id}`}>
-                  <span className="lg-crest" aria-hidden="true">{league.name.trim().charAt(0).toUpperCase()}</span>
-                  <span className="lg-row-main">
-                    <strong>{league.name}</strong>
-                    <span className="lg-row-team">
-                      <i data-manager={league.isManager}>{roleLabel(league)}</i>
-                      {league.teamName ? ` · ${league.teamName}` : ""}
-                      {seasons.length > 1 ? ` · ${league.seasonCode}` : ""}
-                    </span>
-                    {league.isManager ? <span className="lg-row-code">Codice <b>{league.joinCode}</b></span> : null}
-                  </span>
-                  <span className="lg-chevron" aria-hidden="true">›</span>
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        {leagues?.some((league) => league.isManager) ? <p className="lg-hint">Il codice invito non scade da solo.</p> : null}
-        <Link className="lg-link" href="/albo">
-          <span>Albo d&apos;oro <small>Le stagioni chiuse</small></span>
-          <span className="lg-chevron" aria-hidden="true">›</span>
-        </Link>
-      </section>
+      <LeagueListCard leagues={leagues} error={errorAt("list")} />
 
       <div className="stack">
         {created ? (

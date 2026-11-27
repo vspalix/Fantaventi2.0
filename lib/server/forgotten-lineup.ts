@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { alphabeticalOfficeLineup, carryLineup, type CarriedLineup } from "@/lib/formations";
-import { officeLineupMode } from "@/lib/league-rules";
+import { inLeagueRange, officeLineupMode } from "@/lib/league-rules";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
@@ -44,7 +44,8 @@ export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: str
   const modeByLeague = new Map<string, "carry" | "penalty">();
   for (const leagueId of leagueIds) {
     const settings = await readLeagueSettings(admin, leagueId);
-    modeByLeague.set(leagueId, settings.rules.missedLineup);
+    // Una lega conta solo le sue giornate: ricalcolarne un'altra non le crea formazioni.
+    if (inLeagueRange(settings.range, number)) modeByLeague.set(leagueId, settings.rules.missedLineup);
   }
   const leaguesByTeam = new Map<string, string[]>();
   for (const row of memberships.data ?? []) {
@@ -69,7 +70,7 @@ export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: str
 
   let filedCount = 0;
   for (const teamId of missing) {
-    const modes = (leaguesByTeam.get(teamId) ?? []).map((leagueId) => modeByLeague.get(leagueId) ?? "carry");
+    const modes = (leaguesByTeam.get(teamId) ?? []).flatMap((leagueId) => modeByLeague.get(leagueId) ?? []);
     if (modes.length === 0 || officeLineupMode(modes) === "penalty") continue;
     const source = (previous.data ?? [])
       .filter((row) => row.fantasy_team_id === teamId)

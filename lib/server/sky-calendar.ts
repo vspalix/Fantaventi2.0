@@ -1,3 +1,4 @@
+import { assertExternalCall } from "@/lib/outbound";
 import type { CalendarFixture, CalendarRound } from "@/lib/server/serie-a-calendar";
 
 const SKY_CALENDAR_URL = "https://sport.sky.it/calcio/serie-a/calendario-risultati";
@@ -129,6 +130,7 @@ export function parseSkyCalendar(html: string): CalendarRound[] {
 }
 
 export async function fetchSkyCalendar() {
+  assertExternalCall("Calendario di Sky");
   const response = await fetch(SKY_CALENDAR_URL, {
     cache: "no-store",
     headers: { "user-agent": "Fantaventi/1.0" },

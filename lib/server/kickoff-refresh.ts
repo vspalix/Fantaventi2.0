@@ -1,6 +1,7 @@
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { deadlineFromKickoff } from "@/lib/server/serie-a-calendar";
 import { fetchSkyCalendar, romeLocalToIso } from "@/lib/server/sky-calendar";
+import { assertRealJobs } from "@/lib/outbound";
 import { schemaHint } from "@/lib/server/live-score";
 import { writeSyncLog } from "@/lib/server/system-settings";
 import { alertKickoffSync } from "@/lib/server/telegram-alert";
@@ -364,6 +365,7 @@ function kickoffSamples(changes: { round: number; label: string; at: string }[])
 }
 
 export async function refreshSerieAKickoffs(options?: RefreshOptions) {
+  assertRealJobs("Calendario di Sky");
   try {
     return await runKickoffRefresh(options);
   } catch (error) {

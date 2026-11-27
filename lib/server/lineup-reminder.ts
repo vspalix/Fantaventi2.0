@@ -1,6 +1,7 @@
 // Promemoria automatico delle formazioni: parte con la sveglia dei voti, una volta per squadra e giornata,
 // solo a chi non ha ancora consegnato. Il «quando» è in lineup-reminder-plan.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logSkippedJob, realNotificationsAllowed } from "@/lib/outbound";
 import { reportError } from "@/lib/server/error-report";
 import { loadSeasonWeeks } from "@/lib/server/gameweek-cycle";
 import {
@@ -182,6 +183,11 @@ export async function runLineupReminder(now = Date.now(), deps: ReminderDeps = l
 
 /** Per la sveglia: non ferma mai la risposta e non nasconde gli errori. */
 export async function runLineupReminderSafely(now = Date.now()) {
+  // Il promemoria segna «già inviato» prima di inviare: con l'invio finto il sito lo salterebbe.
+  if (!realNotificationsAllowed()) {
+    logSkippedJob("Promemoria formazioni");
+    return null;
+  }
   try {
     return await runLineupReminder(now);
   } catch (error) {

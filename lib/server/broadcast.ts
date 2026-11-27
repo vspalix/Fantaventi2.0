@@ -1,3 +1,4 @@
+import { FAKE_NOTICE, logFake, realNotificationsAllowed } from "@/lib/outbound";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type BroadcastInput = {
@@ -74,6 +75,8 @@ async function recipientIds(leagueId: string | null) {
 }
 
 async function sendEmail(to: string, subject: string, message: string) {
+  // Qui arriva solo chi ha superato il blocco di sendBroadcast: si ricontrolla per sicurezza.
+  if (!realNotificationsAllowed()) return "failed" as const;
   const key = process.env.RESEND_API_KEY;
   const from = process.env.RESEND_FROM;
   if (!key || !from) return "missing" as const;
@@ -87,6 +90,11 @@ async function sendEmail(to: string, subject: string, message: string) {
 }
 
 export async function sendBroadcast(input: BroadcastInput) {
+  // Anche l'avviso nell'app è una notifica: scritto nel database, lo vedrebbero gli utenti veri.
+  if (!realNotificationsAllowed()) {
+    logFake("Messaggio agli utenti", `non inviato. Oggetto: ${input.subject}`);
+    throw httpError(FAKE_NOTICE, 409);
+  }
   const people = input.testUserId
     ? [{ id: input.testUserId, email: input.testEmail ?? "" }]
     : await recipientIds(input.leagueId);

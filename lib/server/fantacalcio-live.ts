@@ -1,3 +1,5 @@
+import { assertExternalCall } from "@/lib/outbound";
+
 export type FantacalcioPlayerVote = {
   externalRef: string;
   teamSlug: string;
@@ -166,6 +168,7 @@ export function readVotePage(status: number, body: unknown) {
 }
 
 export async function fetchFantacalcioMatchweek(seasonCode: string, gameweekNumber: number) {
+  assertExternalCall("Voti di Fantacalcio");
   const { readSystemSettings, DEFAULT_VOTES_SOURCE_URL } = await import("@/lib/server/system-settings");
   const settings = await readSystemSettings();
   const base = (settings.votesSourceUrl || DEFAULT_VOTES_SOURCE_URL).replace(/\/$/, "");

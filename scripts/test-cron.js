@@ -8,8 +8,14 @@ function readLocalSecret() {
   return line.slice("CRON_SECRET=".length).trim();
 }
 
-const secret = readLocalSecret();
 const base = (process.env.APP_URL || "https://fantaventi2-0.vercel.app").replace(/\/$/, "");
+// Svegliare il sito vero fa partire lavori e notifiche veri: serve la chiave aperta apposta.
+const local = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i.test(base);
+if (!local && process.env.ALLOW_REAL_NOTIFICATIONS !== "true") {
+  console.log(`[finto] Nessuna chiamata a ${base}. Per svegliare davvero il sito imposta ALLOW_REAL_NOTIFICATIONS=true.`);
+  process.exit(0);
+}
+const secret = readLocalSecret();
 const paths = ["/api/cron/sync-match-votes", "/api/cron/sync-availability"];
 let failed = false;
 

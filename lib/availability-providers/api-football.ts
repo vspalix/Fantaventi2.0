@@ -1,3 +1,4 @@
+import { assertExternalCall } from "@/lib/outbound";
 import { classifyStatus, probabilityOf, type AvailabilityProvider, type ExternalAvailability } from "@/lib/availability-providers/types";
 
 type InjuryRow = {
@@ -31,6 +32,7 @@ export const apiFootballProvider: AvailabilityProvider = {
     const url = new URL("https://v3.football.api-sports.io/injuries");
     url.searchParams.set("league", String(context.leagueId || 135));
     url.searchParams.set("season", String(context.season || 2026));
+    assertExternalCall("API-Football");
     const response = await fetch(url, {
       headers: {
         "x-apisports-key": key,

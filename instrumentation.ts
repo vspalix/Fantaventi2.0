@@ -1,7 +1,12 @@
 import type { Instrumentation } from "next";
 
 export async function register() {
-  return;
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { logFake, onVercel, realExternalCallsAllowed, realNotificationsAllowed } = await import("@/lib/outbound");
+  if (onVercel()) return;
+  // Una riga all'avvio, così si vede subito se qualcosa può partire davvero.
+  const state = (allowed: boolean) => (allowed ? "VERE (chiave aperta apposta)" : "finte");
+  logFake("Avvio in locale", `notifiche ${state(realNotificationsAllowed())}, fonti esterne ${state(realExternalCallsAllowed())}. Il database resta quello di .env.local.`);
 }
 
 // Next chiama questa funzione per ogni errore del server che nessuno ha gestito.

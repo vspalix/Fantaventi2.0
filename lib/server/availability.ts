@@ -1,3 +1,4 @@
+import { assertRealJobs } from "@/lib/outbound";
 import type { AvailabilityStatus } from "@/lib/availability-providers";
 import { providerFor } from "@/lib/availability-providers";
 import { fold, matchAvailability, type AvailabilityAlias, type KnownPlayer } from "@/lib/availability-providers/match";
@@ -174,6 +175,7 @@ export async function runAvailabilitySync(force: boolean, deps: AvailabilityDeps
 }
 
 export async function syncAvailability(force = false) {
+  assertRealJobs("Indisponibili");
   return runAvailabilitySync(force, {
     read: readAvailabilitySettings,
     open: openMatchday,

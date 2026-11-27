@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { logFake, realNotificationsAllowed } from "@/lib/outbound";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { pushFailure, vapidContact } from "@/lib/server/web-push-rules";
@@ -30,6 +31,10 @@ export async function sendPushToUsers(
   client?: SupabaseClient,
   options: PushOptions = {},
 ) {
+  if (userIds.length > 0 && !realNotificationsAllowed()) {
+    logFake("Notifica ai telefoni", `non inviata a ${userIds.length} persone. ${payload.title} | ${payload.body}`);
+    return { sent: 0, skipped: userIds.length, people: 0 };
+  }
   if (!vapidReady() || userIds.length === 0) return { sent: 0, skipped: userIds.length === 0 ? 0 : userIds.length, people: 0 };
   const imported = await import("web-push");
   const webpush = imported.default ?? imported;
@@ -77,6 +82,10 @@ export async function sendPushToUsers(
 }
 
 export async function sendPushToEveryone(payload: PushPayload) {
+  if (!realNotificationsAllowed()) {
+    logFake("Notifica ai telefoni", `messaggio a tutti non inviato. ${payload.title} | ${payload.body}`);
+    return { sent: 0, skipped: 0, ready: true };
+  }
   if (!vapidReady()) return { sent: 0, skipped: 0, ready: false };
   const admin = createAdminSupabase();
   const subscriptions = await admin.from("push_subscriptions").select("user_id");

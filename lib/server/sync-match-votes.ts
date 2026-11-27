@@ -6,8 +6,9 @@ import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
 import { reportError } from "@/lib/server/error-report";
 import { readSystemSettings } from "@/lib/server/system-settings";
 import { sendTelegramMessage } from "@/lib/server/telegram-alert";
+import { assertRealJobs, logSkippedJob, realJobsAllowed } from "@/lib/outbound";
 import { voteReportText, type VoteReport } from "@/lib/server/vote-report";
-import { runManualRead, runVoteCycle, type ClockDeps, type CycleReport, type VotePage } from "@/lib/server/vote-engine";
+import { emptyReport, runManualRead, runVoteCycle, type ClockDeps, type CycleReport, type VotePage } from "@/lib/server/vote-engine";
 import { planVoteClock, type ClockSnapshot, type VotePlan } from "@/lib/server/vote-schedule";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -398,10 +399,15 @@ export async function prepareVoteClock(now = new Date()) {
 }
 
 export function runPlannedReads(snapshot: ClockSnapshot, plan: VotePlan, now = new Date()): Promise<CycleReport> {
+  if (!realJobsAllowed()) {
+    logSkippedJob("Lettura dei voti");
+    return Promise.resolve(emptyReport());
+  }
   return runVoteCycle(clockDeps(), snapshot, plan, now.getTime());
 }
 
 /** Richiesta manuale di un super admin: contatta subito la fonte. */
-export function syncDueMatchVotes(now = new Date()): Promise<CycleReport> {
+export async function syncDueMatchVotes(now = new Date()): Promise<CycleReport> {
+  assertRealJobs("Lettura dei voti");
   return runManualRead(clockDeps(), now.getTime());
 }

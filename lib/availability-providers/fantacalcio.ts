@@ -1,4 +1,5 @@
 import https from "node:https";
+import { assertExternalCall } from "@/lib/outbound";
 import type { AvailabilityProvider, AvailabilityStatus, ExternalAvailability } from "@/lib/availability-providers/types";
 
 export const FANTACALCIO_INDISPONIBILI_URL = "https://www.fantacalcio.it/indisponibili-serie-a";
@@ -122,6 +123,7 @@ function readPage(url: string, redirects = 0): Promise<{ status: number; body: s
 export const fantacalcioAvailabilityProvider: AvailabilityProvider = {
   id: "fantacalcio",
   async load() {
+    assertExternalCall("Indisponibili di Fantacalcio");
     let failure = "Pagina indisponibili non raggiungibile. Nessun aggiornamento.";
     for (let attempt = 0; attempt < 3; attempt += 1) {
       try {

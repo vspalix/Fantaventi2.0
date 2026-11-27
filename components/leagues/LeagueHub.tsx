@@ -1526,6 +1526,7 @@ function liveRows(rows: LiveLineupSheet["starters"]): CompactPlayer[] {
     vote: row.voto,
     fanta: row.fantavoto,
     captain: row.isCaptain,
+    vice: row.isVice,
     played: row.voto != null,
     entered: false,
     events: [],

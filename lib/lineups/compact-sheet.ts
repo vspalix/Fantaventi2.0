@@ -11,6 +11,7 @@ export type CompactPlayer = {
   vote: number | null;
   fanta: number | null;
   captain?: boolean;
+  vice?: boolean;
   played: boolean;
   entered: boolean;
   events: { kind: LineEvent; count: number }[];
@@ -56,6 +57,7 @@ export function compactFromAudit(players: AuditPlayer[]) {
     vote: player.baseVote,
     fanta: player.fantavoto,
     captain: player.captain,
+    vice: player.vice,
     played: player.baseVote != null,
     entered: player.source === "substitute",
     events: eventsFromAudit(player),

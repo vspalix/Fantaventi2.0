@@ -77,7 +77,7 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
             <h1>{board.teamName}</h1>
           </div>
           {board.teamId ? (
-            <TeamSettings look={{ teamId: board.teamId, name: board.teamName, primary: board.teamPrimary, secondary: board.teamSecondary, logoUrl: board.teamLogoUrl }} />
+            <TeamSettings key={board.teamId} look={{ teamId: board.teamId, name: board.teamName, primary: board.teamPrimary, secondary: board.teamSecondary, logoUrl: board.teamLogoUrl }} />
           ) : null}
         </div>
         <div className="stat-strip">

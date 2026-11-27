@@ -23,8 +23,8 @@ export function DeadlineCountdown({ deadlineAt, label, compact = false }: { dead
   if (compact) {
     return (
       <p className="clock-pill">
-        <span>{clock}</span>
-        {ended || (hours === 0 && days === 0) ? null : <span className="clock-tick">{tick}</span>}
+        <span suppressHydrationWarning>{clock}</span>
+        {ended || (hours === 0 && days === 0) ? null : <span className="clock-tick" suppressHydrationWarning>{tick}</span>}
       </p>
     );
   }
@@ -32,7 +32,7 @@ export function DeadlineCountdown({ deadlineAt, label, compact = false }: { dead
   return (
     <div>
       <p className="small muted">{label}</p>
-      <p className="countdown">{clock}</p>
+      <p className="countdown" suppressHydrationWarning>{clock}</p>
       <p className="small muted">{new Intl.DateTimeFormat("it-IT", {
         weekday: "short",
         day: "numeric",

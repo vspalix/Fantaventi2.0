@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { RememberBoard } from "@/components/home/HomeCache";
 import { HomeDashboard } from "@/components/home/HomeDashboard";
 import { readBrand } from "@/lib/server/brand";
 import { loadHomeBoard } from "@/lib/server/home-board";
@@ -12,7 +13,13 @@ export default async function HomePage() {
   const user = hasPublicSupabaseEnv() ? await getSessionUser() : null;
   if (user && hasServiceSupabaseEnv()) {
     try {
-      return <HomeDashboard board={await loadHomeBoard(user.id)} logoUrl={brand.logoUrl} />;
+      const board = await loadHomeBoard(user.id);
+      return (
+        <>
+          <RememberBoard board={board} />
+          <HomeDashboard board={board} logoUrl={brand.logoUrl} />
+        </>
+      );
     } catch (error) {
       return (
         <section className="card">

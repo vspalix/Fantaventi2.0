@@ -71,7 +71,8 @@ function clubLabel(row: { code?: string; club_translations?: { locale: string; s
   return label?.short_name || label?.name || row.code || "Club";
 }
 
-export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
+/** `wantedId`: la lega da mostrare; senza, quella scelta sul dispositivo. */
+export async function loadHomeBoard(userId: string, wantedId?: string): Promise<HomeBoard> {
   const admin = createAdminSupabase();
   const seasonRead = getCurrentSeason(admin);
   const [season, leagues, promo, jar, weeks] = await Promise.all([
@@ -87,7 +88,11 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
       .lte("number", 38)
       .order("number", { ascending: true })),
   ]);
-  const saved = jar.get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
+  const saved = wantedId ?? jar.get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
+  // Una lega chiesta per codice deve essere tra le proprie.
+  if (wantedId && !leagues.some((league) => league.id === wantedId)) {
+    throw Object.assign(new Error("Questa lega non è tra le tue squadre."), { status: 404 });
+  }
   const focusLeague = leagues.find((league) => league.id === saved) ?? leagues[0] ?? null;
   if (weeks.error) throw new Error(weeks.error.message);
   const calendar = weeks.data ?? [];

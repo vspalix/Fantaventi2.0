@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { AppDrawer } from "@/components/AppDrawer";
 import { InboxBell } from "@/components/InboxBell";
-import { LeagueSwitcher } from "@/components/leagues/LeagueSwitcher";
+import { LeagueSwitcher, LIST_UP_TO } from "@/components/leagues/LeagueSwitcher";
+import { useHomeCache } from "@/components/home/HomeCache";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserSupabase, hasPublicSupabaseEnv } from "@/lib/supabase/browser";
 import { isHubTab, LEAGUE_TAB_EVENT, type HubTab } from "@/lib/hub-tabs";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
@@ -38,8 +39,7 @@ export function SiteHeader({
   const pathname = usePathname();
   const search = useSearchParams();
   const router = useRouter();
-  /** Vero finché la schermata della lega scelta non è arrivata. */
-  const [switching, startSwitch] = useTransition();
+  const { pending, begin, prefetch } = useHomeCache();
   const [leagueTab, setLeagueTab] = useState(search.get("tab"));
   const [open, setOpen] = useState<"menu" | "profile" | "more" | "leagues" | null>(null);
   const bar = useRef<HTMLElement>(null);
@@ -48,7 +48,7 @@ export function SiteHeader({
   /** L'ultima lega scelta o visitata: la parte comune non si rilegge a ogni cambio di schermata. */
   const [picked, setPicked] = useState<string | null>(null);
   // Mentre si carica la lega scelta, in alto si legge già il suo nome.
-  const current = (switching ? squads.find((squad) => squad.id === picked) : undefined)
+  const current = (pending ? squads.find((squad) => squad.id === pending.leagueId) : undefined)
     ?? squads.find((squad) => squad.id === pathLeague)
     ?? squads.find((squad) => squad.id === picked)
     ?? squads.find((squad) => squad.id === activeLeagueId)
@@ -132,11 +132,27 @@ export function SiteHeader({
     // La scelta si segna subito sul dispositivo, senza aspettare il server: è lo stesso
     // cookie di /api/active-league e non dà permessi (ogni pagina li ricontrolla).
     document.cookie = `${LEAGUE_FOCUS_COOKIE}=${encodeURIComponent(leagueId)}; path=/; max-age=${60 * 60 * 24 * 400}; samesite=lax`;
-    startSwitch(() => {
-      if (onDashboard) router.refresh();
-      else router.push(`/leghe/${leagueId}`);
-    });
+    // La Dashboard della lega scelta compare subito; quella aggiornata la sostituisce appena arriva.
+    begin(leagueId, squads.find((squad) => squad.id === leagueId)?.leagueName ?? "la lega");
+    if (onDashboard) router.refresh();
+    else router.push("/");
   }
+
+  /** Con poche leghe le loro Dashboard si preparano tutte; con tante, solo quella al centro del rullo. */
+  const toPrepare = email && squads.length > 1 && squads.length <= LIST_UP_TO ? squads.map((squad) => squad.id).join(",") : "";
+  const listOpen = open === "leagues";
+  const shownId = onDashboardId(pathname, current?.id);
+  useEffect(() => {
+    if (!toPrepare) return;
+    // Subito se si apre l'elenco, altrimenti appena dopo la pagina. Quella già a schermo
+    // arriva con la pagina stessa e non si richiede.
+    const timer = window.setTimeout(() => {
+      for (const leagueId of toPrepare.split(",")) {
+        if (leagueId !== shownId) void prefetch(leagueId);
+      }
+    }, listOpen ? 0 : 500);
+    return () => window.clearTimeout(timer);
+  }, [toPrepare, listOpen, shownId, prefetch]);
 
   async function signOut() {
     if (!hasPublicSupabaseEnv()) return;
@@ -187,7 +203,8 @@ export function SiteHeader({
           <LeagueSwitcher
             leagues={squads}
             currentId={current.id}
-            switching={switching}
+            switching={pending !== null}
+            onHighlight={prefetch}
             open={open === "leagues"}
             onToggle={() => setOpen(open === "leagues" ? null : "leagues")}
             onClose={closeMenus}
@@ -226,6 +243,11 @@ export function SiteHeader({
     ) : null}
   </>
   );
+}
+
+/** La lega la cui Dashboard è a schermo, se si è in Dashboard. */
+function onDashboardId(pathname: string, currentId: string | undefined) {
+  return pathname === "/" ? currentId : undefined;
 }
 
 function HomeIcon() {

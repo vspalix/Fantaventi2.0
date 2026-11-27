@@ -67,7 +67,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Le notifiche non sono pronte: mancano le chiavi VAPID su Vercel." }, { status: 409 });
     }
     const result = await sendPushToEveryone({ title, body: message, url: "/leghe" });
-    return NextResponse.json({ sent: result.sent, skipped: result.skipped });
+    return NextResponse.json({ sent: result.sent, skipped: result.skipped, removed: "removed" in result ? result.removed : 0 });
   } catch (error) {
     return apiError("API /api/admin/push (POST)", error);
   }

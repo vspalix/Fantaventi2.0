@@ -56,9 +56,9 @@ function Broadcast({ subscribers, onSent }: { subscribers: number; onSent: () =>
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title, message }),
       });
-      const body = (await response.json().catch(() => ({}))) as { sent?: number; skipped?: number; error?: string };
+      const body = (await response.json().catch(() => ({}))) as { sent?: number; skipped?: number; removed?: number; error?: string };
       if (!response.ok) throw new Error(body.error ?? "Invio non riuscito.");
-      const missed = body.skipped ? ` ${devices(body.skipped)} non raggiunti: tolti dall'elenco.` : "";
+      const missed = body.skipped ? ` Non raggiunti: ${devices(body.skipped)}${body.removed ? ` (${body.removed} non più validi, tolti dall'elenco)` : ""}.` : "";
       setNote(`Inviato a ${devices(body.sent ?? 0)}.${missed}`);
       setTitle("");
       setMessage("");

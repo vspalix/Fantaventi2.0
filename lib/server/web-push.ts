@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { pushFailure, vapidContact } from "@/lib/server/web-push-rules";
 
 export type PushPayload = { title: string; body: string; url?: string };
 /** ttlSeconds: oltre questo tempo il servizio push butta la notifica invece di consegnarla in ritardo. */
@@ -33,7 +34,7 @@ export async function sendPushToUsers(
   const imported = await import("web-push");
   const webpush = imported.default ?? imported;
   webpush.setVapidDetails(
-    process.env.VAPID_SUBJECT?.trim() || "mailto:admin@fantaventi.local",
+    vapidContact(process.env.VAPID_SUBJECT),
     process.env.VAPID_PUBLIC_KEY!.trim(),
     process.env.VAPID_PRIVATE_KEY!.trim(),
   );
@@ -47,6 +48,7 @@ export async function sendPushToUsers(
     throw new Error(subscriptions.error.message);
   }
   let sent = 0;
+  let removed = 0;
   const reached = new Set<string>();
   for (const row of subscriptions.data ?? []) {
     try {
@@ -60,16 +62,18 @@ export async function sendPushToUsers(
       sent += 1;
       reached.add(row.user_id as string);
     } catch (error) {
-      const status = (error as { statusCode?: number }).statusCode;
-      if (status === 404 || status === 410) {
-        await admin.from("push_subscriptions").delete().eq("endpoint", row.endpoint as string);
-      } else {
-        void reportError("Notifiche: invio non riuscito", error);
+      const failure = pushFailure(row.endpoint as string, error);
+      if (failure.gone) {
+        const deleted = await admin.from("push_subscriptions").delete().eq("endpoint", row.endpoint as string);
+        if (deleted.error) void reportError("Notifiche: iscrizione non valida non eliminata", new Error(deleted.error.message));
+        else removed += 1;
       }
+      // L'errore originale contiene l'indirizzo del dispositivo: si segnala solo il riassunto.
+      void reportError("Notifiche: invio non riuscito", new Error(failure.summary));
     }
   }
   /** people: persone raggiunte su almeno un dispositivo. */
-  return { sent, skipped: (subscriptions.data ?? []).length - sent, people: reached.size };
+  return { sent, skipped: (subscriptions.data ?? []).length - sent, removed, people: reached.size };
 }
 
 export async function sendPushToEveryone(payload: PushPayload) {

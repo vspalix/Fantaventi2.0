@@ -49,7 +49,7 @@ export const ADMIN_GROUPS: AdminGroup[] = [
     title: "Comunicazione",
     scope: "global",
     sections: [
-      { href: "/admin/notifiche", label: "Notifiche", hint: "Testi automatici" },
+      { href: "/admin/notifiche", label: "Notifiche", hint: "Messaggi e avvisi" },
       { href: "/admin/comunicazioni", label: "Comunicazioni", hint: "Messaggio a tutti" },
       { href: "/admin/annunci", label: "Annunci", hint: "All'apertura dell'app" },
       { href: "/admin/news", label: "News", hint: "Avvisi in home" },

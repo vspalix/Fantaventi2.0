@@ -12,7 +12,7 @@ export default async function PushAdminPage() {
     <section className="stack">
       <header>
         <h1 className="section-title">Notifiche</h1>
-        <p className="lede">Testi delle notifiche automatiche. Per mandare un messaggio a tutti usa Collaudo.</p>
+        <p className="lede">Manda un messaggio a tutti oppure scegli quali avvisi partono da soli durante la giornata.</p>
       </header>
       <PushDesk />
     </section>

@@ -7,18 +7,11 @@ import { reminderKey } from "@/lib/server/lineup-reminder";
 import { sendPushToUsers } from "@/lib/server/web-push";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { DEFAULT_NOTIFICATION_TEXTS, type NotificationText } from "@/lib/notification-templates";
 
-type Template = { title: string; body: string; enabled: boolean };
+type Template = NotificationText;
 
-const DEFAULT_TEMPLATES: Record<string, Template> = {
-  deadline: {
-    title: "Chiudi la formazione",
-    body: "Mancano 30 minuti alla giornata {matchday}. Se non la invii, resta l'ultima schierata.",
-    enabled: true,
-  },
-  bonus: { title: "Bonus in campo", body: "{player}: {event}.", enabled: true },
-  overtake: { title: "Sorpasso live", body: "{opponent} ti ha superato. Giornata {matchday}.", enabled: true },
-};
+const DEFAULT_TEMPLATES: Record<string, Template> = { ...DEFAULT_NOTIFICATION_TEXTS };
 
 function missingSchema(message: string) {
   return /schema cache|could not find|relation|does not exist/i.test(message);

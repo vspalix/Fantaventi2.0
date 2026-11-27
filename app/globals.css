@@ -2570,3 +2570,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
   .lg-stepper button { width: 40px; }
   .lg-stepper input { width: 44px; }
 }
+
+/* Admin › Notifiche */
+.push-alert + .push-alert { padding-top: 14px; border-top: 1px solid var(--line); }
+.push-words code { padding: 1px 6px; border-radius: 6px; background: var(--surface-2); color: var(--text); font-size: 0.95em; }

@@ -3,7 +3,10 @@ import { fetchFantacalcioMatchweek, votesForClubs, type FantacalcioPlayerVote } 
 import { schemaHint, scoreOfficialGameweek, refreshProvisionalScores } from "@/lib/server/live-score";
 import { saveProvisionalVotes, type ProvisionalVote } from "@/lib/server/provisional-votes";
 import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
+import { reportError } from "@/lib/server/error-report";
+import { readSystemSettings } from "@/lib/server/system-settings";
 import { sendTelegramMessage } from "@/lib/server/telegram-alert";
+import { voteReportText, type VoteReport } from "@/lib/server/vote-report";
 import { runManualRead, runVoteCycle, type ClockDeps, type CycleReport, type VotePage } from "@/lib/server/vote-engine";
 import { planVoteClock, type ClockSnapshot, type VotePlan } from "@/lib/server/vote-schedule";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -268,6 +271,25 @@ export async function importPublishedWeekVotes(gameweekId: string) {
   };
 }
 
+function voteMessage(message: string) {
+  const safe = message.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+  return sendTelegramMessage(`<b>Fantaventi — voti</b>\n${safe}`);
+}
+
+/** L'avviso di controllo non ferma mai la lettura: se non riesce, si segnala e si va avanti. */
+async function sendVoteReport(admin: ReturnType<typeof createAdminSupabase>, report: VoteReport) {
+  try {
+    const refs = [...new Set(report.matches.flatMap((match) => match.votes.map((vote) => vote.externalRef)))];
+    if (refs.length === 0 || !(await readSystemSettings()).notifyOnSyncSuccess) return;
+    const players = await admin.from("players").select("external_ref").in("external_ref", refs);
+    if (players.error) throw new Error(players.error.message);
+    const text = voteReportText(report, new Set((players.data ?? []).map((row) => row.external_ref as string)));
+    if (text) await voteMessage(text);
+  } catch (error) {
+    void reportError("Avviso Telegram dei voti inseriti", error);
+  }
+}
+
 /** L'unica lettura fatta quando la sveglia suona: impostazioni, partite recenti e tentativi. */
 async function readClock(): Promise<ClockSnapshot> {
   const { data, error } = await createAdminSupabase().rpc("vote_clock");
@@ -360,8 +382,11 @@ function clockDeps(): ClockDeps {
       return { changed: outcome.updated, warnings: outcome.warnings };
     },
     async notify(message) {
-      const safe = message.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-      await sendTelegramMessage(`<b>Fantaventi — voti</b>\n${safe}`);
+      await voteMessage(message);
+    },
+    reportVotes: (report) => sendVoteReport(admin, report),
+    async reportScored(gameweek, rewrite) {
+      await voteMessage(`Giornata ${gameweek} ${rewrite ? "ricalcolata" : "calcolata"}.`);
     },
   };
 }

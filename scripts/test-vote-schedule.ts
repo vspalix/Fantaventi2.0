@@ -2,6 +2,7 @@
 import { pathToFileURL } from "node:url";
 import { readVotePage } from "@/lib/server/fantacalcio-live";
 import { runManualRead, runVoteCycle, type ClockDeps, type CycleReport } from "@/lib/server/vote-engine";
+import { voteReportText, type VoteReport } from "@/lib/server/vote-report";
 import {
   planIsEmpty,
   planVoteClock,
@@ -95,6 +96,8 @@ function harness(week: ClockWeek, options: { source?: Source; halftime?: boolean
     projections: 0,
     calculations: [] as { at: number; rewrite: boolean }[],
     notes: [] as string[],
+    inserted: [] as VoteReport[],
+    scored: [] as { gameweek: number; rewrite: boolean }[],
     locks: 0,
     calendar: 0,
     writes: 0,
@@ -140,6 +143,8 @@ function harness(week: ClockWeek, options: { source?: Source; halftime?: boolean
     },
     async refreshCalendar() { state.calendar += 1; return { changed: 0, warnings: [] }; },
     async notify(message) { state.notes.push(message); },
+    async reportVotes(report) { state.inserted.push(structuredClone(report)); },
+    async reportScored(gameweek, rewrite) { state.scored.push({ gameweek, rewrite }); },
   };
   async function call(now: number): Promise<CycleReport | null> {
     state.now = now;
@@ -191,12 +196,30 @@ export async function runVoteScheduleChecks() {
     normal.state.calculations.length === 1 && normal.state.calculations[0].at === at("2026-12-01", "08:00") + 2000,
     normal.state.calculations.map((row) => clock(row.at)).join(", "));
   add("Turno normale senza avvisi", normal.state.notes.length === 0, normal.state.notes.join(" | "));
+  add("Un solo annuncio di giornata calcolata", normal.state.scored.length === 1 && !normal.state.scored[0].rewrite, `${normal.state.scored.length}`);
+
+  // Cosa arriva su Telegram, supponendo nel listone tutti i calciatori letti.
+  const everyone = (report: VoteReport) => new Set(report.matches.flatMap((match) => match.votes.map((vote) => vote.externalRef)));
+  const half = normal.state.inserted.find((report) => report.label === "fine primo tempo");
+  const halfText = half ? voteReportText(half, everyone(half)) : null;
+  add("L'intervallo elenca solo le squadre lette, come provvisorie",
+    half?.matches.length === 1 && halfText?.includes("Voti provvisori:") === true && halfText.includes("• Casa0: 11 calciatori") && halfText.includes("Totale inseriti: 22 calciatori."),
+    halfText ?? "nessun elenco");
+  const final = normal.state.inserted.find((report) => report.label === "mattina dopo il turno");
+  const finalText = final ? voteReportText(final, everyone(final)) : null;
+  add("La mattina elenca le venti squadre con i voti ufficiali",
+    final?.matches.length === 10 && final.matches.every((match) => match.official) && finalText?.includes("Totale inseriti: 290 calciatori.") === true,
+    finalText?.split("\n").at(-1) ?? "nessun elenco");
+  const outside = half ? voteReportText(half, new Set(half.matches[0].votes.slice(1).map((vote) => vote.externalRef))) : null;
+  add("I calciatori fuori listone si vedono nell'elenco", outside?.includes("10 calciatori (1 non nel listone)") === true, outside ?? "nessun elenco");
   add("Calendario una volta al giorno", normal.state.calendar === DAYS.length, `${normal.state.calendar}`);
   add("Formazioni chiuse alla prima lettura", normal.state.locks === 1, `${normal.state.locks}`);
 
   const silent = harness(weekOf(ROUND), { source: silentSource });
   await silent.ring([...DAYS, "2026-12-02"]);
   add("Voti mai pronti: 38 richieste, due per lettura", silent.state.fetches.length === 38, `${silent.state.fetches.length}`);
+  add("Voti mai pronti: nessun elenco inviato e nessun calcolo annunciato",
+    silent.state.inserted.every((report) => voteReportText(report, new Set()) === null) && silent.state.scored.length === 0, `${silent.state.inserted.length}`);
   add("Un avviso per ogni lettura fallita, poi stop", silent.state.notes.length === 19, `${silent.state.notes.length}`);
   add("Senza voti non si calcola e nessuna partita risulta finita",
     silent.state.calculations.length === 0 && silent.state.official.length === 0, `${silent.state.official.length}`);

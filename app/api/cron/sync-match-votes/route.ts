@@ -70,16 +70,9 @@ async function failed(error: unknown, triggerSource: SyncLogEntry["triggerSource
   await alertVoteSync(entry, triggerSource === "manual");
 }
 
-async function finished(report: CycleReport, triggerSource: SyncLogEntry["triggerSource"], now: Date) {
-  const entry = voteLog(report, triggerSource);
-  await writeSyncLog(entry);
-  // Gli avvisi sulle letture fallite partono dal giro stesso, una volta sola.
-  if (entry.status === "success") {
-    const detail = report.scored.length > 0
-      ? { changed: report.scored.length, samples: report.scored.map((number) => `Giornata ${number} calcolata`) }
-      : { changed: report.changed, samples: report.samples };
-    await alertVoteSync(entry, triggerSource === "manual", now, detail);
-  }
+// Voti inseriti, giornata calcolata e letture fallite li avvisa il giro stesso (vote-engine).
+async function finished(report: CycleReport, triggerSource: SyncLogEntry["triggerSource"]) {
+  await writeSyncLog(voteLog(report, triggerSource));
 }
 
 async function run(request: Request) {
@@ -94,7 +87,7 @@ async function run(request: Request) {
     if (force) {
       try {
         const report = await meter("vote-fetch", () => syncDueMatchVotes(now));
-        await finished(report, "manual", now);
+        await finished(report, "manual");
         return NextResponse.json(report);
       } catch (error) {
         await failed(error, "manual");
@@ -116,7 +109,7 @@ async function run(request: Request) {
         const report = await meter("vote-fetch", () => runPlannedReads(snapshot, plan, now));
         // Se un'altra chiamata ha già preso le stesse letture, non c'è niente da registrare.
         if (report.reads.length > 0 || report.scored.length > 0 || report.errors.length > 0) {
-          await finished(report, "cron", now);
+          await finished(report, "cron");
         }
       } catch (error) {
         await failed(error, "cron");

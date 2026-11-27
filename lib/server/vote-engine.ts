@@ -19,6 +19,7 @@ import {
   type ReadTask,
   type VotePlan,
 } from "@/lib/server/vote-schedule";
+import type { VoteReport, VoteReportMatch } from "@/lib/server/vote-report";
 
 /** Voti minimi per squadra perché una partita conti come completa. */
 export const MIN_TEAM_GRADES = 11;
@@ -58,6 +59,10 @@ export type ClockDeps = {
   calculate(week: ClockWeek, rewrite: boolean): Promise<{ scored: boolean; reason?: string }>;
   refreshCalendar(): Promise<{ changed: number; warnings: string[] }>;
   notify(text: string): Promise<void>;
+  /** Cosa ha inserito una lettura: si manda solo con la modalità test accesa. Non lancia errori. */
+  reportVotes(report: VoteReport): Promise<void>;
+  /** Giornata calcolata: si manda sempre. Non lancia errori. */
+  reportScored(gameweek: number, rewrite: boolean): Promise<void>;
 };
 
 export type CycleReport = MatchVoteSyncResult & { reads: string[]; calendarChanged: number };
@@ -138,12 +143,29 @@ async function writeCompleteMatches(deps: ClockDeps, week: ClockWeek, page: Vote
   return missing;
 }
 
+function reportMatches(page: VotePage, matches: ClockMatch[], official: (match: ClockMatch) => boolean): VoteReportMatch[] {
+  return matches.map((match) => ({
+    home: match.home,
+    away: match.away,
+    official: official(match),
+    votes: votesForClubs(page.votes, match.home, match.away),
+  }));
+}
+
+/** Dopo una lettura ufficiale: le partite scritte e, se salvate, quelle ancora provvisorie. */
+async function reportOfficial(deps: ClockDeps, week: ClockWeek, page: VotePage, report: CycleReport, label: string, projected: boolean) {
+  const written = new Set(report.synced.filter((item) => item.gameweekNumber === week.number).map((item) => item.matchId));
+  const read = playableMatches(week).filter((match) => projected || written.has(match.id));
+  await deps.reportVotes({ gameweek: week.number, label, matches: reportMatches(page, read, (match) => written.has(match.id)) });
+}
+
 async function calculateWeek(deps: ClockDeps, week: ClockWeek, rewrite: boolean, report: CycleReport) {
   try {
     const outcome = await deps.calculate(week, rewrite);
     if (outcome.scored) {
       week.status = "scored";
       report.scored.push(week.number);
+      await deps.reportScored(week.number, rewrite);
       return null;
     }
     const reason = outcome.reason ?? "Calcolo non eseguito.";
@@ -235,7 +257,9 @@ export async function runVoteCycle(deps: ClockDeps, initial: ClockSnapshot, firs
       if (morning) {
         const missing = await writeCompleteMatches(deps, week, page, now, report);
         // Le partite ancora incomplete restano visibili con i voti provvisori di questa lettura.
-        if (missing.length > 0 && page.votes.length > 0 && week.status !== "scored") await deps.writeProjection(week, page.votes);
+        const projected = missing.length > 0 && page.votes.length > 0 && week.status !== "scored";
+        if (projected) await deps.writeProjection(week, page.votes);
+        await reportOfficial(deps, week, page, report, LABEL.morning, projected);
         await finish(morning, missing.length > 0 ? "not_ready" : "ok", missing.join("; "));
         done.add(morning.key);
         if (missing.length === 0) {
@@ -251,6 +275,10 @@ export async function runVoteCycle(deps: ClockDeps, initial: ClockSnapshot, firs
       } else if (page.votes.length > 0 && week.status !== "scored") {
         await deps.writeProjection(week, page.votes);
         report.projected.push(week.number);
+        for (const task of claimed) {
+          const read = week.matches.filter((match) => task.matchIds.includes(match.id));
+          await deps.reportVotes({ gameweek: week.number, label: LABEL[task.kind], matches: reportMatches(page, read, () => false) });
+        }
       }
       for (const { task, problem } of provisional) {
         await finish(task, problem ? "not_ready" : "ok", problem ?? "");
@@ -315,14 +343,15 @@ export async function runManualRead(deps: ClockDeps, now: number): Promise<Cycle
         if (page.votes.length > 0 && week.status !== "scored") {
           await deps.writeProjection(week, page.votes);
           report.projected.push(week.number);
+          await deps.reportVotes({ gameweek: week.number, label: "lettura manuale", matches: reportMatches(page, started, () => false) });
         }
         continue;
       }
       const missing = await writeCompleteMatches(deps, week, page, now, report);
-      if (missing.length > 0) {
-        if (page.votes.length > 0 && week.status !== "scored") await deps.writeProjection(week, page.votes);
-        continue;
-      }
+      const projected = missing.length > 0 && page.votes.length > 0 && week.status !== "scored";
+      if (projected) await deps.writeProjection(week, page.votes);
+      await reportOfficial(deps, week, page, report, "lettura manuale", projected);
+      if (missing.length > 0) continue;
       await rescoreRecovery(deps, week, report);
       if (week.status !== "scored" && week.number >= AUTO_CALC_FROM_GAMEWEEK && week.matches.every((match) => match.status === "finished")) {
         await calculateWeek(deps, week, false, report);

@@ -176,7 +176,7 @@ export function SyncDesk({ initial, initialLogs }: { initial: Settings; initialL
             checked={settings.notifyOnSyncSuccess}
             onChange={(event) => patch({ notifyOnSyncSuccess: event.target.checked })}
           />
-          Notifica Telegram con riepilogo anche a ogni sincronizzazione riuscita (Modalità Test)
+          Telegram in modalità test: voti inseriti a ogni lettura e orari cambiati. Errori e «giornata calcolata» arrivano sempre
         </label>
       </section>
 

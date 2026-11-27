@@ -398,6 +398,8 @@ export type SerieARound = {
 export type MyCalendarPlayers = {
   leagueName: string;
   players: { id: string; name: string; role: PlayerRole; clubId: string; from: number; until: number | null }[];
+  /** Per giornata, i titolari della formazione salvata. Senza formazione la giornata non c'è. */
+  starters: Record<number, string[]>;
 };
 
 /**
@@ -411,12 +413,13 @@ export async function loadMyCalendarPlayers(userId: string, focusLeagueId: strin
     if (!league?.teamId) return null;
     const admin = createAdminSupabase();
     const season = await getCurrentSeason(admin);
-    const [catalog, stints] = await Promise.all([
+    const [catalog, stints, starters] = await Promise.all([
       loadCatalog(season.id),
       admin
         .from("roster_stints")
         .select("player_id, active_from_gameweek, active_until_gameweek")
         .eq("fantasy_team_id", league.teamId),
+      loadStartersByRound(season.id, league.teamId),
     ]);
     if (stints.error) throw new Error(stints.error.message);
     const byId = new Map(catalog.players.map((player) => [player.id, player]));
@@ -432,10 +435,35 @@ export async function loadMyCalendarPlayers(userId: string, focusLeagueId: strin
         until: stint.active_until_gameweek == null ? null : Number(stint.active_until_gameweek),
       }];
     });
-    return { leagueName: league.name, players };
+    return { leagueName: league.name, players, starters };
   } catch (error) {
     void reportError("Schermata Calendario: calciatori della squadra", error);
     return null;
+  }
+}
+
+/** Se le formazioni non si leggono, i calciatori restano segnati senza distinguere la panchina. */
+export async function loadStartersByRound(seasonId: string, teamId: string): Promise<Record<number, string[]>> {
+  try {
+    const admin = createAdminSupabase();
+    const [weeks, lineups] = await Promise.all([
+      admin.from("gameweeks").select("id, number").eq("season_id", seasonId),
+      admin.from("lineups").select("gameweek_id, lineup_slots(player_id, is_starter)").eq("fantasy_team_id", teamId),
+    ]);
+    if (weeks.error) throw new Error(weeks.error.message);
+    if (lineups.error) throw new Error(lineups.error.message);
+    const numbers = new Map((weeks.data ?? []).map((week) => [week.id as string, Number(week.number)]));
+    const byRound: Record<number, string[]> = {};
+    for (const lineup of lineups.data ?? []) {
+      const number = numbers.get(lineup.gameweek_id as string);
+      const slots = (lineup.lineup_slots ?? []) as { player_id: string; is_starter: boolean }[];
+      const starters = slots.filter((slot) => slot.is_starter).map((slot) => slot.player_id);
+      if (number !== undefined && starters.length > 0) byRound[number] = starters;
+    }
+    return byRound;
+  } catch (error) {
+    void reportError("Schermata Calendario: formazioni della squadra", error);
+    return {};
   }
 }
 

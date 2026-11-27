@@ -5,6 +5,8 @@ export type NotificationText = { title: string; body: string; enabled: boolean }
 export type NotificationTemplate = NotificationText & { kind: NotificationKind };
 
 export const NOTIFICATION_KINDS: NotificationKind[] = ["deadline", "bonus", "overtake"];
+/** Avvisi mostrati in «Avvisi automatici». La formazione ha il suo riquadro «Promemoria formazioni». */
+export const EDITABLE_KINDS: NotificationKind[] = ["bonus", "overtake"];
 
 export const DEFAULT_NOTIFICATION_TEXTS: Record<NotificationKind, NotificationText> = {
   deadline: {

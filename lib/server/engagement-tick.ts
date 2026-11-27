@@ -3,7 +3,7 @@ import { inLeagueRange, parseLeagueRules, weekScoreMode } from "@/lib/league-rul
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { writeLeagueFeed } from "@/lib/server/league-feed";
 import { previewProvisional } from "@/lib/server/live-score";
-import { reminderKey } from "@/lib/server/lineup-reminder";
+import { readReminderSettings, reminderKey } from "@/lib/server/lineup-reminder";
 import { sendPushToUsers } from "@/lib/server/web-push";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -46,7 +46,11 @@ async function templates() {
 
 export async function runEngagementTick(now = new Date()) {
   const texts = await templates();
-  const deadline = await warnDeadlines(now, texts.deadline);
+  // L'ultimo avviso a 30 minuti fa da riserva al promemoria formazioni e segue il suo interruttore
+  // (Admin › Notifiche). Senza le colonne del promemoria vale il vecchio interruttore del testo.
+  const reminder = await readReminderSettings().catch(() => null);
+  const deadlineText = reminder?.ready ? { ...texts.deadline, enabled: reminder.enabled } : texts.deadline;
+  const deadline = await warnDeadlines(now, deadlineText);
   const bonuses = await notifyBonuses(texts.bonus);
   const passes = await notifyOvertakes(texts.overtake);
   const badges = await awardLatestBadges();

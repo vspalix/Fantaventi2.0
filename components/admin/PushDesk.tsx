@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { readableError } from "@/lib/feedback";
-import { NOTIFICATION_INFO, type NotificationTemplate } from "@/lib/notification-templates";
+import { ReminderCard, type ReminderPreview } from "@/components/admin/ReminderCard";
+import { EDITABLE_KINDS, NOTIFICATION_INFO, type NotificationTemplate } from "@/lib/notification-templates";
 
 type DeskData = { templates: NotificationTemplate[]; subscribers: number; ready: boolean };
 
@@ -18,7 +19,7 @@ function devices(count: number) {
 }
 
 /** Pagina Admin › Notifiche: messaggio a tutti e avvisi automatici. */
-export function PushDesk() {
+export function PushDesk({ reminder }: { reminder: ReminderPreview | null }) {
   const [data, setData] = useState<DeskData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -31,7 +32,8 @@ export function PushDesk() {
   return (
     <div className="stack">
       <Broadcast subscribers={data.subscribers} onSent={() => void loadDesk().then(setData).catch(() => undefined)} />
-      <AutoAlerts initial={data.templates} ready={data.ready} />
+      <ReminderCard initial={reminder} />
+      <AutoAlerts initial={data.templates.filter((item) => EDITABLE_KINDS.includes(item.kind))} ready={data.ready} />
     </div>
   );
 }
@@ -149,8 +151,8 @@ function AutoAlerts({ initial, ready }: { initial: NotificationTemplate[]; ready
 
   return (
     <section className="card stack">
-      <h2>Avvisi automatici</h2>
-      <p className="small muted">Partono da soli, solo alle persone interessate. Spegni quelli che non vuoi e, se serve, cambia il testo.</p>
+      <h2>Avvisi durante le partite</h2>
+      <p className="small muted">Durante le partite, solo a chi riguardano. Spegni quelli che non vuoi e, se serve, cambia il testo.</p>
       {!ready ? <p className="banner">Questi avvisi non si possono modificare: manca la tabella nel database.</p> : null}
       {items.map((item, index) => {
         const info = NOTIFICATION_INFO[item.kind];

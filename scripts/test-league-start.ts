@@ -2,7 +2,8 @@
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { entryCredit, lateEntryOf, presentAverage, waitingWeek, weekGain } from "../lib/late-entry";
-import { defaultPhases, inLeagueRange, newLeagueRange, parseLeagueRules, DEFAULT_LEAGUE_RULES, scoringPhase } from "../lib/league-rules";
+import { BONUS_FIELDS, defaultPhases, inLeagueRange, newLeagueRange, parseLeagueRules, DEFAULT_LEAGUE_RULES, scoringPhase } from "../lib/league-rules";
+import { readFileSync } from "node:fs";
 
 export function runLeagueStartChecks() {
   let total = 0;
@@ -51,6 +52,28 @@ export function runLeagueStartChecks() {
   );
   check("Lega nuova: l'imbattibilità del portiere parte accesa e vale 1", DEFAULT_LEAGUE_RULES.cleanSheetEnabled && parseLeagueRules(undefined).cleanSheetEnabled && parseLeagueRules({}).cleanSheetPoints === 1);
   check("Chi la spegne la trova spenta", parseLeagueRules({ ...DEFAULT_LEAGUE_RULES, cleanSheetEnabled: false }).cleanSheetEnabled === false);
+  // Ogni opzione della lega si sceglie creandola: una regola nuova senza il suo comando qui fa fallire la prova.
+  const source = (path: string) => readFileSync(path, "utf8");
+  const form = source("components/leagues/CreateLeagueForm.tsx");
+  const automatic = ["ranking", "budget", "phases"]; // seguono la modalità, il valore fisso o le giornate
+  const unasked = Object.keys(DEFAULT_LEAGUE_RULES)
+    .filter((key) => !automatic.includes(key) && !new RegExp(String.raw`change\(\{[^}]*\b${key}\b`).test(form));
+  check("Creando una lega si chiede ogni opzione", unasked.length === 0, unasked.join(", "));
+  check("Creando una lega si scelgono nome, giornate e fasi", /setName\(/.test(form) && /changeRange\(value, pickedEnd\)/.test(form) && /changeRange\(pickedStart, value\)/.test(form) && /rules: \{ \.\.\.rules, phases \}/.test(form));
+  const onboarding = source("components/home/LeagueOnboarding.tsx");
+  check("Dalla Home si crea solo con il modulo completo", onboarding.includes('href="/leghe?nuova=1"') && !/fetch\("\/api\/leagues",/.test(onboarding));
+  const custom = parseLeagueRules({
+    format: "hybrid", visibility: "public", enrollment: "closed", maxMembers: 6, defenseEnabled: false, captainEnabled: false,
+    captainMultiplier: 1.5, missedLineup: "penalty", missedLineupPenalty: 4.5, cleanSheetEnabled: false, cleanSheetPoints: 2.5,
+    bonusEnabled: Object.fromEntries(BONUS_FIELDS.map((field) => [field.key, false])),
+    bonusMalus: Object.fromEntries(BONUS_FIELDS.map((field, index) => [field.key, index + 0.5])),
+    exclusiveRosters: true, checkpoints: [{ afterMatchday: 20, changes: 2 }], postponement: "political_six",
+    goalBands: [{ min: 60, goals: 1 }], phases: hybrid,
+  });
+  const lost = (Object.keys(DEFAULT_LEAGUE_RULES) as (keyof typeof DEFAULT_LEAGUE_RULES)[])
+    .filter((key) => !["ranking", "budget"].includes(key) && same(custom[key], DEFAULT_LEAGUE_RULES[key]));
+  check("Nessuna opzione scelta torna al valore di partenza", lost.length === 0, lost.join(", "));
+
   check("La coppa parte dove scelto", scoringPhase(chosen, 31).kind === "knockout" && scoringPhase(chosen, 13).kind === "regular");
 
   // Ingresso in corsa: A, B e C dalla giornata 1; D entra alla 3; E non ha mai schierato.

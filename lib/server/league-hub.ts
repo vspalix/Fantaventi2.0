@@ -23,6 +23,7 @@ import type {
   OpponentLineup,
   PartialStanding,
   PlayerRole,
+  SavedLineup,
   StandingRow,
 } from "@/lib/types";
 
@@ -1211,21 +1212,50 @@ function rankStandings(rows: StandingRow[]) {
   return ranked;
 }
 
+
+/**
+ * Salva la formazione con un controllo leggero: legge solo lega, giornate, stato delle partite
+ * e rosa della squadra (le stesse regole di loadLeagueHub per «modificabile»), non classifiche,
+ * formazioni degli altri o partite. Deadline, rosa e modulo li ricontrolla anche submit_lineup.
+ */
 export async function saveLeagueLineup(
   userId: string,
   leagueId: string,
   input: { gameweekId: string; playerIds: string[]; benchIds: string[]; captainId: string | null; viceId: string | null },
-) {
-  const hub = await loadLeagueHub(userId, leagueId, input.gameweekId);
-  if (!hub.selectedGameweekId || hub.selectedGameweekId !== input.gameweekId) {
-    throw httpError("Questa giornata non è nel range della lega.", 400);
-  }
-  if (!hub.editable) {
-    const week = hub.gameweeks.find((gameweek) => gameweek.id === input.gameweekId);
-    const underway = Boolean(week)
-      && week?.status !== "scored"
-      && week?.status !== "final"
-      && (week?.locked || new Date(week?.deadlineAt ?? 0).getTime() <= Date.now());
+): Promise<SavedLineup> {
+  const { assertWritesOpen } = await import("@/lib/server/maintenance");
+  const [league] = await Promise.all([getLeagueDetail(userId, leagueId), assertWritesOpen()]);
+  const team = teamOf(userId, league.participants);
+  if (!team) throw httpError("Prima salva la rosa: la formazione usa quei calciatori.", 400);
+
+  const admin = createAdminSupabase();
+  const now = Date.now();
+  const [catalog, gameweekQuery, matchState, stints] = await Promise.all([
+    loadCatalog(league.seasonId),
+    admin
+      .from("gameweeks")
+      .select("id, number, deadline_at, status")
+      .eq("season_id", league.seasonId)
+      .gte("number", league.startMatchday)
+      .lte("number", league.endMatchday)
+      .order("number", { ascending: true }),
+    loadWeekMatchState(admin, league.seasonId, now),
+    admin
+      .from("roster_stints")
+      .select("player_id, active_from_gameweek, active_until_gameweek")
+      .eq("fantasy_team_id", team.id),
+  ]);
+  if (gameweekQuery.error) throw new Error(gameweekQuery.error.message);
+  if (stints.error) throw new Error(stints.error.message);
+
+  const rows = (gameweekQuery.data ?? []) as GameweekRow[];
+  const week = rows.find((gameweek) => gameweek.id === input.gameweekId);
+  if (!week) throw httpError("Questa giornata non è nel range della lega.", 400);
+  const liveWeek = rows.find((gameweek) => weekUnderway(gameweek, now, matchState)) ?? null;
+  const next = liveWeek ? null : rows.find((gameweek) => !isLocked(gameweek, now, matchState.inPlay)) ?? null;
+  const locked = isLocked(week, now, matchState.inPlay);
+  if (!next || next.id !== week.id || locked) {
+    const underway = week.status !== "scored" && week.status !== "final" && locked;
     throw httpError(
       underway
         ? "Formazione bloccata. La giornata è in corso."
@@ -1233,22 +1263,26 @@ export async function saveLeagueLineup(
       409,
     );
   }
-  const { assertWritesOpen } = await import("@/lib/server/maintenance");
-  await assertWritesOpen();
 
-  const admin = createAdminSupabase();
-  const team = teamOf(userId, hub.league.participants);
-  if (!team) throw httpError("Prima salva la rosa: la formazione usa quei calciatori.", 400);
+  const byId = new Map(catalog.players.map((player) => [player.id, player]));
+  const roster = (stints.data ?? [])
+    .filter((stint) => {
+      const from = stint.active_from_gameweek as number;
+      const until = stint.active_until_gameweek as number | null;
+      return from <= week.number && (until === null || until >= week.number);
+    })
+    .map((stint) => byId.get(stint.player_id as string))
+    .filter((player): player is CatalogPlayer => Boolean(player));
 
   const playerIds = [...new Set(input.playerIds)];
   const benchIds = [...new Set(input.benchIds)].filter((playerId) => !playerIds.includes(playerId));
-  const shapeIssue = formationIssue(hub.roster, playerIds);
+  const shapeIssue = formationIssue(roster, playerIds);
   if (shapeIssue) throw httpError(shapeIssue, 400);
-  const known = new Set(hub.roster.map((player) => player.id));
+  const known = new Set(roster.map((player) => player.id));
   if (benchIds.some((playerId) => !known.has(playerId))) {
     throw httpError("Ogni panchinaro deve essere in rosa per questa giornata.", 400);
   }
-  const unassigned = hub.roster.filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id));
+  const unassigned = roster.filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id));
   if (unassigned.length > 0) {
     throw httpError("Metti in panchina i calciatori che non sono in campo.", 400);
   }
@@ -1259,12 +1293,13 @@ export async function saveLeagueLineup(
     throw httpError("Scegli un vice diverso dal capitano.", 400);
   }
 
+  const viceId = playerIds.length === 1 ? null : input.viceId;
   const { error } = await admin.rpc("submit_lineup", {
     p_fantasy_team_id: team.id,
     p_gameweek_id: input.gameweekId,
     p_player_ids: playerIds,
     p_captain_id: input.captainId,
-    p_vice_captain_id: playerIds.length === 1 ? null : input.viceId,
+    p_vice_captain_id: viceId,
     p_bench_ids: benchIds,
   });
   if (error) {
@@ -1274,12 +1309,16 @@ export async function saveLeagueLineup(
     throw new Error(error.message);
   }
 
+  const savedAt = new Date().toISOString();
   const stamped = await admin
     .from("lineups")
-    .update({ saved_at: new Date().toISOString() })
+    .update({ saved_at: savedAt })
     .eq("fantasy_team_id", team.id)
     .eq("gameweek_id", input.gameweekId);
   if (stamped.error && !/saved_at|schema cache/i.test(stamped.error.message)) throw new Error(stamped.error.message);
 
-  return loadLeagueHub(userId, leagueId, input.gameweekId);
+  return {
+    lineup: { playerIds, benchIds, captainId: input.captainId, viceId },
+    savedAt: stamped.error ? null : savedAt,
+  };
 }

@@ -1,6 +1,7 @@
 // Giornata di inizio di una lega e impostazioni scelte alla creazione. Solo dati inventati.
 import { pathToFileURL } from "node:url";
 import path from "node:path";
+import { entryCredit, lateEntryOf, presentAverage, weekGain } from "../lib/late-entry";
 import { defaultPhases, inLeagueRange, newLeagueRange, parseLeagueRules, DEFAULT_LEAGUE_RULES, scoringPhase } from "../lib/league-rules";
 
 export function runLeagueStartChecks() {
@@ -49,6 +50,26 @@ export function runLeagueStartChecks() {
       && same(chosen.phases, hybrid),
   );
   check("La coppa parte dove scelto", scoringPhase(chosen, 31).kind === "knockout" && scoringPhase(chosen, 13).kind === "regular");
+
+  // Ingresso in corsa: A, B e C dalla giornata 1; D entra alla 3; E non ha mai schierato.
+  const weeks = [1, 2, 3].map((number) => ({ id: `g${number}`, number }));
+  const table: Record<string, number> = { "A:g1": 60, "B:g1": 70, "C:g1": 80, "A:g2": 50, "B:g2": 0, "C:g2": 70, "A:g3": 61, "B:g3": 62, "C:g3": 63, "D:g3": 90 };
+  const pointsOf = (teamId: string, weekId: string) => table[`${teamId}:${weekId}`] ?? 0;
+  const entry = { teamIds: ["A", "B", "C", "D", "E"], entryByTeam: new Map([["A", 1], ["B", 1], ["C", 1], ["D", 3]]), startMatchday: 1, allowed: true };
+  const credit = entryCredit(entry, "D", weeks, pointsOf);
+  check("Media di ingresso: solo le squadre già in gioco, senza la propria", credit.points === 110 && credit.skipped === 2 && credit.average === 55, JSON.stringify(credit));
+  check("Chi era in gioco e non ha fatto punti conta zero", presentAverage(entry, 2, (id) => pointsOf(id, "g2")) === 40);
+  check("Chi non ha mai schierato non conta e non è un ingresso", lateEntryOf(entry, "E") === null && entryCredit(entry, "E", weeks, pointsOf).points === 0);
+  check("Chi c'era dall'inizio non riceve niente", entryCredit(entry, "A", weeks, pointsOf).points === 0);
+  const fielded = new Set(["A:g1", "A:g2", "A:g3", "D:g3"]);
+  const season = (teamId: string) => weeks.reduce((sum, week) => sum + weekGain(entry, fielded, teamId, week, (id) => pointsOf(id, week.id)), 0);
+  check("Totale di chi entra: medie saltate più i propri punti", season("D") === 200, String(season("D")));
+  check("Totale di chi c'era: solo i propri punti", season("A") === 171, String(season("A")));
+  const second = { ...entry, teamIds: ["A", "D"], entryByTeam: new Map([["A", 1], ["D", 3]]) };
+  check("Con due sole squadre la media è l'altra", entryCredit(second, "D", weeks, pointsOf).points === 110);
+  check("Lega a numero chiuso: nessun punto di ingresso", entryCredit({ ...entry, allowed: false }, "D", weeks, pointsOf).points === 0);
+  const from13 = { ...entry, startMatchday: 3 };
+  check("Entrare alla giornata di inizio della lega non è un ingresso in corsa", lateEntryOf(from13, "D") === null);
 
   return { total, passed: total - failures.length, failures };
 }

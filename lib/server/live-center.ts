@@ -1,8 +1,9 @@
 import { projectLiveScore, type PlayerStat } from "@/lib/engine/calculator";
-import { fantapuntiToGoals, headToHeadPairings, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
+import { weekGain } from "@/lib/late-entry";
+import { fantapuntiToGoals, headToHeadPairings, headToHeadPoints, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
 import { pitchEvents } from "@/lib/engagement/live-board";
 import { teamWeekPoints } from "@/lib/office-lineup";
-import { fantasyPointsForLeague } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, leagueEntries } from "@/lib/server/league-scores";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { reportError } from "@/lib/server/error-report";
@@ -71,10 +72,26 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   const base = new Map<string, number>();
   if (closed.length > 0) {
     try {
-      const points = await fantasyPointsForLeague(league.id, league.seasonId, teamIds, closed);
-      for (const [key, value] of points) {
-        const teamId = key.split(":")[0];
-        base.set(teamId, (base.get(teamId) ?? 0) + value);
+      const [points, entries] = await Promise.all([
+        fantasyPointsForLeague(league.id, league.seasonId, teamIds, closed),
+        leagueEntries(teamIds, rows.map((row) => ({ id: row.id as string, number: Number(row.number) }))),
+      ]);
+      // Stessi punti della classifica di lega: media per chi è entrato in corsa, punti partita negli scontri.
+      const entryContext = {
+        teamIds,
+        entryByTeam: entries.entryByTeam,
+        startMatchday: league.startMatchday,
+        allowed: league.rules.enrollment !== "closed",
+      };
+      for (const week of closed) {
+        const fantasy = new Map(teamIds.map((teamId) => [teamId, points.get(`${teamId}:${week.id}`) ?? 0]));
+        const awarded = weekScoreMode(league.rules, week.number) === "head_to_head"
+          ? headToHeadPoints(teamIds, week.number, fantasy, league.rules.goalBands)
+          : fantasy;
+        for (const teamId of teamIds) {
+          const gained = weekGain(entryContext, entries.fielded, teamId, week, (id) => awarded.get(id) ?? 0);
+          base.set(teamId, (base.get(teamId) ?? 0) + gained);
+        }
       }
     } catch (error) {
       void reportError("Lega: centro partite, classifica", error);
@@ -129,7 +146,8 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   const table = teamIds
     .map((teamId) => ({
       teamName: names.get(teamId) ?? "Squadra",
-      points: round2((base.get(teamId) ?? 0) + (mode === "knockout" ? 0 : weekPoints.get(teamId) ?? 0)),
+      // Prima dell'inizio la giornata non assegna ancora punti (negli scontri lo 0-0 ne darebbe uno).
+      points: round2((base.get(teamId) ?? 0) + (mode === "knockout" || phase === "countdown" ? 0 : weekPoints.get(teamId) ?? 0)),
       live: round2(livePoints.get(teamId) ?? 0),
     }))
     .sort((left, right) => right.points - left.points || left.teamName.localeCompare(right.teamName, "it"));

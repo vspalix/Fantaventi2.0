@@ -77,18 +77,28 @@ function fromLive(sheet: LiveLineupSheet): { starters: CompactPlayer[]; bench: C
   return { starters: sheet.starters.map(map), bench: sheet.bench.map(map) };
 }
 
-export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; initialRound?: number }) {
+/** La giornata chiesta da un link e se mostrare subito la propria formazione. */
+export type Arrival = { round: number; openMine: boolean };
+
+export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubData; arrival: Arrival | null; onArrived: () => void }) {
   const weeks = [...hub.gameweeks].sort((left, right) => left.number - right.number);
   const [week, setWeek] = useState<CalendarWeek | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [wanted] = useState(() => {
+    const target = arrival ? weeks.find((item) => item.number === arrival.round) : undefined;
+    if (!arrival || !target) return null;
+    return { id: target.id, openId: arrival.openMine ? "mine" : null, elsewhere: target.id !== hub.selectedGameweekId };
+  });
+  /** Giornata chiesta dal link e non ancora arrivata: intanto non se ne mostra un'altra. */
+  const [arriving, setArriving] = useState(wanted?.elsewhere ? wanted.id : null);
   /** Cosa è aperto: «mine» per il riquadro in alto, altrimenti la squadra in classifica. */
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(wanted && !wanted.elsewhere ? wanted.openId : null);
   const [details, setDetails] = useState<Record<string, Detail>>({});
   const asked = useRef(new Set<string>());
   const [visible, setVisible] = useState(PAGE);
   const selectedId = week?.selectedGameweekId ?? hub.selectedGameweekId;
-  const index = Math.max(0, weeks.findIndex((item) => item.id === selectedId));
+  const index = Math.max(0, weeks.findIndex((item) => item.id === (arriving ?? selectedId)));
   const current = weeks[index] ?? null;
   const opponents = week?.opponents ?? hub.opponents;
   const partial = week?.partial ?? hub.partial;
@@ -107,7 +117,8 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
   const mineIndex = teams.findIndex((team) => team.isMine);
   const mineStanding = mine ? pointsById.get(mine.fantasyTeamId) : undefined;
   const best = teams.length > 0 ? pointsById.get(teams[0].fantasyTeamId)?.points ?? null : null;
-  const requestedRound = useRef(initialRound);
+  const requested = useRef(wanted);
+  const hubWeekId = useRef(hub.selectedGameweekId);
   const detailKey = (teamId: string) => `${gameweekId}:${teamId}`;
 
   async function loadDetail(teamId: string) {
@@ -164,12 +175,14 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
   );
 
   useEffect(() => {
+    if (hubWeekId.current === hub.selectedGameweekId) return;
+    hubWeekId.current = hub.selectedGameweekId;
     setWeek(null);
     setOpenId(null);
     setVisible(PAGE);
   }, [hub.selectedGameweekId]);
 
-  async function choose(gameweekId: string) {
+  async function choose(gameweekId: string, open: string | null = null) {
     if (!gameweekId || gameweekId === selectedId || pending) return;
     setPending(true);
     setError(null);
@@ -180,20 +193,21 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
       if (!response.ok || !body.calendar) throw new Error(body.error ?? "Giornata non disponibile.");
       setWeek(body.calendar);
       setVisible(PAGE);
+      setOpenId(open);
     } catch (reason) {
       setError(readableError(reason, "Giornata non disponibile."));
     } finally {
+      setArriving(null);
       setPending(false);
     }
   }
 
   // Arrivando da un link con una giornata (per esempio dai pallini della Home), apre quella giornata una volta sola.
   useEffect(() => {
-    const number = requestedRound.current;
-    requestedRound.current = undefined;
-    if (number == null) return;
-    const target = weeks.find((item) => item.number === number);
-    if (target) void choose(target.id);
+    const target = requested.current;
+    requested.current = null;
+    if (arrival) onArrived();
+    if (target?.elsewhere) void choose(target.id, target.openId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -204,7 +218,7 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
           className="ghost"
           type="button"
           aria-label="Giornata precedente"
-          disabled={pending || index <= 0}
+          disabled={pending || Boolean(arriving) || index <= 0}
           onClick={() => { const previous = weeks[index - 1]; if (previous) void choose(previous.id); }}
         >
           ‹
@@ -212,7 +226,7 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
         <select
           aria-label="Giornata"
           value={current?.id ?? ""}
-          disabled={pending || weeks.length === 0}
+          disabled={pending || Boolean(arriving) || weeks.length === 0}
           onChange={(event) => void choose(event.target.value)}
         >
           {weeks.map((item) => (
@@ -225,7 +239,7 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
           className="ghost"
           type="button"
           aria-label="Giornata successiva"
-          disabled={pending || index >= weeks.length - 1}
+          disabled={pending || Boolean(arriving) || index >= weeks.length - 1}
           onClick={() => { const next = weeks[index + 1]; if (next) void choose(next.id); }}
         >
           ›
@@ -233,67 +247,76 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
       </div>
       {error ? <p className="banner">{error}</p> : null}
 
-      {mine ? (
-        <article className="card gd-mine">
-          <p className="gd-kicker">La tua squadra</p>
-          {/* Senza punti non c'è ancora una posizione: restano nome e spiegazione. */}
-          <div className="gd-mine-row">
-            {mineStanding?.points != null ? (
-              <span className="gd-place">
-                <strong>{mineStanding.rank}°</strong>
-                <small>su {teams.length}</small>
-              </span>
-            ) : null}
-            <span className="gd-mine-name">
-              <strong>{mine.teamName}</strong>
-              <small>{mineNote(mineStanding, best, Boolean(scored))}</small>
-            </span>
-            {mineStanding?.points != null ? (
-              <span className="gd-mine-points">
-                <strong>{points(mineStanding.points)}</strong>
-                <small>fantapunti</small>
-              </span>
-            ) : null}
-          </div>
-          <button className="ghost gd-open" type="button" aria-expanded={openId === "mine"} onClick={() => toggle("mine", mine)}>
-            {openId === "mine" ? "Chiudi il dettaglio" : "Vedi il dettaglio"}
-          </button>
-          {openId === "mine" ? detailFor(mine) : null}
-        </article>
-      ) : null}
-
-      <article className="card gd-ranking">
-        <div className="gd-title">
-          <h2>Classifica di giornata</h2>
-          <InfoTip label="Classifica di giornata">Posizione e punti di questa giornata. Tocca una squadra per vedere formazione, voti e bonus.</InfoTip>
-          {mineIndex >= 0 && teams.length > 8 ? (
-            <button className="text-button" type="button" onClick={goToMine}>Vai alla mia posizione</button>
-          ) : null}
+      {arriving ? (
+        <div className="stack gd-loading" role="status" aria-label="Carico la giornata" aria-busy="true">
+          <div className="skeleton skeleton-card" />
+          <div className="skeleton skeleton-card" />
         </div>
-        {teams.length === 0 ? <p className="small muted">Nessuna squadra iscritta.</p> : (
-          <div className="cal-teams">
-            {teams.slice(0, visible).map((team) => {
-              const open = openId === team.fantasyTeamId;
-              return (
-                <div className="gd-team" key={team.fantasyTeamId} id={team.isMine ? "gd-mine-row" : undefined}>
-                  <TeamRow
-                    team={team}
-                    standing={pointsById.get(team.fantasyTeamId)}
-                    open={open}
-                    onOpen={() => toggle(team.fantasyTeamId, team)}
-                  />
-                  {open ? detailFor(team) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {teams.length > visible ? (
-          <button className="ghost" type="button" onClick={() => setVisible(visible + PAGE)}>
-            Mostra altre {Math.min(PAGE, teams.length - visible)}
-          </button>
-        ) : null}
-      </article>
+      ) : (
+        <>
+          {mine ? (
+            <article className="card gd-mine">
+              <p className="gd-kicker">La tua squadra</p>
+              {/* Senza punti non c'è ancora una posizione: restano nome e spiegazione. */}
+              <div className="gd-mine-row">
+                {mineStanding?.points != null ? (
+                  <span className="gd-place">
+                    <strong>{mineStanding.rank}°</strong>
+                    <small>su {teams.length}</small>
+                  </span>
+                ) : null}
+                <span className="gd-mine-name">
+                  <strong>{mine.teamName}</strong>
+                  <small>{mineNote(mineStanding, best, Boolean(scored))}</small>
+                </span>
+                {mineStanding?.points != null ? (
+                  <span className="gd-mine-points">
+                    <strong>{points(mineStanding.points)}</strong>
+                    <small>fantapunti</small>
+                  </span>
+                ) : null}
+              </div>
+              <button className="ghost gd-open" type="button" aria-expanded={openId === "mine"} onClick={() => toggle("mine", mine)}>
+                {openId === "mine" ? "Chiudi il dettaglio" : "Vedi il dettaglio"}
+              </button>
+              {openId === "mine" ? detailFor(mine) : null}
+            </article>
+          ) : null}
+
+          <article className="card gd-ranking">
+            <div className="gd-title">
+              <h2>Classifica di giornata</h2>
+              <InfoTip label="Classifica di giornata">Posizione e punti di questa giornata. Tocca una squadra per vedere formazione, voti e bonus.</InfoTip>
+              {mineIndex >= 0 && teams.length > 8 ? (
+                <button className="text-button" type="button" onClick={goToMine}>Vai alla mia posizione</button>
+              ) : null}
+            </div>
+            {teams.length === 0 ? <p className="small muted">Nessuna squadra iscritta.</p> : (
+              <div className="cal-teams">
+                {teams.slice(0, visible).map((team) => {
+                  const open = openId === team.fantasyTeamId;
+                  return (
+                    <div className="gd-team" key={team.fantasyTeamId} id={team.isMine ? "gd-mine-row" : undefined}>
+                      <TeamRow
+                        team={team}
+                        standing={pointsById.get(team.fantasyTeamId)}
+                        open={open}
+                        onOpen={() => toggle(team.fantasyTeamId, team)}
+                      />
+                      {open ? detailFor(team) : null}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {teams.length > visible ? (
+              <button className="ghost" type="button" onClick={() => setVisible(visible + PAGE)}>
+                Mostra altre {Math.min(PAGE, teams.length - visible)}
+              </button>
+            ) : null}
+          </article>
+        </>
+      )}
     </section>
   );
 }

@@ -8,7 +8,7 @@ import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueRulesReadout } from "@/components/leagues/LeagueRulesReadout";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
-import { MatchdayResults } from "@/components/leagues/MatchdayResults";
+import { MatchdayResults, type Arrival } from "@/components/leagues/MatchdayResults";
 import { MyPagelle } from "@/components/leagues/MyPagelle";
 import { Pitch } from "@/components/leagues/Pitch";
 import { TeamBadge } from "@/components/TeamBadge";
@@ -23,6 +23,7 @@ import {
   formationById,
   formationIssue,
   inferFormation,
+  missingStarters,
   roleCap,
   trimToFormation,
   type FormationId,
@@ -344,6 +345,7 @@ export function LeagueHub({
   hostMode = false,
   initialTab = "home",
   initialRound,
+  initialOpenMine = false,
 }: {
   initial: LeagueHubData;
   allowTestFill?: boolean;
@@ -351,9 +353,15 @@ export function LeagueHub({
   initialTab?: HubTab;
   /** Giornata da mostrare in «Risultati di giornata» quando si arriva da un link. */
   initialRound?: number;
+  /** Con quella giornata si apre subito anche la propria formazione (pallini della Home). */
+  initialOpenMine?: boolean;
 }) {
   const [hub, setHub] = useState(initial);
   const [tab, setTab] = useState<HubTab>(initialTab);
+  /** Vale una volta sola: tornando su «Calendario» si rivede la giornata abituale. */
+  const [arrival, setArrival] = useState<Arrival | null>(
+    initialRound === undefined ? null : { round: initialRound, openMine: initialOpenMine },
+  );
   const shownTab = tab === "gestione" ? "lega" : tab;
   const [board, setBoard] = useState<"parziale" | "generale" | "live">("generale");
   const [boardQuery, setBoardQuery] = useState("");
@@ -873,7 +881,7 @@ export function LeagueHub({
 
   const shapeIssue = formationIssue(hub.roster, playerIds);
   const hasCaptain = Boolean(captainId && playerIds.includes(captainId));
-  const hasVice = playerIds.length <= 1 || Boolean(viceId && viceId !== captainId && playerIds.includes(viceId));
+  const hasVice = Boolean(viceId && viceId !== captainId && playerIds.includes(viceId));
   const missingCaptainOrVice = !hasCaptain || !hasVice;
   const formation = formationById(formationId);
   const bench = benchIds
@@ -899,11 +907,14 @@ export function LeagueHub({
       : hub.lineupOrigin === "previous" && hub.carriedFromMatchday
         ? `Formazione proposta per la giornata ${selected.number}, presa dalla giornata ${hub.carriedFromMatchday}: non ancora salvata. Premi «Salva formazione» per confermarla.`
         : `Giornata ${selected.number}: formazione non ancora salvata.`;
-  const saveBlocked = missingCaptainOrVice || missingBench;
-  const saveReason = [
-    missingCaptainOrVice ? "manca capitano o vice" : "",
-    missingBench ? "manca la panchina" : "",
-  ].filter(Boolean).join(" e ");
+  const saveProblems = [
+    missingStarters(fielded.length),
+    missingCaptainOrVice ? "manca capitano o vice" : null,
+    missingBench ? "manca la panchina" : null,
+  ].filter((problem): problem is string => Boolean(problem));
+  const saveBlocked = saveProblems.length > 0;
+  /** «a», «a e b», «a, b e c». */
+  const saveReason = saveProblems.join(", ").replace(/, ([^,]*)$/, " e $1");
   const pickerPlayers = pickerRole
     ? hub.roster.filter((player) => player.role === pickerRole && !playerIds.includes(player.id))
     : [];
@@ -1190,7 +1201,7 @@ export function LeagueHub({
       ) : null}
 
       {shownTab === "risultati" ? (
-        <MatchdayResults hub={hub} initialRound={initialRound} />
+        <MatchdayResults hub={hub} arrival={arrival} onArrived={() => setArrival(null)} />
       ) : null}
 
       {shownTab === "classifica" ? (

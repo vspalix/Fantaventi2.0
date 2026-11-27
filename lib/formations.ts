@@ -265,7 +265,7 @@ export function carryLineup(
 
 export function formationIssue(roster: RosterPlayer[], playerIds: string[]) {
   const unique = [...new Set(playerIds)];
-  if (unique.length === 0) return "Schiera almeno un titolare.";
+  if (unique.length === 0) return "Schiera 11 titolari.";
   if (unique.length > 11) return "I titolari sono al massimo 11.";
   const known = new Set(roster.map((player) => player.id));
   if (unique.some((playerId) => !known.has(playerId))) return "Ogni titolare deve essere in rosa per questa giornata.";
@@ -275,5 +275,34 @@ export function formationIssue(roster: RosterPlayer[], playerIds: string[]) {
     return `Modulo ${counts.DEF}-${counts.MID}-${counts.FWD} non ammesso. Scegli 3-4-3, 3-5-2, 4-3-3, 4-4-2, 4-5-1, 5-3-2 o 5-4-1.`;
   }
   if (unique.length === 11 && counts.GK !== 1) return "Con 11 titolari serve un portiere.";
+  return null;
+}
+
+/** Per salvare una formazione servono 11 titolari: dice quanti ne mancano, oppure `null`. */
+export function missingStarters(count: number) {
+  const missing = 11 - count;
+  if (missing <= 0) return null;
+  return missing === 1 ? "manca 1 titolare" : `mancano ${missing} titolari`;
+}
+
+/**
+ * Perché la formazione inviata da un utente non si può salvare, oppure `null`. Servono
+ * 11 titolari in un modulo ammesso, il resto della rosa in panchina, capitano e vice.
+ * Le formazioni d'ufficio non passano da qui.
+ */
+export function lineupSaveIssue(roster: RosterPlayer[], pick: CarriedLineup) {
+  const shape = formationIssue(roster, pick.playerIds);
+  if (shape) return shape;
+  const starters = new Set(pick.playerIds);
+  const missing = missingStarters(starters.size);
+  if (missing) return `Servono 11 titolari: ${missing}.`;
+  const known = new Set(roster.map((player) => player.id));
+  if (pick.benchIds.some((playerId) => !known.has(playerId))) return "Ogni panchinaro deve essere in rosa per questa giornata.";
+  const bench = new Set(pick.benchIds);
+  if (roster.some((player) => !starters.has(player.id) && !bench.has(player.id))) {
+    return "Metti in panchina i calciatori che non sono in campo.";
+  }
+  if (!pick.captainId || !starters.has(pick.captainId)) return "Scegli un capitano tra i titolari.";
+  if (!pick.viceId || pick.viceId === pick.captainId || !starters.has(pick.viceId)) return "Scegli un vice diverso dal capitano.";
   return null;
 }

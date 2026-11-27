@@ -14,7 +14,7 @@ export default async function LeaguePage({
   searchParams,
 }: {
   params: Promise<{ leagueId: string }>;
-  searchParams: Promise<{ tab?: string; giornata?: string }>;
+  searchParams: Promise<{ tab?: string; giornata?: string; formazione?: string }>;
 }) {
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
   const user = await getSessionUser();
@@ -38,6 +38,7 @@ export default async function LeaguePage({
         initial={hub}
         initialTab={isHubTab(requested) ? requested : "home"}
         initialRound={Number.isInteger(round) && round > 0 ? round : undefined}
+        initialOpenMine={query.formazione === "mia"}
         hostMode={hostMode && (hub.league.isManager || hub.league.platformOverride)}
         allowTestFill={hostMode && process.env.NODE_ENV === "development" && hub.league.isOwner}
       />

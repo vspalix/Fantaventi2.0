@@ -79,7 +79,7 @@ Gli identificativi (`ROS`, `FOR`, `SCO`, `MKT`, `CLS`) sono il riferimento per i
 
 ### 5.2 Formazione
 
-**FOR-01.** Per ogni giornata la squadra schiera da 0 a 11 titolari, tutti presenti in rosa per quella giornata.
+**FOR-01.** Per ogni giornata la squadra schiera 11 titolari, tutti presenti in rosa per quella giornata. Una formazione inviata dall'utente si salva solo con 11 titolari, il resto della rosa in panchina, capitano e vice (regola confermata il 27/11/2026). Il calcolo continua a gestire i posti vuoti delle formazioni salvate prima o composte d'ufficio.
 
 **FOR-02.** Un titolare compare una sola volta.
 
@@ -773,7 +773,7 @@ Queste scelte non vanno indovinate nel codice. Il default indicato serve a non b
 | 4 | L'espulsione diretta annulla il fair play? | No, finché il regolamento parla solo di ammonizione |
 | 5 | Moduli e portiere | Moduli di FOR-06. Con 11 titolari il portiere è uno. Con meno di 11 il portiere non è obbligatorio e la difesa non scatta |
 | 6 | Quali sono le tre giornate di check-point? | Configurazione di stagione, non un numero fisso nello schema |
-| 7 | Si può schierare una formazione parziale di proposito per incassare 2,5 a slot? | Sì, il regolamento lo consente |
+| 7 | Si può schierare una formazione parziale di proposito per incassare 2,5 a slot? | No (27/11/2026): per salvare servono 11 titolari, panchina completa, capitano e vice |
 | 8 | Tie-break di classifica | Punti di classifica, poi punti reali, poi nome squadra |
 
 ## 11. Criteri di accettazione del motore

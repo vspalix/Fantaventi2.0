@@ -14,7 +14,7 @@ import {
   type RulesetDefinition,
 } from "../lib/engine/calculator";
 import { explainScore } from "../lib/engine/score-audit";
-import { carryLineup, formationIssue, type CarriedLineup } from "../lib/formations";
+import { autoLineup, carryLineup, formationIssue, lineupSaveIssue, type CarriedLineup } from "../lib/formations";
 import { applyLeagueRules, DEFAULT_LEAGUE_RULES } from "../lib/league-rules";
 import { mergeSnapshot, readSnapshot, withProvisionalVotes } from "../lib/server/provisional-votes";
 import type { PlayerRole } from "../lib/types";
@@ -151,6 +151,47 @@ export async function runLineupAndPointsChecks() {
     else if (full && next!.playerIds.length !== first.playerIds.length) fuzz = `giro ${run}: titolari ${next!.playerIds.length} invece di ${first.playerIds.length}`;
   }
   check("3000 rose casuali: sempre valide", fuzz === null, fuzz ?? "");
+
+  // --- Salvataggio: solo con 11 titolari, panchina completa, capitano e vice
+  const saveIssue = (change: Partial<CarriedLineup>) => lineupSaveIssue(ROSTER, { ...PREVIOUS, ...change });
+  check("Formazione completa: si salva", saveIssue({}) === null, String(saveIssue({})));
+  const ten = { playerIds: STARTERS.slice(0, 10), benchIds: [...STARTERS.slice(10), ...BENCH] };
+  check("10 titolari: rifiutata", saveIssue(ten) === "Servono 11 titolari: manca 1 titolare.", String(saveIssue(ten)));
+  const nine = { playerIds: STARTERS.slice(0, 9), benchIds: [...STARTERS.slice(9), ...BENCH] };
+  check("9 titolari: rifiutata", saveIssue(nine) === "Servono 11 titolari: mancano 2 titolari.", String(saveIssue(nine)));
+  check("11 titolari con un doppione: rifiutata", saveIssue({ playerIds: [...STARTERS.slice(0, 10), STARTERS[9]], benchIds: [STARTERS[10], ...BENCH] }) !== null);
+  check("Campo vuoto: rifiutata", saveIssue({ playerIds: [], benchIds: [...STARTERS, ...BENCH] }) !== null);
+  check("Senza panchina: rifiutata", saveIssue({ benchIds: [] }) !== null);
+  check("Panchina incompleta: rifiutata", saveIssue({ benchIds: BENCH.slice(1) }) !== null);
+  check("Panchinaro fuori rosa: rifiutata", saveIssue({ benchIds: [...BENCH, "ALTRO"] }) !== null);
+  check("Senza capitano: rifiutata", saveIssue({ captainId: null }) !== null);
+  check("Senza vice: rifiutata", saveIssue({ viceId: null }) !== null);
+  check("Vice uguale al capitano: rifiutata", saveIssue({ viceId: PREVIOUS.captainId }) !== null);
+  check("Capitano in panchina: rifiutata", saveIssue({ captainId: BENCH[0] }) !== null);
+
+  // Il blocco non deve lasciare nessuno senza una formazione possibile.
+  const unable: string[] = [];
+  for (const GK of [2, 3]) {
+    for (let DEF = 3; DEF <= 9; DEF += 1) {
+      for (let MID = 3; MID <= 9; MID += 1) {
+        const FWD = 20 - GK - DEF - MID;
+        if (FWD < 3 || FWD > 9) continue;
+        const roster = squad({ GK, DEF, MID, FWD });
+        const picked = autoLineup(roster);
+        if (!picked || lineupSaveIssue(roster, picked) !== null) unable.push(`${GK}-${DEF}-${MID}-${FWD}`);
+      }
+    }
+  }
+  check("Ogni rosa regolare può schierarne 11", unable.length === 0, unable.join(", "));
+
+  const hubSource = readFileSync("lib/server/league-hub.ts", "utf8");
+  const saveSource = hubSource.slice(hubSource.indexOf("export async function saveLeagueLineup"));
+  const checkedAt = saveSource.indexOf("lineupSaveIssue(");
+  check("Il server controlla prima di scrivere", checkedAt > 0 && checkedAt < saveSource.indexOf("submitLineupSerialized("));
+  check(
+    "La schermata spegne «Salva formazione» sotto gli 11",
+    readFileSync("components/leagues/LeagueHub.tsx", "utf8").includes("missingStarters(fielded.length)"),
+  );
 
   // --- Rigori: +3 segnato, +3 parato, −3 sbagliato, una volta sola
   check("Rigore segnato +3 col regolamento di stagione", one(line("a", "FWD", { penaltiesScored: 1 })) === 9);

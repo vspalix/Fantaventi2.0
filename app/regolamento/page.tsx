@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { RegulationView } from "@/components/rules/RegulationView";
+import { RegulationReader } from "@/components/rules/RegulationReader";
 import { generalRegulationMarkdown } from "@/config/gameRules";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { reportError } from "@/lib/server/error-report";
@@ -24,14 +24,12 @@ export default async function RegolamentoPage() {
   }
 
   return (
-    <section className="stack">
-      <header>
+    <section className="rg-page">
+      <header className="lineup-head">
         <h1 className="section-title">Regolamento</h1>
-        <p className="lede">I numeri di base con cui si calcolano i punteggi. Dentro una lega il testo segue le regole di quella lega e si può scaricare.</p>
+        <p className="small muted">Le regole di base. Dentro una lega valgono quelle della lega.</p>
       </header>
-      <article className="card stack">
-        <RegulationView markdown={generalRegulationMarkdown()} />
-      </article>
+      <RegulationReader markdown={generalRegulationMarkdown()} />
     </section>
   );
 }

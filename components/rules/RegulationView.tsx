@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { RegulationReader } from "@/components/rules/RegulationReader";
 import { parseRegulation } from "@/lib/rules/regulation-blocks";
 import { readableError } from "@/lib/feedback";
 
@@ -77,9 +78,12 @@ export function RegulationView({ markdown }: { markdown: string }) {
 export function DownloadRegulation({
   leagueId,
   markdown,
+  quiet = false,
 }: {
   leagueId: string;
   markdown?: string;
+  /** Due pulsanti secondari uguali, per quando scaricare non è l'azione principale. */
+  quiet?: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);
 
@@ -113,9 +117,9 @@ export function DownloadRegulation({
 
   return (
     <div className="stack">
-      <div className="row">
-        <button className="primary" type="button" onClick={() => void download("docx")}>Scarica regolamento (.docx)</button>
-        <button className="text-button" type="button" onClick={() => void download("txt")}>Scarica regolamento (.txt)</button>
+      <div className={quiet ? "rg-download" : "row"}>
+        <button className={quiet ? "ghost" : "primary"} type="button" onClick={() => void download("docx")}>{quiet ? "Word (.docx)" : "Scarica regolamento (.docx)"}</button>
+        <button className={quiet ? "ghost" : "text-button"} type="button" onClick={() => void download("txt")}>{quiet ? "Testo (.txt)" : "Scarica regolamento (.txt)"}</button>
       </div>
       {error ? <p className="banner">{error}</p> : null}
     </div>
@@ -152,20 +156,28 @@ export function RegulationPanel({ leagueId }: { leagueId: string }) {
   }, [leagueId]);
 
   if (error) return <p className="banner">{error}</p>;
-  if (!document) return <p className="small muted">Carico il regolamento…</p>;
+  if (!document) {
+    return (
+      <div className="stack rg-page" role="status" aria-label="Carico il regolamento">
+        <div className="skeleton skeleton-line" />
+        <div className="skeleton skeleton-card" />
+        <div className="skeleton skeleton-card" />
+      </div>
+    );
+  }
 
   const when = document.updatedAt
     ? new Intl.DateTimeFormat("it-IT", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/Rome" }).format(new Date(document.updatedAt))
     : null;
 
   return (
-    <section className="card stack">
-      <header>
-        <h2>Regolamento</h2>
-        <p>{document.stored && when ? `Testo salvato il ${when}.` : "Testo della lega, con le regole attualmente configurate."}</p>
-      </header>
-      <DownloadRegulation leagueId={leagueId} />
-      <RegulationView markdown={document.markdown} />
-    </section>
+    <div className="rg-page">
+      {document.stored && when ? <p className="rg-saved">Testo salvato il {when}.</p> : null}
+      <RegulationReader markdown={document.markdown} />
+      <section className="card rg-foot">
+        <h2>Scarica il regolamento</h2>
+        <DownloadRegulation leagueId={leagueId} quiet />
+      </section>
+    </div>
   );
 }

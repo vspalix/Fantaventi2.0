@@ -40,8 +40,7 @@ export function NotificationToggle() {
 
   if (HIDDEN.includes(state)) return null;
   return (
-    <section className="card stack">
-      <h2>Notifiche</h2>
+    <section className="card stack ac-notify">
       <label className="lg-switch">
         <span className="lg-choice-text"><strong>Ricevi notifiche</strong></span>
         <input

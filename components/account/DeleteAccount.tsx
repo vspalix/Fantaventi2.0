@@ -38,20 +38,22 @@ export function DeleteAccount() {
   }
 
   return (
-    <section className="card stack">
-      <h2>Gestione account</h2>
-      <p>
-        Elimina profilo, rosa, formazioni e iscrizioni. Se sei presidente di una lega con altri partecipanti,
-        prima trasferisci il ruolo o sciogli la lega. L&apos;operazione non si annulla.
-      </p>
-      <label>
-        Scrivi ELIMINA per confermare
-        <input value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
-      </label>
-      {error ? <p className="banner">{error}</p> : null}
-      <button className="danger solid" type="button" disabled={pending || phrase !== "ELIMINA"} onClick={() => void remove()}>
-        Elimina definitivamente il mio account
-      </button>
-    </section>
+    <details className="card ac-fold ac-danger">
+      <summary><h2>Gestione account</h2></summary>
+      <div className="stack">
+        <p>
+          Elimina profilo, rosa, formazioni e iscrizioni. Se sei presidente di una lega con altri partecipanti,
+          prima trasferisci il ruolo o sciogli la lega. L&apos;operazione non si annulla.
+        </p>
+        <label>
+          Scrivi ELIMINA per confermare
+          <input value={phrase} onChange={(event) => setPhrase(event.target.value)} autoComplete="off" />
+        </label>
+        {error ? <p className="banner">{error}</p> : null}
+        <button className="danger solid" type="button" disabled={pending || phrase !== "ELIMINA"} onClick={() => void remove()}>
+          Elimina definitivamente il mio account
+        </button>
+      </div>
+    </details>
   );
 }

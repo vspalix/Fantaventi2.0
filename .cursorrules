@@ -56,6 +56,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 
 ## Convenzioni
 
+- Il titolo di una pagina è uguale alla voce del menu che ci porta (menu admin in `lib/admin-area.ts`, menu giocatore in `components/SiteHeader.tsx`). Chi cambia l'uno cambia anche l'altro: prova in `scripts/test-menu-titles.ts`.
 - Ogni route e pagina sotto `/admin` passa da `requireSuperAdmin()`. Il cookie `fv-view` non è autorizzazione.
 - Non hardcodare id di profilo, lega o segreti.
 - Non committare `.env`, `.env.local`, `.vercel/`, `node_modules/`, `.next/`, `data/`.

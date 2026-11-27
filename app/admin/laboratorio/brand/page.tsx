@@ -15,7 +15,7 @@ export default async function BrandPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Brand & Grafica</h1>
+          <h1 className="section-title">Brand e grafica</h1>
           <p className="lede">Logo, icone dell&apos;app e colore di accento. Se un indirizzo è vuoto restano i file locali.</p>
         </header>
         <BrandDesk initial={brand} />
@@ -24,7 +24,7 @@ export default async function BrandPage() {
   } catch (error) {
     return (
       <section className="stack">
-        <header><h1 className="section-title">Brand & Grafica</h1></header>
+        <header><h1 className="section-title">Brand e grafica</h1></header>
         <p className="banner">{publicError("Admin: Brand", error).message}</p>
       </section>
     );

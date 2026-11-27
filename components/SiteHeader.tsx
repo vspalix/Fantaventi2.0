@@ -179,7 +179,7 @@ export function SiteHeader({
                 <Link href={current ? `/leghe/${current.id}?tab=lega` : "/leghe"} onClick={(event) => openLeague("lega", event)}>Impostazioni lega</Link>
                 <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
                 <Link href="/calendario" onClick={() => setOpen(null)}>Calendario Serie A</Link>
-                <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
+                <Link href="/albo" onClick={() => setOpen(null)}>Albo d&apos;oro</Link>
                 {hostMode && platformAdmin ? <Link href="/admin" onClick={() => setOpen(null)}>Pannello admin</Link> : null}
                 {seasons.length > 1 ? (
                   <label>
@@ -237,7 +237,7 @@ export function SiteHeader({
         {current ? <Link href={`/leghe/${current.id}?tab=lega`} onClick={(event) => openLeague("lega", event)}>Impostazioni lega</Link> : null}
         <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
         <Link href="/calendario" onClick={() => setOpen(null)}>Calendario Serie A</Link>
-        <Link href="/albo" onClick={() => setOpen(null)}>Albo</Link>
+        <Link href="/albo" onClick={() => setOpen(null)}>Albo d&apos;oro</Link>
         <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
       </div>
     ) : null}

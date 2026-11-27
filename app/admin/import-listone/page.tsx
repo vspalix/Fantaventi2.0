@@ -12,7 +12,7 @@ export default async function ImportListonePage() {
   return (
     <section className="stack">
       <header>
-        <h1 className="section-title">Listone</h1>
+        <h1 className="section-title">Importa listone</h1>
         <p className="lede">
           Carica il file quotazioni della competizione. I calciatori attivi aggiornano il listone,
           i ceduti chiudono solo la registrazione corrente.

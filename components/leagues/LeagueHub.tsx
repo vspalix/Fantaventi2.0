@@ -664,18 +664,25 @@ export function LeagueHub({
     setPending(true);
     setError(null);
     setMessage(null);
+    // Questa formazione sostituisce quelle ancora in coda: non partono più.
+    lastSent.current = null;
     try {
-      const body = await readJson<{ saved: SavedLineup }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameweekId: selected.id,
-          playerIds: picked.playerIds,
-          benchIds: picked.benchIds,
-          captainId: picked.captainId,
-          viceId: picked.viceId,
+      // Si mette in fila dopo gli invii già partiti, mai in parallelo.
+      const sending = saveQueue.current.then(async () => readJson<{ saved: SavedLineup }>(
+        await fetch(`/api/leagues/${hub.league.id}/lineup`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gameweekId: selected.id,
+            playerIds: picked.playerIds,
+            benchIds: picked.benchIds,
+            captainId: picked.captainId,
+            viceId: picked.viceId,
+          }),
         }),
-      }));
+      ));
+      saveQueue.current = sending.then(() => undefined, () => undefined);
+      const body = await sending;
       markSaved(selected.id, body.saved);
       void refreshAfterSave(selected.id);
       setMessage("Formazione di test schierata e salvata.");
@@ -713,6 +720,9 @@ export function LeagueHub({
     if (lastSent.current === body) return;
     lastSent.current = body;
     saveQueue.current = saveQueue.current.then(async () => {
+      // Un invio alla volta: se nel frattempo è stata chiesta una formazione più recente,
+      // questa non parte nemmeno (conta solo l'ultima).
+      if (lastSent.current !== body) return;
       try {
         const result = await readJson<{ saved: SavedLineup }>(await fetch(`/api/leagues/${hub.league.id}/lineup`, {
           method: "POST",

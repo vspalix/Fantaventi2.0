@@ -10,6 +10,7 @@ import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-set
 import { previewProvisional } from "@/lib/server/live-score";
 import { loadWeekMatchState, type WeekMatchState } from "@/lib/server/roster";
 import { reportError } from "@/lib/server/error-report";
+import { LINEUP_LOCK_CODES, submitLineupSerialized } from "@/lib/server/lineup-submit";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type {
   CatalogPlayer,
@@ -1295,7 +1296,7 @@ export async function saveLeagueLineup(
   }
 
   const viceId = playerIds.length === 1 ? null : input.viceId;
-  const { error } = await admin.rpc("submit_lineup", {
+  const error = await submitLineupSerialized(admin, {
     p_fantasy_team_id: team.id,
     p_gameweek_id: input.gameweekId,
     p_player_ids: playerIds,
@@ -1304,22 +1305,28 @@ export async function saveLeagueLineup(
     p_bench_ids: benchIds,
   });
   if (error) {
+    if (LINEUP_LOCK_CODES.has(error.code ?? "")) {
+      throw httpError("Un altro salvataggio della stessa formazione non era ancora finito. Riprova tra un attimo.", 409);
+    }
     if (/p_bench_ids|is_starter|schema cache/i.test(error.message)) {
       throw httpError("Per salvare la panchina riesegui submit_lineup in league_hub.sql.", 409);
     }
     throw new Error(error.message);
   }
 
-  const savedAt = new Date().toISOString();
+  // submit_lineup scrive già saved_at nella stessa transazione. Qui si legge soltanto: un
+  // aggiornamento a parte prenderebbe i blocchi in ordine inverso (prima la formazione, poi la
+  // squadra) e con due salvataggi quasi insieme il database ne annullerebbe uno per stallo.
   const stamped = await admin
     .from("lineups")
-    .update({ saved_at: savedAt })
+    .select("saved_at")
     .eq("fantasy_team_id", team.id)
-    .eq("gameweek_id", input.gameweekId);
-  if (stamped.error && !/saved_at|schema cache/i.test(stamped.error.message)) throw new Error(stamped.error.message);
+    .eq("gameweek_id", input.gameweekId)
+    .maybeSingle();
+  if (stamped.error) void reportError("Formazione: orario del salvataggio", stamped.error);
 
   return {
     lineup: { playerIds, benchIds, captainId: input.captainId, viceId },
-    savedAt: stamped.error ? null : savedAt,
+    savedAt: (stamped.data?.saved_at as string | null | undefined) ?? null,
   };
 }

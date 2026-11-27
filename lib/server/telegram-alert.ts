@@ -88,6 +88,7 @@ export async function sendTelegramMessage(text: string): Promise<TelegramResult>
 function jobLabel(job: SyncLogEntry["jobType"]) {
   if (job === "votes") return "Voti";
   if (job === "kickoffs") return "Orari";
+  if (job === "reminders") return "Promemoria";
   return "Indisponibili";
 }
 
@@ -254,5 +255,27 @@ export async function alertKickoffSync(input: { status: "success" | "error"; mes
     }
   } catch {
     quiet("Controllo allerta non riuscito.");
+  }
+}
+
+/** Riepilogo del promemoria formazioni: uno per giornata, solo quando è partito davvero. */
+export async function alertLineupReminder(input: {
+  gameweek: number;
+  closing: string;
+  teams: number;
+  people: number;
+  devices: number;
+  late: boolean;
+}, now = new Date()) {
+  try {
+    await sendTelegramMessage([
+      "<b>Fantaventi — promemoria formazioni</b>",
+      `Giornata ${input.gameweek}, chiude ${escapeHtml(input.closing)}.`,
+      `Quando: ${escapeHtml(romeStamp(now))}${input.late ? " (in ritardo: sveglia persa)" : ""}`,
+      `Squadre senza formazione: ${input.teams}`,
+      `Persone con le notifiche attive: ${input.people}, dispositivi raggiunti: ${input.devices}`,
+    ].join("\n"));
+  } catch {
+    quiet("Riepilogo promemoria non inviato.");
   }
 }

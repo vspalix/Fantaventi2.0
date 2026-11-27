@@ -1,6 +1,8 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
+import { LineupReminderDesk } from "@/components/admin/LineupReminderDesk";
 import { SyncDesk } from "@/components/admin/SyncDesk";
 import { SetupNotice } from "@/components/SetupNotice";
+import { previewLineupReminder } from "@/lib/server/lineup-reminder";
 import { readSyncLogs, readSystemSettings } from "@/lib/server/system-settings";
 import { publicError } from "@/lib/server/api-error";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -12,7 +14,7 @@ export default async function SyncSettingsPage() {
   if (!hasPublicSupabaseEnv() || !hasServiceSupabaseEnv()) return <SetupNotice />;
 
   try {
-    const [settings, logs] = await Promise.all([readSystemSettings(), readSyncLogs(20)]);
+    const [settings, logs, reminder] = await Promise.all([readSystemSettings(), readSyncLogs(20), previewLineupReminder()]);
     return (
       <section className="stack">
         <header>
@@ -20,6 +22,7 @@ export default async function SyncSettingsPage() {
           <p className="lede">Fonti, letture dei voti e storico dei giri automatici. Vale per tutta la piattaforma.</p>
         </header>
         <SyncDesk initial={settings} initialLogs={logs} />
+        <LineupReminderDesk initial={reminder} />
       </section>
     );
   } catch (error) {

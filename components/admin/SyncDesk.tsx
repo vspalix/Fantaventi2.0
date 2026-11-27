@@ -22,14 +22,14 @@ type Settings = {
 type LogRow = {
   id: string;
   createdAt: string;
-  jobType: "votes" | "availability" | "kickoffs";
+  jobType: "votes" | "availability" | "kickoffs" | "reminders";
   triggerSource: "cron" | "manual";
   status: "success" | "skipped" | "error";
   recordsWritten: number;
   message: string;
 };
 
-const JOB = { votes: "Voti", availability: "Indisponibili", kickoffs: "Orari" };
+const JOB = { votes: "Voti", availability: "Indisponibili", kickoffs: "Orari", reminders: "Promemoria" };
 const ORIGIN = { cron: "Cron", manual: "Manuale" };
 const STATUS = { success: "Ok", skipped: "Saltato", error: "Errore" };
 

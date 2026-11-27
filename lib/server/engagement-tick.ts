@@ -2,6 +2,7 @@ import { awardBadges, bonusWeight, h2hFlips, heavyMalus, overtakes, pitchEvents 
 import { parseLeagueRules, weekScoreMode } from "@/lib/league-rules";
 import { writeLeagueFeed } from "@/lib/server/league-feed";
 import { previewProvisional } from "@/lib/server/live-score";
+import { reminderKey } from "@/lib/server/lineup-reminder";
 import { sendPushToUsers } from "@/lib/server/web-push";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -82,7 +83,8 @@ async function warnDeadlines(now: Date, template: Template) {
     const userIds: string[] = [];
     for (const team of pending) {
       const userId = team.user_id as string;
-      if (await claim(`deadline:${week.id as string}:${userId}`)) userIds.push(userId);
+      // Stessa chiave del promemoria automatico: una sola notifica per squadra e giornata.
+      if (await claim(reminderKey(week.id as string, team.id as string))) userIds.push(userId);
     }
     if (userIds.length === 0) continue;
     const result = await sendPushToUsers([...new Set(userIds)], {

@@ -21,6 +21,8 @@ type LeagueRow = {
   end_matchday?: number;
 };
 
+type FantasyRow = { id: string; name: string; user_id: string };
+
 type JoinedLeague = {
   id: string;
   name: string;
@@ -500,12 +502,18 @@ export const getLeagueDetail = cache(async (userId: string, leagueId: string): P
   const loaded = await readLeagueRow(admin, leagueId);
   if (!loaded) throw httpError("Lega non trovata.", 404);
   const { row: league, startMatchday, endMatchday, rangeReady } = loaded;
-  const [sandboxFlag, team, roundCount, delegateIds, platformOverride] = await Promise.all([
+  const [sandboxFlag, team, roundCount, delegateIds, platformOverride, members, code, settings] = await Promise.all([
     admin.from("private_leagues").select("is_sandbox").eq("id", leagueId).maybeSingle(),
     teamInLeague(admin, userId, leagueId),
     seasonRoundCount(admin, league.season_id as string),
     delegateUserIds(admin, leagueId),
     isSuperAdmin(userId),
+    admin
+      .from("private_league_members")
+      .select("fantasy_team_id, fantasy_teams(id, name, user_id)")
+      .eq("private_league_id", leagueId),
+    seasonCode(admin, league.season_id as string),
+    readLeagueSettings(admin, league.id),
   ]);
   if (!sandboxFlag.error && (sandboxFlag.data as { is_sandbox?: boolean } | null)?.is_sandbox) {
     throw httpError("Questa lega è il laboratorio sandbox e resta fuori dal gioco.", 404);
@@ -524,32 +532,26 @@ export const getLeagueDetail = cache(async (userId: string, leagueId: string): P
   if (!actor.canEnter) throw httpError("Non fai parte di questa lega.", 403);
   const isManager = actor.isManager;
 
-  const { data: memberRows, error: membersError } = await admin
-    .from("private_league_members")
-    .select("fantasy_team_id")
-    .eq("private_league_id", leagueId);
-  if (membersError) throw new Error(membersError.message);
+  if (members.error) throw new Error(members.error.message);
+  const teams = (members.data ?? []).flatMap((row) => {
+    const fantasy = one(row.fantasy_teams as FantasyRow | FantasyRow[] | null);
+    return fantasy ? [fantasy] : [];
+  });
 
-  const teamIds = (memberRows ?? []).map((row) => row.fantasy_team_id as string);
-  const { data: teams, error: teamsError } = teamIds.length
-    ? await admin.from("fantasy_teams").select("id, name, user_id").in("id", teamIds)
-    : { data: [], error: null };
-  if (teamsError) throw new Error(teamsError.message);
-
-  const userIds = [...new Set([...(teams ?? []).map((row) => row.user_id as string), ...delegateIds])];
+  const userIds = [...new Set([...teams.map((row) => row.user_id), ...delegateIds])];
   const { data: profiles, error: profilesError } = userIds.length
     ? await admin.from("profiles").select("id, display_name").in("id", userIds)
     : { data: [], error: null };
   if (profilesError) throw new Error(profilesError.message);
 
   const names = new Map((profiles ?? []).map((profile) => [profile.id as string, publicHandle(profile.display_name as string)]));
-  const participants = (teams ?? []).map((row) => {
-    const userId = row.user_id as string;
+  const participants = teams.map((row) => {
+    const userId = row.user_id;
     const role = userId === league.owner_user_id ? "owner" : delegateIds.includes(userId) ? "admin" : "member";
     return {
-      fantasyTeamId: row.id as string,
+      fantasyTeamId: row.id,
       userId,
-      teamName: row.name as string,
+      teamName: row.name,
       displayName: names.get(userId) ?? "",
       role,
     } as const;
@@ -561,10 +563,6 @@ export const getLeagueDetail = cache(async (userId: string, leagueId: string): P
       displayName: names.get(id) || participants.find((participant) => participant.userId === id)?.displayName || "Admin",
     }));
 
-  const [code, settings] = await Promise.all([
-    seasonCode(admin, league.season_id as string),
-    readLeagueSettings(admin, league.id),
-  ]);
   return {
     id: league.id as string,
     name: league.name as string,

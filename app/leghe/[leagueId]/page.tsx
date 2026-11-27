@@ -32,8 +32,7 @@ export default async function LeaguePage({
   const requested = query.tab;
   const round = Number.parseInt(query.giornata ?? "", 10);
   try {
-    const hub = await loadLeagueHub(user.id, leagueId);
-    const hostMode = (await hostAccess(user.id)).hostMode;
+    const [hub, { hostMode }] = await Promise.all([loadLeagueHub(user.id, leagueId), hostAccess(user.id)]);
     return (
       <LeagueHub
         initial={hub}

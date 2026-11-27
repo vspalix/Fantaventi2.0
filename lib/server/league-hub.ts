@@ -198,8 +198,14 @@ export async function loadLeagueHub(
   ) ?? null;
   const fixtureWeek = liveRound ?? next ?? lastClosed;
 
-  const [rosterSeed, lineupRows, standingPack, selectedPreview, livePreviewOther, stamp, fixtures, selectedFixturesExtra] = await Promise.all([
-    team && selected ? rosterForGameweek(admin, team.id, selected.number, byId) : Promise.resolve([] as CatalogPlayer[]),
+  const [roster, lineupRows, standingPack, selectedPreview, livePreviewOther, stamp, fixtures, selectedFixturesExtra] = await Promise.all([
+    team && selected
+      ? rosterForGameweek(admin, team.id, selected.number, byId).then((players) => (
+        openWeek && selected.number === openWeek.number && players.length > 0
+          ? attachAvailability(players, openWeek.number)
+          : players
+      ))
+      : Promise.resolve([] as CatalogPlayer[]),
     selected && teamIds.length ? lineupsFor(admin, selected.id, teamIds) : Promise.resolve([] as Awaited<ReturnType<typeof lineupsFor>>),
     standingsFor(admin, league, league.participants, rows, now, inPlay),
     selectedUnderway && selected
@@ -216,11 +222,6 @@ export async function loadLeagueHub(
       ? fixturesFor(admin, selected.id, catalog.clubs)
       : Promise.resolve(null as HubFixture[] | null),
   ]);
-
-  let roster = rosterSeed;
-  if (selected && openWeek && selected.number === openWeek.number && roster.length > 0) {
-    roster = await attachAvailability(roster, openWeek.number);
-  }
 
   const mine = team ? lineupRows.find((row) => row.fantasy_team_id === team.id) : undefined;
   const rosterIds = new Set(roster.map((player) => player.id));

@@ -2556,3 +2556,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
   .lg-stepper button { width: 40px; }
   .lg-stepper input { width: 44px; }
 }
+
+/* Notifiche: passi per iPhone (Account e invito in Home). */
+.push-steps { margin: 0; padding-left: 22px; display: grid; gap: 6px; font-size: var(--fs-sm, 14px); line-height: 1.45; }
+#notifiche { scroll-margin-top: 90px; }

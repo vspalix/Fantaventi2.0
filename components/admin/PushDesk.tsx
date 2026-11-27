@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { PushBroadcast } from "@/components/admin/PushBroadcast";
 
 type Template = { kind: string; title: string; body: string; enabled: boolean };
 
@@ -52,7 +51,6 @@ export function PushDesk() {
   return (
     <div className="stack">
       {!ready ? <p className="banner">Esegui engagement.sql nell&apos;editor SQL di Supabase.</p> : null}
-      <PushBroadcast />
       <section className="card stack">
         <h2>Notifiche automatiche</h2>
         {templates.map((template, index) => (

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { readableError } from "@/lib/feedback";
 
-/** Notifica scritta a mano e inviata subito a tutti i dispositivi iscritti. Usata in Notifiche e Collaudo. */
+/** Notifica scritta a mano e inviata subito a tutti i dispositivi iscritti. Si trova solo in Collaudo. */
 export function PushBroadcast() {
   const [subscribers, setSubscribers] = useState<number | null>(null);
   const [title, setTitle] = useState("");

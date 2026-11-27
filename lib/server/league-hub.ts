@@ -6,6 +6,7 @@ import { filedPlayerScore, liveFormula, projectLiveScore, type LineupSlotInput }
 import { carryLineup, formationIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
+import { entryCredit } from "@/lib/late-entry";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
@@ -1198,21 +1199,13 @@ async function standingsInApp(
     if (!live && modeOf(number) === "knockout") return 0;
     return fantasyOf(teamId, gameweekId);
   };
-  const priorAverage = (beforeNumber: number) => {
-    const weeks = seasonBase.filter((gameweek) => gameweek.number < beforeNumber);
-    const cells = weeks.length * participants.length;
-    if (cells === 0) return null;
-    const sum = weeks.reduce((weekSum, gameweek) => (
-      weekSum + participants.reduce((teamSum, team) => teamSum + pointsOf(team.fantasyTeamId, gameweek.id), 0)
-    ), 0);
-    return sum / cells;
-  };
+  const entryContext = { teamIds, entryByTeam, startMatchday, allowed: options.allowLateEntry };
 
   return rankStandings(participants.map((participant) => {
-    const entry = entryByTeam.get(participant.fantasyTeamId) ?? null;
-    const late = options.allowLateEntry && entry !== null && entry > startMatchday;
-    const skipped = late ? seasonBase.filter((gameweek) => gameweek.number < entry).length : 0;
-    const counted = late
+    const credit = entryCredit(entryContext, participant.fantasyTeamId, seasonBase, pointsOf);
+    const { entry, skipped } = credit;
+    const late = entry !== null;
+    const counted = entry !== null
       ? seasonBase.filter((gameweek) => gameweek.number >= entry && fielded.has(`${participant.fantasyTeamId}:${gameweek.id}`))
       : seasonBase;
     const weekTotals = counted.map((gameweek) => pointsOf(participant.fantasyTeamId, gameweek.id));
@@ -1220,8 +1213,8 @@ async function standingsInApp(
     const best = weekTotals.length === 0 ? null : Math.max(...weekTotals);
     const badge = badgeWeek ? scores.get(`${participant.fantasyTeamId}:${badgeWeek.id}`) : undefined;
     const played = counted.length;
-    const average = late ? priorAverage(entry) : (played === 0 ? null : realPoints / played);
-    const entryPoints = !late || average === null || skipped === 0 ? 0 : average * skipped;
+    const average = late ? credit.average : (played === 0 ? null : realPoints / played);
+    const entryPoints = credit.points;
     const points = realPoints + entryPoints;
     return {
       ...emptyStanding(participant),

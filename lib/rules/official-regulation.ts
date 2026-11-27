@@ -50,7 +50,7 @@ export function buildOfficialRegulation(leagueName: string, rules: LeagueRules) 
       .join("\n");
   const late = rules.enrollment === "closed"
     ? "La lega è a iscrizioni chiuse: non c'è ingresso in media."
-    : "La lega è aperta. Chi entra dopo la prima giornata, per le giornate già chiuse prima del suo ingresso, riceve la media di tutti i partecipanti su quelle giornate. Una squadra senza punteggio conta zero. Dalla sua prima formazione in poi somma solo i propri punti.";
+    : "La lega è aperta. Chi entra dopo la prima giornata riceve, per ogni giornata già chiusa prima del suo ingresso, la media delle squadre che in quella giornata erano già in gioco: la sua non conta. Chi era in gioco e non ha fatto punti conta zero. Dalla sua prima formazione in poi somma solo i propri punti.";
 
   return `# Regolamento ufficiale
 

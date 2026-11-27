@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
-import { headToHeadPairings, weekScoreMode, fantapuntiToGoals, inLeagueRange } from "@/lib/league-rules";
+import { lateEntryOf, presentAverage, weekGain } from "@/lib/late-entry";
+import { headToHeadPairings, headToHeadPoints, weekScoreMode, inLeagueRange } from "@/lib/league-rules";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { readLeagueSettings } from "@/lib/server/league-settings";
-import { fantasyPointsForLeague } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, leagueEntries } from "@/lib/server/league-scores";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
 import { readSponsors } from "@/lib/server/sponsors";
@@ -191,40 +192,41 @@ async function leagueCard(
     const ownWeeks = calendar.filter((week) => inLeagueRange(settings.range, Number(week.number)));
     const scored = ownWeeks.filter((week) => week.status === "scored" || week.status === "final");
     const counted = scored.filter((week) => weekScoreMode(settings.rules, Number(week.number)) !== "knockout");
-    const fantasy = await fantasyPointsForLeague(
-      leagueId,
-      seasonId,
+    const numbered = (week: (typeof calendar)[number]) => ({ id: week.id as string, number: Number(week.number) });
+    const [fantasy, entries] = await Promise.all([
+      fantasyPointsForLeague(leagueId, seasonId, teamIds, counted.map(numbered)),
+      leagueEntries(teamIds, ownWeeks.map(numbered)),
+    ]);
+    // Chi è entrato in corsa riceve la media delle giornate saltate, come nella classifica della lega.
+    const entryContext = {
       teamIds,
-      counted.map((week) => ({ id: week.id as string, number: Number(week.number) })),
-    );
+      entryByTeam: entries.entryByTeam,
+      startMatchday: settings.range.from,
+      allowed: settings.rules.enrollment !== "closed",
+    };
+    const myEntry = myTeamId ? lateEntryOf(entryContext, myTeamId) : null;
+    let myReal = 0;
     const totals = new Map<string, number>();
     for (const teamId of teamIds) totals.set(teamId, 0);
     const trail: { number: number; points: number; average: number; place: number; otherName: string | null; otherPoints: number | null }[] = [];
     for (const week of counted) {
       const mode = weekScoreMode(settings.rules, Number(week.number));
       const weekPoints = new Map(teamIds.map((teamId) => [teamId, fantasy.get(`${teamId}:${week.id}`) ?? 0]));
-      if (mode === "head_to_head") {
-        const goals = new Map([...weekPoints.entries()].map(([teamId, points]) => [
-          teamId,
-          settings.rules.goalBands.length > 0 ? fantapuntiToGoals(points, settings.rules.goalBands) : points,
-        ]));
-        const { pairs, bye } = headToHeadPairings(teamIds, Number(week.number));
-        for (const pair of pairs) {
-          const home = goals.get(pair.home) ?? 0;
-          const away = goals.get(pair.away) ?? 0;
-          const homePoints = home === away ? 1 : home > away ? 3 : 0;
-          const awayPoints = home === away ? 1 : away > home ? 3 : 0;
-          totals.set(pair.home, (totals.get(pair.home) ?? 0) + homePoints);
-          totals.set(pair.away, (totals.get(pair.away) ?? 0) + awayPoints);
-        }
-        if (bye) totals.set(bye, (totals.get(bye) ?? 0) + 3);
-      } else {
-        for (const [teamId, points] of weekPoints) totals.set(teamId, (totals.get(teamId) ?? 0) + points);
+      // I punti di classifica della giornata: i fantapunti, oppure quelli dello scontro diretto.
+      const awarded = mode === "head_to_head"
+        ? headToHeadPoints(teamIds, Number(week.number), weekPoints, settings.rules.goalBands)
+        : weekPoints;
+      for (const teamId of teamIds) {
+        const gained = weekGain(entryContext, entries.fielded, teamId, numbered(week), (id) => awarded.get(id) ?? 0);
+        totals.set(teamId, (totals.get(teamId) ?? 0) + gained);
       }
-      if (myTeamId) {
+      // Le giornate prima del proprio ingresso non compaiono tra quelle giocate.
+      if (myTeamId && (myEntry === null || Number(week.number) >= myEntry)) {
         const mine = weekPoints.get(myTeamId) ?? 0;
         const sum = [...weekPoints.values()].reduce((acc, value) => acc + value, 0);
-        const weekAverage = teamIds.length ? sum / teamIds.length : 0;
+        const weekAverage = presentAverage(entryContext, Number(week.number), (id) => weekPoints.get(id) ?? 0)
+          ?? (teamIds.length ? sum / teamIds.length : 0);
+        myReal += weekGain(entryContext, entries.fielded, myTeamId, numbered(week), (id) => awarded.get(id) ?? 0);
         const ordered = [...totals.entries()].sort((left, right) => right[1] - left[1]);
         const spot = ordered.findIndex(([teamId]) => teamId === myTeamId);
         let otherName: string | null = null;
@@ -284,10 +286,10 @@ async function leagueCard(
       format: settings.rules.format,
       rank,
       total,
-      played: counted.length,
+      played: myTeamId ? trail.length : counted.length,
       nextLabel,
       nextRival,
-      average: total != null && counted.length > 0 ? Math.round((total / counted.length) * 100) / 100 : null,
+      average: total != null && trail.length > 0 ? Math.round((myReal / trail.length) * 100) / 100 : null,
       lastRound: last ? { number: last.number, points: last.points, average: last.average, otherName: last.otherName, otherPoints: last.otherPoints } : null,
       recent: trail.slice(-5).map((row) => ({
         number: row.number,

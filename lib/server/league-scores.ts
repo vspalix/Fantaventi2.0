@@ -2,6 +2,7 @@ import { scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinit
 import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { definitionForLeague } from "@/lib/server/league-settings";
+import { inChunks, readAllRows } from "@/lib/server/read-all";
 import type { PlayerRole } from "@/lib/types";
 
 type SlotRow = {
@@ -12,6 +13,32 @@ type SlotRow = {
   is_starter?: boolean;
   slot_order?: number;
 };
+
+/** La prima giornata schierata da ogni squadra e le giornate coperte, tra quelle indicate. */
+export async function leagueEntries(teamIds: string[], gameweeks: { id: string; number: number }[]) {
+  const entryByTeam = new Map<string, number>();
+  const fielded = new Set<string>();
+  if (teamIds.length === 0 || gameweeks.length === 0) return { entryByTeam, fielded };
+  const admin = createAdminSupabase();
+  const numberById = new Map(gameweeks.map((week) => [week.id, week.number]));
+  const { data, error } = await readAllRows((from, to) => admin
+    .from("lineups")
+    .select("fantasy_team_id, gameweek_id")
+    .in("fantasy_team_id", teamIds)
+    .in("gameweek_id", [...numberById.keys()])
+    .order("id")
+    .range(from, to));
+  if (error) throw new Error(error.message);
+  for (const row of data) {
+    const teamId = row.fantasy_team_id as string;
+    const number = numberById.get(row.gameweek_id as string);
+    if (number === undefined) continue;
+    fielded.add(`${teamId}:${row.gameweek_id as string}`);
+    const current = entryByTeam.get(teamId);
+    if (current === undefined || number < current) entryByTeam.set(teamId, number);
+  }
+  return { entryByTeam, fielded };
+}
 
 export async function fantasyPointsForLeague(
   leagueId: string,
@@ -32,36 +59,54 @@ export async function fantasyPointsForLeague(
 
   const gameweekIds = gameweeks.map((week) => week.id);
   const numberById = new Map(gameweeks.map((week) => [week.id, week.number]));
-  const extendedLineups = await admin
+  // Le formazioni, le loro righe e i voti di una stagione superano il limite di una sola richiesta.
+  const lineupsWith = (columns: string) => readAllRows<{ id: string; fantasy_team_id: string; gameweek_id: string; origin?: string }>((from, to) => admin
     .from("lineups")
-    .select("id, fantasy_team_id, gameweek_id, origin")
+    .select(columns)
     .in("fantasy_team_id", teamIds)
-    .in("gameweek_id", gameweekIds);
+    .in("gameweek_id", gameweekIds)
+    .order("id")
+    .range(from, to)
+    .returns<{ id: string; fantasy_team_id: string; gameweek_id: string; origin?: string }[]>());
+  const extendedLineups = await lineupsWith("id, fantasy_team_id, gameweek_id, origin");
   const lineupQuery = extendedLineups.error && /origin|schema cache|could not find/i.test(extendedLineups.error.message)
-    ? await admin.from("lineups").select("id, fantasy_team_id, gameweek_id").in("fantasy_team_id", teamIds).in("gameweek_id", gameweekIds)
+    ? await lineupsWith("id, fantasy_team_id, gameweek_id")
     : extendedLineups;
   if (lineupQuery.error) throw new Error(lineupQuery.error.message);
   const lineupRows = lineupQuery.data;
 
   const lineupIds = (lineupRows ?? []).map((row) => row.id as string);
-  const extended = lineupIds.length
-    ? await admin.from("lineup_slots").select("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order").in("lineup_id", lineupIds)
-    : { data: [], error: null };
+  const slotsWith = async (columns: string) => {
+    const parts = await Promise.all(inChunks(lineupIds).map((ids) => readAllRows<SlotRow>((from, to) => admin
+      .from("lineup_slots")
+      .select(columns)
+      .in("lineup_id", ids)
+      .order("lineup_id")
+      .order("player_id")
+      .range(from, to)
+      .returns<SlotRow[]>())));
+    return { data: parts.flatMap((part) => part.data), error: parts.find((part) => part.error)?.error ?? null };
+  };
+  const extended = await slotsWith("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order");
   const slotsQuery = extended.error && /is_starter|slot_order/i.test(extended.error.message)
-    ? await admin.from("lineup_slots").select("lineup_id, player_id, is_captain, is_vice_captain").in("lineup_id", lineupIds)
+    ? await slotsWith("lineup_id, player_id, is_captain, is_vice_captain")
     : extended;
   if (slotsQuery.error) throw new Error(slotsQuery.error.message);
 
-  const { data: statRows, error: statError } = await admin
+  const { data: statRows, error: statError } = await readAllRows((from, to) => admin
     .from("player_gameweek_stats")
     .select("gameweek_id, player_id, voto, goals, assists, yellow_cards, red_cards, penalties_scored, penalties_missed, penalties_saved, own_goals, goals_conceded")
-    .in("gameweek_id", gameweekIds);
+    .in("gameweek_id", gameweekIds)
+    .order("id")
+    .range(from, to));
   if (statError) throw new Error(statError.message);
 
-  const { data: registrations, error: registrationError } = await admin
+  const { data: registrations, error: registrationError } = await readAllRows((from, to) => admin
     .from("player_registrations")
     .select("player_id, club_id, role, effective_from_gameweek, effective_to_gameweek")
-    .eq("season_id", seasonId);
+    .eq("season_id", seasonId)
+    .order("id")
+    .range(from, to));
   if (registrationError) throw new Error(registrationError.message);
 
   const heldByWeek = await heldClubsByWeek(gameweekIds);

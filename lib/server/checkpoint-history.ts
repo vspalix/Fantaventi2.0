@@ -1,3 +1,4 @@
+import { entryCredit } from "@/lib/late-entry";
 import { headToHeadPoints, weekScoreMode, type LeagueRules, type MarketCheckpoint } from "@/lib/league-rules";
 import { isHeldMatch } from "@/lib/server/held-lineup";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
@@ -146,25 +147,20 @@ export async function loadCheckpointHistory(input: {
         if (modeOf(number) === "head_to_head") return matchPoints.get(`${teamId}:${gameweekId}`) ?? 0;
         return fantasyOf(teamId, gameweekId);
       };
-      const priorAverage = (beforeNumber: number) => {
-        const earlier = base.filter((week) => week.number < beforeNumber);
-        const cells = earlier.length * input.participants.length;
-        if (cells === 0) return null;
-        const sum = earlier.reduce((weekSum, week) => (
-          weekSum + input.participants.reduce((teamSum, person) => teamSum + pointsOf(person.fantasyTeamId, week.id), 0)
-        ), 0);
-        return sum / cells;
+      const entryContext = {
+        teamIds,
+        entryByTeam,
+        startMatchday: input.startMatchday,
+        allowed: input.rules.enrollment !== "closed",
       };
       const ranked = input.participants.map((person) => {
-        const entry = entryByTeam.get(person.fantasyTeamId) ?? null;
-        const late = input.rules.enrollment !== "closed" && entry !== null && entry > input.startMatchday;
-        const counted = late
+        const credit = entryCredit(entryContext, person.fantasyTeamId, base, pointsOf);
+        const { entry } = credit;
+        const counted = entry !== null
           ? base.filter((week) => week.number >= entry && fielded.has(`${person.fantasyTeamId}:${week.id}`))
           : base;
         const realPoints = counted.reduce((sum, week) => sum + pointsOf(person.fantasyTeamId, week.id), 0);
-        const skipped = late ? base.filter((week) => week.number < entry).length : 0;
-        const average = late ? priorAverage(entry) : null;
-        const entryPoints = !late || average === null || skipped === 0 ? 0 : average * skipped;
+        const entryPoints = credit.points;
         return {
           fantasyTeamId: person.fantasyTeamId,
           teamName: person.teamName,

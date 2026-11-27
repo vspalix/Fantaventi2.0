@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { alphabeticalOfficeLineup, carryLineup, type CarriedLineup } from "@/lib/formations";
 import { inLeagueRange, officeLineupMode } from "@/lib/league-rules";
 import { readLeagueSettings } from "@/lib/server/league-settings";
+import { readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -84,7 +85,13 @@ export async function planForgottenLineups(gameweekId: string, onlyTeamIds?: str
   const earlierIds = [...numberByWeek.keys()];
   const previous = earlierIds.length === 0
     ? { data: [], error: null }
-    : await admin.from("lineups").select("id, fantasy_team_id, gameweek_id").in("fantasy_team_id", eligible).in("gameweek_id", earlierIds);
+    : await readAllRows((from, to) => admin
+      .from("lineups")
+      .select("id, fantasy_team_id, gameweek_id")
+      .in("fantasy_team_id", eligible)
+      .in("gameweek_id", earlierIds)
+      .order("id")
+      .range(from, to));
   if (previous.error) throw new Error(previous.error.message);
   const sourceByTeam = new Map<string, string>();
   for (const teamId of eligible) {
@@ -130,15 +137,20 @@ async function slotsOfLineups(lineupIds: string[]) {
   const byLineup = new Map<string, OfficeSlot[]>();
   if (lineupIds.length === 0) return byLineup;
   const admin = createAdminSupabase();
-  const slots = await admin
+  const read = (columns: string) => readAllRows<OfficeSlot & { lineup_id: string }>((from, to) => admin
     .from("lineup_slots")
-    .select("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order")
-    .in("lineup_id", lineupIds);
+    .select(columns)
+    .in("lineup_id", lineupIds)
+    .order("lineup_id")
+    .order("player_id")
+    .range(from, to)
+    .returns<(OfficeSlot & { lineup_id: string })[]>());
+  const slots = await read("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order");
   const plain = slots.error && /is_starter|slot_order/i.test(slots.error.message)
-    ? await admin.from("lineup_slots").select("lineup_id, player_id, is_captain, is_vice_captain").in("lineup_id", lineupIds)
+    ? await read("lineup_id, player_id, is_captain, is_vice_captain")
     : slots;
   if (plain.error) throw new Error(plain.error.message);
-  for (const row of (plain.data ?? []) as (OfficeSlot & { lineup_id: string })[]) {
+  for (const row of plain.data) {
     const list = byLineup.get(row.lineup_id) ?? [];
     list.push({
       player_id: row.player_id,
@@ -153,10 +165,13 @@ async function slotsOfLineups(lineupIds: string[]) {
 }
 
 async function activeStints(teamIds: string[], gameweek: number) {
-  const stints = await createAdminSupabase()
+  const admin = createAdminSupabase();
+  const stints = await readAllRows((from, to) => admin
     .from("roster_stints")
     .select("fantasy_team_id, player_id, active_from_gameweek, active_until_gameweek")
-    .in("fantasy_team_id", teamIds);
+    .in("fantasy_team_id", teamIds)
+    .order("id")
+    .range(from, to));
   if (stints.error) throw new Error(stints.error.message);
   const byTeam = new Map<string, string[]>();
   for (const stint of stints.data ?? []) {

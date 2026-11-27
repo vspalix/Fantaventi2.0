@@ -207,6 +207,8 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
     const target = requested.current;
     requested.current = null;
     if (arrival) onArrived();
+    // Chi arriva per vedere la propria formazione parte dal suo riquadro, in cima.
+    if (target?.openId) window.scrollTo(0, 0);
     if (target?.elsewhere) void choose(target.id, target.openId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

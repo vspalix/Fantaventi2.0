@@ -58,7 +58,7 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
             </div>
           </div>
         </article>
-        <LeagueOnboarding variant="card" />
+        <LeagueOnboarding />
       </section>
     );
   }

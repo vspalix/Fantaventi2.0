@@ -2480,6 +2480,8 @@ body:has(.sa-root) main.page { width: 100%; max-width: none; padding: 0 !importa
 .lg-layout > .stack, .lg-layout > .card { min-width: 0; }
 .lg-card { display: grid; gap: 14px; }
 .card.lg-card h2 { margin: 0; }
+/* Aprendo il modulo dalla Home la scheda non finisce sotto l'intestazione. */
+.lg-add { scroll-margin-top: 84px; }
 .lg-title { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 12px; }
 .lg-title span { color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
 .lg-skeleton { height: 78px; }

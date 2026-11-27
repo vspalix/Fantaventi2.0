@@ -20,7 +20,7 @@ async function readJson<T>(response: Response): Promise<T> {
 /** Dove mostrare un errore: vicino a ciò che l'ha provocato. */
 type Place = "list" | "add" | "public";
 
-export function LeagueManager({ signedIn }: { signedIn: boolean }) {
+export function LeagueManager({ signedIn, startCreating = false }: { signedIn: boolean; startCreating?: boolean }) {
   const router = useRouter();
   // L'elenco già letto all'apertura dell'app si vede subito; poi viene aggiornato in sottofondo.
   const known = useMyLeagues();
@@ -28,7 +28,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
   const [leagues, setLeagues] = useState<LeagueSummary[] | null>(known);
   const [publicLeagues, setPublicLeagues] = useState<LeagueSummary[]>([]);
   const [calendar, setCalendar] = useState<SeasonCalendar | null>(null);
-  const [mode, setMode] = useState<"join" | "create">("join");
+  const [mode, setMode] = useState<"join" | "create">(startCreating ? "create" : "join");
   const [code, setCode] = useState("");
   const [created, setCreated] = useState<(LeagueSummary & { rulesStored?: boolean }) | null>(null);
   const [offer, setOffer] = useState<{ targetName: string; sources: RosterImportSource[]; payload: { code?: string; leagueId?: string } } | null>(null);
@@ -36,6 +36,16 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
   const [pending, setPending] = useState(false);
   const flight = useRef(false);
   const createdCard = useRef<HTMLElement>(null);
+  const addCard = useRef<HTMLElement>(null);
+  const shownForm = useRef(false);
+
+  // Chi arriva per creare una lega vede subito il modulo, una volta che l'elenco sopra ha preso il suo posto.
+  const listed = calendar !== null;
+  useEffect(() => {
+    if (!startCreating || !listed || shownForm.current) return;
+    shownForm.current = true;
+    addCard.current?.scrollIntoView({ block: "start" });
+  }, [startCreating, listed]);
 
   useEffect(() => {
     if (created) createdCard.current?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -160,7 +170,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
           </section>
         ) : null}
 
-        <section className="card stack lg-card">
+        <section className="card stack lg-card lg-add" ref={addCard}>
           <h2>Aggiungi una lega</h2>
           <div className="lg-seg" role="group" aria-label="Come aggiungere una lega">
             <button type="button" aria-pressed={mode === "join"} onClick={() => setMode("join")}>Ho un codice</button>

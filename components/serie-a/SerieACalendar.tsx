@@ -22,13 +22,17 @@ function byDay(matches: SerieAMatch[]) {
   return days;
 }
 
-function Mine({ players }: { players: MyCalendarPlayers["players"] }) {
+/** `starters` è null quando per la giornata non c'è una formazione: nessuna distinzione. */
+function Mine({ players, starters }: { players: MyCalendarPlayers["players"]; starters: Set<string> | null }) {
+  const benched = (id: string) => starters !== null && !starters.has(id);
+  const ordered = [...players].sort((left, right) => Number(benched(left.id)) - Number(benched(right.id)));
   return (
     <span className="cs-mine-side">
-      {players.map((player) => (
-        <span className="cs-player" key={player.id}>
+      {ordered.map((player) => (
+        <span className="cs-player" data-bench={benched(player.id) || undefined} key={player.id}>
           <span className="role-chip" data-role={player.role}>{ROLE[player.role]}</span>
-          <span>{player.name}</span>
+          <span className="cs-player-name">{player.name}</span>
+          {starters ? <span className="cs-sr">{benched(player.id) ? ", in panchina" : ", titolare"}</span> : null}
         </span>
       ))}
     </span>
@@ -51,13 +55,15 @@ export function SerieACalendar({
   const current = rounds[index] ?? null;
   const squad = (mine?.players ?? []).filter((player) => current && player.from <= current.number && (player.until === null || player.until >= current.number));
   const ofClub = (clubId: string) => squad.filter((player) => player.clubId === clubId);
+  const lineup = current ? mine?.starters[current.number] : undefined;
+  const starters = lineup ? new Set(lineup) : null;
 
   return (
     <section className="stack cs">
       <header className="cs-head">
         {/* Il nome del campionato resta unito quando il titolo va a capo. */}
         <h1 className="section-title">Calendario {title.replaceAll(" ", " ")}</h1>
-        {mine && squad.length > 0 ? <p>Sotto ogni partita i tuoi calciatori · {mine.leagueName}</p> : null}
+        {mine && squad.length > 0 ? <p>{starters ? "I tuoi titolari in evidenza, la panchina in grigio" : "Sotto ogni partita i tuoi calciatori"} · {mine.leagueName}</p> : null}
       </header>
       <div className="gw-stepper">
         <button className="ghost" type="button" aria-label="Giornata precedente" disabled={index <= 0} onClick={() => { const previous = rounds[index - 1]; if (previous) setNumber(previous.number); }}>‹</button>
@@ -94,8 +100,8 @@ export function SerieACalendar({
                   </div>
                   {home.length > 0 || away.length > 0 ? (
                     <div className="cs-mine" aria-label="I tuoi calciatori in questa partita">
-                      <Mine players={home} />
-                      <Mine players={away} />
+                      <Mine players={home} starters={starters} />
+                      <Mine players={away} starters={starters} />
                     </div>
                   ) : null}
                 </li>

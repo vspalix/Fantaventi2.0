@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { DeadlineCountdown } from "@/components/home/DeadlineCountdown";
 import { LeagueOnboarding } from "@/components/home/LeagueOnboarding";
-import { NotificationInvite } from "@/components/notifications/NotificationInvite";
 import { TeamSettings } from "@/components/home/TeamSettings";
 import type { HomeBoard } from "@/lib/server/home-board";
 
@@ -64,7 +63,6 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
           </div>
         </article>
         <LeagueOnboarding variant="card" />
-        <NotificationInvite />
       </section>
     );
   }
@@ -114,8 +112,6 @@ export function HomeDashboard({ board }: { board: HomeBoard; logoUrl?: string })
           <a className="ghost" href={board.probabiliHref} target="_blank" rel="noreferrer">Probabili e altro</a>
         </div>
       </article>
-
-      <NotificationInvite />
 
       {board.promo ? (
         <a className="promo-banner" href={board.promo.href ?? undefined} target={board.promo.href ? "_blank" : undefined} rel="noreferrer">

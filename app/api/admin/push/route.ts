@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
-import { sendPushToEveryone, vapidPublicKey } from "@/lib/server/web-push";
+import { sendPushToEveryone, vapidPublicKey, webPushReady } from "@/lib/server/web-push";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const KINDS = ["deadline", "bonus", "overtake"] as const;
@@ -60,11 +60,11 @@ export async function POST(request: Request) {
     if (title.length < 2 || message.length < 2) {
       return NextResponse.json({ error: "Scrivi titolo e testo." }, { status: 400 });
     }
-    if (!vapidPublicKey() || !process.env.VAPID_PRIVATE_KEY?.trim()) {
-      return NextResponse.json({ error: "Mancano VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY nel server." }, { status: 409 });
+    if (!webPushReady()) {
+      return NextResponse.json({ error: "Le notifiche non sono pronte: mancano le chiavi VAPID su Vercel." }, { status: 409 });
     }
     const result = await sendPushToEveryone({ title, body: message, url: "/leghe" });
-    return NextResponse.json({ sent: result.sent });
+    return NextResponse.json({ sent: result.sent, skipped: result.skipped });
   } catch (error) {
     return apiError("API /api/admin/push (POST)", error);
   }

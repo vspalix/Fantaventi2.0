@@ -53,3 +53,22 @@ export async function POST(request: Request) {
     return apiError("API /api/push/subscribe (POST)", error);
   }
 }
+
+/** Spegne le notifiche di un dispositivo: toglie solo l'iscrizione di chi la chiede. */
+export async function DELETE(request: Request) {
+  try {
+    assertServiceEnv();
+    const user = await requireSessionUser();
+    const body = (await request.json().catch(() => ({}))) as { endpoint?: string };
+    if (!body.endpoint) return NextResponse.json({ error: "Dispositivo non indicato." }, { status: 400 });
+    const removed = await createAdminSupabase()
+      .from("push_subscriptions")
+      .delete()
+      .eq("endpoint", body.endpoint)
+      .eq("user_id", user.id);
+    if (removed.error) throw new Error(removed.error.message);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return apiError("API /api/push/subscribe (DELETE)", error);
+  }
+}

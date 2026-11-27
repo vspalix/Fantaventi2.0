@@ -2,7 +2,7 @@
 
 /**
  * Notifiche web nel browser: stato del dispositivo, attivazione e prova.
- * Le usano Account, l'invito in Home e il pulsante nella scheda Live.
+ * Le usa l'interruttore «Notifiche» in Account.
  */
 
 export type PushState =
@@ -18,7 +18,7 @@ export type PushState =
   | "off"
   | "on";
 
-/** Il pannello Account lo usa per farsi aggiornare dall'invito in Home e viceversa. */
+/** Avvisa le altre parti della pagina che lo stato è cambiato. */
 export const PUSH_CHANGED_EVENT = "fv-push-changed";
 
 export function isAppleMobile() {
@@ -91,7 +91,7 @@ export async function enablePush(): Promise<PushState> {
   if (!browserCanPush()) return readPushState();
   const permission = await Notification.requestPermission();
   if (permission === "denied") return "denied";
-  if (permission !== "granted") throw new Error("Per attivarle tocca «Consenti» quando il telefono lo chiede.");
+  if (permission !== "granted") return "off";
 
   const keyResponse = await fetch("/api/push/subscribe");
   const keyBody = (await keyResponse.json().catch(() => ({}))) as { publicKey?: string | null };
@@ -117,9 +117,19 @@ export async function refreshPushOnServer() {
   if (subscription) await saveOnServer(subscription);
 }
 
-export async function sendTestPush(): Promise<string> {
-  const response = await fetch("/api/push/test", { method: "POST" });
-  const body = (await response.json().catch(() => ({}))) as { error?: string; message?: string };
-  if (!response.ok) throw new Error(body.error ?? "Prova non inviata. Riprova tra poco.");
-  return body.message ?? "Prova inviata.";
+/** Spegne le notifiche su questo dispositivo: toglie l'iscrizione dal browser e dal server. */
+export async function disablePush(): Promise<PushState> {
+  const subscription = await currentSubscription();
+  if (subscription) {
+    const response = await fetch("/api/push/subscribe", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: subscription.endpoint }),
+    });
+    const body = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) throw new Error(body.error ?? "Notifiche non disattivate. Riprova tra poco.");
+    await subscription.unsubscribe().catch(() => undefined);
+  }
+  window.dispatchEvent(new Event(PUSH_CHANGED_EVENT));
+  return readPushState();
 }

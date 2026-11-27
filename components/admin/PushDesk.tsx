@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { PushBroadcast } from "@/components/admin/PushBroadcast";
 
 type Template = { kind: string; title: string; body: string; enabled: boolean };
 
@@ -12,10 +13,7 @@ const LABELS: Record<string, string> = {
 
 export function PushDesk() {
   const [templates, setTemplates] = useState<Template[]>([]);
-  const [subscribers, setSubscribers] = useState(0);
   const [ready, setReady] = useState(true);
-  const [title, setTitle] = useState("");
-  const [message, setMessage] = useState("");
   const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
@@ -23,10 +21,9 @@ export function PushDesk() {
   useEffect(() => {
     void fetch("/api/admin/push")
       .then(async (response) => {
-        const body = (await response.json()) as { templates?: Template[]; subscribers?: number; ready?: boolean; error?: string };
+        const body = (await response.json()) as { templates?: Template[]; ready?: boolean; error?: string };
         if (!response.ok) throw new Error(body.error ?? "Pannello non disponibile.");
         setTemplates(body.templates ?? []);
-        setSubscribers(body.subscribers ?? 0);
         setReady(body.ready !== false);
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : "Pannello non disponibile."));
@@ -52,44 +49,10 @@ export function PushDesk() {
     }
   }
 
-  async function send() {
-    setPending(true);
-    setError(null);
-    setNote(null);
-    try {
-      const response = await fetch("/api/admin/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, message }),
-      });
-      const body = (await response.json()) as { sent?: number; error?: string };
-      if (!response.ok) throw new Error(body.error ?? "Invio non riuscito.");
-      setNote(`Inviata a ${body.sent ?? 0} dispositivi.`);
-      setTitle("");
-      setMessage("");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Invio non riuscito.");
-    } finally {
-      setPending(false);
-    }
-  }
-
   return (
     <div className="stack">
       {!ready ? <p className="banner">Esegui engagement.sql nell&apos;editor SQL di Supabase.</p> : null}
-      <section className="card stack">
-        <h2>Invia una notifica</h2>
-        <p className="small muted">Arriva a chi ha attivato le notifiche. Dispositivi iscritti: {subscribers}.</p>
-        <label>
-          Titolo
-          <input value={title} onChange={(event) => setTitle(event.target.value)} />
-        </label>
-        <label>
-          Testo
-          <textarea value={message} onChange={(event) => setMessage(event.target.value)} rows={3} />
-        </label>
-        <button className="primary" type="button" disabled={pending} onClick={() => void send()}>Invia ora</button>
-      </section>
+      <PushBroadcast />
       <section className="card stack">
         <h2>Notifiche automatiche</h2>
         {templates.map((template, index) => (

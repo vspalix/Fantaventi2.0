@@ -2,7 +2,7 @@ import { ChangePassword } from "@/components/account/ChangePassword";
 import { DeleteAccount } from "@/components/account/DeleteAccount";
 import { PublicName } from "@/components/account/PublicName";
 import { LegalLinks } from "@/components/LegalLinks";
-import { NotificationSettings } from "@/components/notifications/NotificationSettings";
+import { NotificationToggle } from "@/components/notifications/NotificationToggle";
 import { reportError } from "@/lib/server/error-report";
 import { getSessionUser } from "@/lib/server/session";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -44,9 +44,9 @@ export default async function AccountPage() {
         <p className="small muted">Questi dati restano visibili solo a te. Gli altri vedono username e nome squadra.</p>
         <LegalLinks />
       </header>
-      <NotificationSettings />
       <PublicName current={username} />
       <ChangePassword />
+      <NotificationToggle />
       <DeleteAccount />
     </section>
   );

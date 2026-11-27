@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
-import { PushOptIn } from "@/components/PushOptIn";
 import type { LiveCenter } from "@/lib/server/live-center";
 import { readableError } from "@/lib/feedback";
 
@@ -53,7 +52,6 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
               {live?.checkedAt ? ` · ${new Date(live.checkedAt).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}` : ""}
             </p>
           </div>
-          <PushOptIn />
         </header>
         {live?.phase === "live" ? <p className="small muted">I voti arrivano a fine primo tempo e a fine partita.</p> : null}
         {error ? <p className="banner">{error}</p> : null}

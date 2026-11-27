@@ -14,6 +14,7 @@ import { runLineupSaveChecks } from "./test-lineup-save";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
 import { runLineupReminderChecks } from "./test-lineup-reminder";
 import { runLiveGapChecks } from "./test-live-gaps";
+import { runMenuTitleChecks } from "./test-menu-titles";
 import { installTestNetworkGuard, removeSendingKeys } from "./test-guard";
 import { runRulesCoverage } from "./test-rules-coverage";
 import { runSubstitutionChecks } from "./test-substitutions";
@@ -126,18 +127,22 @@ async function main() {
   for (const failure of announcements.failures) console.log(`- ${failure}`);
 
   const homeRound = runHomeRoundChecks();
-  console.log(`Giornata in Dashboard: ${homeRound.failures.length === 0 ? "PASSED" : "FAILED"} ${homeRound.passed}/${homeRound.total}`);
+  console.log(`Giornata in Dashboard e Live: ${homeRound.failures.length === 0 ? "PASSED" : "FAILED"} ${homeRound.passed}/${homeRound.total}`);
   for (const failure of homeRound.failures) console.log(`- ${failure}`);
+
+  const titles = runMenuTitleChecks();
+  console.log(`Titoli come il menu: ${titles.failures.length === 0 ? "PASSED" : "FAILED"} ${titles.passed}/${titles.total}`);
+  for (const failure of titles.failures) console.log(`- ${failure}`);
 
   const outbound = runIsolated("test-outbound.ts");
   console.log(`Niente invii veri in locale: ${outbound.failures.length === 0 ? "PASSED" : "FAILED"} ${outbound.passed}/${outbound.total}`);
   for (const failure of outbound.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + history.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + history.passed;
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + titles.total + history.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + titles.passed + history.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || history.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || titles.failures.length > 0 || history.failures.length > 0 || total < 100) process.exit(1);
 }
 
 /**

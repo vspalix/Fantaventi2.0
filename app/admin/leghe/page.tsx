@@ -12,7 +12,7 @@ export default async function PlatformLeaguesPage() {
   return (
     <section className="stack">
       <header>
-        <h1 className="section-title">Leghe della piattaforma</h1>
+        <h1 className="section-title">Impostazioni della lega</h1>
         <p className="lede">Elenco completo e override. Le regole si modificano dentro la lega; da qui nomini gli admin e riapri le formazioni.</p>
       </header>
       <PlatformControl initialLeagueId={await readAdminLeagueId()} />

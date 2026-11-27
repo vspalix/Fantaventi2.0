@@ -39,14 +39,10 @@ export function PublicName({ current }: { current: string }) {
 
   return (
     <form className="card stack" onSubmit={(event) => void save(event)}>
-      <h2>Username</h2>
-      <p className="small muted">
-        In classifica, calendario e partecipanti gli altri vedono solo questo username e il nome squadra.
-        Nome, cognome, email e telefono restano sul tuo account.
-      </p>
-      <label>
-        Username
+      <h2 id="ac-username">Username</h2>
+      <div className="ac-row">
         <input
+          aria-labelledby="ac-username"
           value={username}
           onChange={(event) => setUsername(event.target.value)}
           autoComplete="username"
@@ -55,10 +51,11 @@ export function PublicName({ current }: { current: string }) {
           pattern="[A-Za-z0-9_.-]{3,20}"
           required
         />
-      </label>
+        <button className="primary" type="submit" disabled={pending || !isPublicHandle(username.trim())}>Salva</button>
+      </div>
+      <p className="small muted">È il nome che gli altri vedono accanto alla tua squadra.</p>
       {error ? <p className="banner">{error}</p> : null}
       {notice ? <p className="banner ok">{notice}</p> : null}
-      <button className="primary" type="submit" disabled={pending || !isPublicHandle(username.trim())}>Salva username</button>
     </form>
   );
 }

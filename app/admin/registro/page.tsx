@@ -19,7 +19,7 @@ export default async function AdminAuditPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Registro</h1>
+          <h1 className="section-title">Registro azioni</h1>
           <p className="lede">Ogni ricalcolo, modifica voti, cambio regole ed espulsione resta qui con data, ora e id dell&apos;admin.</p>
         </header>
         {!log.ready ? (
@@ -61,7 +61,7 @@ export default async function AdminAuditPage() {
   } catch (error) {
     return (
       <section className="stack">
-        <h1 className="section-title">Registro</h1>
+        <h1 className="section-title">Registro azioni</h1>
         <p className="banner">{publicError("Admin: Registro", error).message}</p>
       </section>
     );

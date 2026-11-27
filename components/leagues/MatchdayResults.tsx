@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { InfoTip } from "@/components/InfoTip";
 import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
-import { compactFromLive, LIVE_NOTE } from "@/lib/lineups/compact-sheet";
+import { awaitingVotes, compactFromLive, LIVE_NOTE } from "@/lib/lineups/compact-sheet";
 import { TeamDetail } from "@/components/scores/TeamDetail";
 import type { ScoreAudit } from "@/lib/engine/score-audit";
 import type { LeagueHubData, OpponentLineup } from "@/lib/types";
@@ -89,7 +89,9 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
   const opponents = week?.opponents ?? hub.opponents;
   const partial = week?.partial ?? hub.partial;
   const scored = current?.status === "scored" || current?.status === "final";
-  const pointsById = new Map(partial.map((row) => [row.fantasyTeamId, row]));
+  const waiting = !scored && awaitingVotes(opponents.map((team) => team.sheet));
+  // Prima dei voti nessuno ha ancora punti né posizione: gli zeri non sono una classifica.
+  const pointsById = new Map(partial.map((row) => [row.fantasyTeamId, waiting ? { ...row, points: null } : row]));
   // Chi non ha punti va in fondo: il suo posto in classifica non esiste.
   const place = (teamId: string) => {
     const row = pointsById.get(teamId);
@@ -154,6 +156,7 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
     <TeamBlock
       opponent={team}
       scored={Boolean(scored)}
+      waiting={waiting}
       detail={details[detailKey(team.fantasyTeamId)] ?? null}
       onRetry={() => void loadDetail(team.fantasyTeamId)}
     />
@@ -254,7 +257,7 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
                 ) : null}
                 <span className="gd-mine-name">
                   <strong>{mine.teamName}</strong>
-                  <small>{mineNote(mineStanding, best, Boolean(scored))}</small>
+                  <small>{waiting ? "In attesa dei voti" : mineNote(mineStanding, best, Boolean(scored))}</small>
                 </span>
                 {mineStanding?.points != null ? (
                   <span className="gd-mine-points">
@@ -342,11 +345,14 @@ function TeamRow({
 function TeamBlock({
   opponent,
   scored,
+  waiting,
   detail,
   onRetry,
 }: {
   opponent: OpponentLineup;
   scored: boolean;
+  /** Nessun voto ancora arrivato in tutta la giornata. */
+  waiting: boolean;
   detail: Detail | null;
   onRetry: () => void;
 }) {
@@ -379,7 +385,7 @@ function TeamBlock({
       <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
       {live ? (
         <>
-          <p className="small">Totale in diretta: <strong>{points(live.partialTotal)}</strong></p>
+          <p className="small">Totale in diretta: <strong>{points(waiting ? null : live.partialTotal)}</strong></p>
           {live.penalty != null ? (
             <p className="small muted">In questa lega chi non salva la formazione prende la penalità: {points(live.penalty)} punti.</p>
           ) : null}

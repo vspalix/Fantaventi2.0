@@ -970,6 +970,7 @@ export function LeagueHub({
       ) : shownTab === "pagelle" ? null : (
       <header>
         <p className="small muted">
+          {shownTab === "lega" ? `${hub.league.name} · ` : ""}
           {hub.league.seasonCode} · Giornate {hub.league.startMatchday}–{hub.league.endMatchday}
           {" · "}
           {hub.league.rules.format === "h2h" ? "1 contro 1" : hub.league.rules.format === "hybrid" ? "A fasi" : "Tutti contro tutti"}
@@ -980,7 +981,7 @@ export function LeagueHub({
           {hub.league.isManager || hostMode ? ` · ${hub.league.isOwner ? "Admin di lega" : hub.league.isManager ? "Admin delegato" : "Partecipante"}` : ""}
         </p>
         <div className="row page-head">
-          <h1 className="section-title">{hub.league.name}</h1>
+          <h1 className="section-title">{shownTab === "lega" ? "Impostazioni lega" : hub.league.name}</h1>
           <Link className="primary" href="/rosa">Cambia la mia rosa</Link>
         </div>
       </header>

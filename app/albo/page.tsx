@@ -1,14 +1,8 @@
 import Link from "next/link";
-import { EmptyState } from "@/components/EmptyState";
-import { loadHallOfFame, type NamedScore } from "@/lib/server/hall-of-fame";
+import { HallOfFameView } from "@/components/albo/HallOfFameView";
+import { loadHallOfFame } from "@/lib/server/hall-of-fame";
 import { publicError } from "@/lib/server/api-error";
 import { getSessionUser } from "@/lib/server/session";
-
-const points = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
-
-function formatScore(row: NamedScore, suffix: string) {
-  return `${row.teamName} · ${points.format(row.points)} ${suffix} · giornata ${row.gameweek}`;
-}
 
 export default async function HallOfFamePage() {
   const user = await getSessionUser();
@@ -33,52 +27,9 @@ export default async function HallOfFamePage() {
       <section className="stack">
         <header>
           <h1 className="section-title">Albo d&apos;oro</h1>
-          <p className="lede">
-            Vincitori, podio e record delle stagioni archiviate. Una stagione entra qui quando il suo stato diventa closed.
-          </p>
+          <p className="al-lede">I vincitori e i record delle stagioni concluse.</p>
         </header>
-        {board.seasons.length === 0 ? (
-          <EmptyState title="Nessuna stagione archiviata">
-            I podi compariranno quando una stagione viene chiusa. I punteggi già calcolati restano nel database e non vengono inventati.
-          </EmptyState>
-        ) : board.seasons.map((season) => (
-          <section className="stack" key={season.seasonId}>
-            <h2>Stagione {season.seasonCode}</h2>
-            {season.leagues.length === 0 ? (
-              <EmptyState title="Nessuna lega in questa stagione">Questa stagione è chiusa, ma non ha leghe da archiviare.</EmptyState>
-            ) : season.leagues.map((league) => (
-              <article className="card stack" key={league.leagueId}>
-                <h3>{league.leagueName}</h3>
-                {league.podium.length === 0 ? (
-                  <p>Nessun punteggio ufficiale calcolato in questa lega.</p>
-                ) : (
-                  <ol className="list">
-                    {league.podium.map((place) => (
-                      <li key={`${league.leagueId}-${place.rank}`}>
-                        <span className="player-main">
-                          <strong>{place.rank}° {place.teamName}</strong>
-                          {place.displayName ? <span className="small muted">{place.displayName}</span> : null}
-                        </span>
-                        <span>{points.format(place.points)} fantapunti</span>
-                      </li>
-                    ))}
-                  </ol>
-                )}
-                <p>{league.bestWeek ? `Record di giornata: ${formatScore(league.bestWeek, "fantapunti")}` : "Nessun record di giornata."}</p>
-                <p>
-                  {league.worstDefense
-                    ? `Peggior difesa: ${formatScore(league.worstDefense, "di modificatore")}`
-                    : "Nessun malus difesa registrato."}
-                </p>
-                <p>
-                  {league.topScorer
-                    ? `Capocannoniere: ${league.topScorer.playerName} · ${league.topScorer.goals} gol`
-                    : "Nessun gol di un titolare registrato."}
-                </p>
-              </article>
-            ))}
-          </section>
-        ))}
+        <HallOfFameView seasons={board.seasons} />
       </section>
     );
   } catch (error) {

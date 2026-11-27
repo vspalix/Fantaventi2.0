@@ -19,7 +19,7 @@ export default async function RulesEditorPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Gestione regolamento</h1>
+          <h1 className="section-title">Regolamento</h1>
           <p className="lede">Modifica il testo ufficiale e scaricalo in documento.</p>
         </header>
         <RegulationEditor leagues={leagues} initialLeagueId={await readAdminLeagueId()} />
@@ -28,7 +28,7 @@ export default async function RulesEditorPage() {
   } catch (error) {
     return (
       <section className="stack">
-        <header><h1 className="section-title">Gestione regolamento</h1></header>
+        <header><h1 className="section-title">Regolamento</h1></header>
         <p className="banner">{publicError("Admin: Regolamento", error).message}</p>
       </section>
     );

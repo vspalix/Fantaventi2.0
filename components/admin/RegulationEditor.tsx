@@ -87,7 +87,7 @@ export function RegulationEditor({ leagues, initialLeagueId = null }: { leagues:
         </article>
       ) : (
         <article className="card stack">
-          <h2>Gestione regolamento</h2>
+          <h2>Testo ufficiale</h2>
           <p>Il testo è Markdown. Il salvataggio sostituisce quello che leggono i partecipanti di questa lega.</p>
           <label>
             Lega

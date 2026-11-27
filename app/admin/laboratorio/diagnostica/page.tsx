@@ -27,7 +27,7 @@ export default async function DiagnosticsPage() {
       <section className="stack">
         <header><h1 className="section-title">Diagnostica</h1></header>
         <p className="banner">{publicError("Admin: Diagnostica", error).message}</p>
-        <Link href="/admin/laboratorio/sincronizzazioni">Torna alle sincronizzazioni</Link>
+        <Link href="/admin/laboratorio/sincronizzazioni">Torna a Letture e sveglie</Link>
       </section>
     );
   }

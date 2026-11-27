@@ -16,7 +16,7 @@ export default async function SyncSettingsPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Sincronizzazioni</h1>
+          <h1 className="section-title">Letture e sveglie</h1>
           <p className="lede">Fonti, letture dei voti e storico dei giri automatici. Vale per tutta la piattaforma.</p>
         </header>
         <SyncDesk initial={settings} initialLogs={logs} />
@@ -26,9 +26,9 @@ export default async function SyncSettingsPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Sincronizzazioni</h1>
+          <h1 className="section-title">Letture e sveglie</h1>
         </header>
-        <p className="banner">{publicError("Admin: Sincronizzazioni", error).message}</p>
+        <p className="banner">{publicError("Admin: Letture e sveglie", error).message}</p>
       </section>
     );
   }

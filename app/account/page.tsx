@@ -34,20 +34,26 @@ export default async function AccountPage() {
     }
   }
 
+  const shown = username || user.email || "";
   return (
-    <section className="stack" style={{ maxWidth: 560 }}>
-      <header>
-        <h1 className="section-title">Account</h1>
-        {unreadable ? <p className="banner">I tuoi dati non si sono caricati. Ricarica la pagina tra poco.</p> : null}
-        {full ? <p className="lede">{full}{phone ? ` · ${phone}` : ""}</p> : phone ? <p className="lede">{phone}</p> : null}
-        <p>{user.email}</p>
-        <p className="small muted">Questi dati restano visibili solo a te. Gli altri vedono username e nome squadra.</p>
-        <LegalLinks />
-      </header>
+    <section className="ac">
+      <h1 className="section-title">Account</h1>
+      {unreadable ? <p className="banner">I tuoi dati non si sono caricati. Ricarica la pagina tra poco.</p> : null}
+      <article className="card ac-me">
+        <span className="ac-avatar" aria-hidden="true">{shown.trim().charAt(0).toUpperCase()}</span>
+        <div>
+          <strong>{username || "Senza username"}</strong>
+          {full ? <span>{full}</span> : null}
+          <span>{user.email}</span>
+          {phone ? <span>{phone}</span> : null}
+          <small>Email, nome e telefono li vedi solo tu.</small>
+        </div>
+      </article>
       <PublicName current={username} />
       <ChangePassword />
       <NotificationToggle />
       <DeleteAccount />
+      <LegalLinks />
     </section>
   );
 }

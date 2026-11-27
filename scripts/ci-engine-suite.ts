@@ -122,7 +122,7 @@ async function main() {
   for (const failure of announcements.failures) console.log(`- ${failure}`);
 
   const homeRound = runHomeRoundChecks();
-  console.log(`Giornata in Dashboard: ${homeRound.failures.length === 0 ? "PASSED" : "FAILED"} ${homeRound.passed}/${homeRound.total}`);
+  console.log(`Giornata in Dashboard e Live: ${homeRound.failures.length === 0 ? "PASSED" : "FAILED"} ${homeRound.passed}/${homeRound.total}`);
   for (const failure of homeRound.failures) console.log(`- ${failure}`);
 
   const outbound = runIsolated("test-outbound.ts");

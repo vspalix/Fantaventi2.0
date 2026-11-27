@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { LeagueManager } from "@/components/leagues/LeagueManager";
 import { SetupNotice } from "@/components/SetupNotice";
 import { getSessionUser } from "@/lib/server/session";
@@ -14,7 +13,7 @@ export default async function LeaguesPage() {
     <section className="stack">
       <header>
         <h1 className="section-title">Leghe</h1>
-        <p className="lede">Una lega riunisce le squadre della stagione. Il codice non scade da solo. Lo storico delle stagioni chiuse è nell&apos;<Link href="/albo">Albo d&apos;oro</Link>.</p>
+        <p className="lede">Una lega riunisce le squadre della stagione.</p>
       </header>
       <LeagueManager signedIn={Boolean(user)} hostMode={hostMode} />
     </section>

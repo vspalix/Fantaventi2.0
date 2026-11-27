@@ -289,6 +289,7 @@ function TeamLineup({
     const rows = fromLive(live);
     return (
       <div className="cal-lineup">
+        {opponent.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
         <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
         <p className="small muted">Proiezione {points(live.partialTotal)}. Il totale ufficiale arriva al calcolo della giornata.</p>
       </div>
@@ -297,6 +298,7 @@ function TeamLineup({
   const rows = fromSlots(opponent);
   return (
     <div className="cal-lineup">
+      {opponent.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
       <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
       {waiting ? <p className="small muted">Carico i voti…</p> : null}
       {!scored ? <p className="small muted">I voti compaiono quando la giornata è calcolata.</p> : null}

@@ -8,7 +8,7 @@ import {
   type RulesetDefinition,
   type TeamScore,
 } from "@/lib/engine/calculator";
-import { fileForgottenLineups } from "@/lib/server/forgotten-lineup";
+import { fileForgottenLineups, planForgottenLineups, type OfficeSlot } from "@/lib/server/forgotten-lineup";
 import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { isOfficialMatchClosed, isSettledGameweek } from "@/lib/server/match-window";
 import { loadProvisionalVotes, withProvisionalVotes } from "@/lib/server/provisional-votes";
@@ -31,6 +31,8 @@ export function schemaHint(message: string) {
 type LineupRow = {
   fantasyTeamId: string;
   slots: LineupSlotInput[];
+  /** Formazione d'ufficio non ancora registrata: la mostra la schermata, la salva solo il calcolo. */
+  office?: boolean;
 };
 
 type RawSlot = {
@@ -41,12 +43,16 @@ type RawSlot = {
   slot_order?: number;
 };
 
-/** `provisional` aggiunge i voti letti agli orari programmati. Il calcolo ufficiale non lo chiede mai. */
-async function loadContext(gameweekId: string, options?: { provisional?: boolean }) {
+/**
+ * `provisional` aggiunge i voti letti agli orari programmati. Il calcolo ufficiale non lo chiede mai.
+ * `office` (solo per le schermate) aggiunge, dopo la chiusura, le formazioni d'ufficio che il calcolo
+ * registrerà per chi non ha salvato: stesse regole, nessuna scrittura.
+ */
+async function loadContext(gameweekId: string, options?: { provisional?: boolean; office?: boolean; now?: Date }) {
   const admin = createAdminSupabase();
   const { data: gameweek, error: gameweekError } = await admin
     .from("gameweeks")
-    .select("id, number, status, season_id")
+    .select("id, number, status, season_id, deadline_at")
     .eq("id", gameweekId)
     .maybeSingle();
   if (gameweekError) throw new Error(gameweekError.message);
@@ -101,20 +107,30 @@ async function loadContext(gameweekId: string, options?: { provisional?: boolean
     clubByPlayer.set(playerId, row.club_id as string);
   }
 
+  const toInput = (slot: RawSlot | OfficeSlot): LineupSlotInput => ({
+    playerId: slot.player_id,
+    isCaptain: Boolean(slot.is_captain) && slot.is_starter !== false,
+    isVice: Boolean(slot.is_vice_captain) && slot.is_starter !== false,
+    role: roleByPlayer.get(slot.player_id),
+    benchOrder: slot.is_starter === false ? Number(slot.slot_order ?? 0) : undefined,
+  });
   const lineups: LineupRow[] = (lineupRows ?? []).map((row) => {
     const raw = row.lineup_slots as RawSlot[] | RawSlot | null;
     const slots = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
     return {
       fantasyTeamId: row.fantasy_team_id as string,
-      slots: slots.map((slot) => ({
-        playerId: slot.player_id,
-        isCaptain: Boolean(slot.is_captain) && slot.is_starter !== false,
-        isVice: Boolean(slot.is_vice_captain) && slot.is_starter !== false,
-        role: roleByPlayer.get(slot.player_id),
-        benchOrder: slot.is_starter === false ? Number(slot.slot_order ?? 0) : undefined,
-      })),
+      slots: slots.map(toInput),
     };
   });
+  const closedAt = Date.parse(String(gameweek.deadline_at ?? ""));
+  const closed = gameweek.status === "locked" || (Number.isFinite(closedAt) && closedAt <= (options?.now ?? new Date()).getTime());
+  if (options?.office && closed && !isSettledGameweek(String(gameweek.status))) {
+    const filed = new Set(lineups.map((lineup) => lineup.fantasyTeamId));
+    for (const [teamId, slots] of await planForgottenLineups(gameweekId)) {
+      if (filed.has(teamId)) continue;
+      lineups.push({ fantasyTeamId: teamId, slots: slots.map(toInput), office: true });
+    }
+  }
 
   const stats = new Map<string, PlayerStat>();
   for (const row of statRows ?? []) {
@@ -271,8 +287,9 @@ export async function calculateProvisionalForTeam(fantasyTeamId: string, gamewee
   return score;
 }
 
-export async function previewProvisional(gameweekId: string) {
-  const context = await loadContext(gameweekId, { provisional: true });
+/** Solo lettura, per le schermate: voti provvisori e, dopo la chiusura, formazioni d'ufficio. */
+export async function previewProvisional(gameweekId: string, now = new Date()) {
+  const context = await loadContext(gameweekId, { provisional: true, office: true, now });
   return {
     definition: context.definition,
     stats: context.stats,

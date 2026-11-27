@@ -1,6 +1,7 @@
 import { projectLiveScore, type PlayerStat } from "@/lib/engine/calculator";
 import { fantapuntiToGoals, headToHeadPairings, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
 import { pitchEvents } from "@/lib/engagement/live-board";
+import { teamWeekPoints } from "@/lib/office-lineup";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
@@ -18,6 +19,8 @@ export type LiveCenter = {
   mine: {
     teamName: string;
     total: number;
+    /** Formazione d'ufficio: non salvata in tempo, vale quella che registrerà il calcolo. */
+    office?: boolean;
     starters: { id: string; name: string; role: PlayerRole; voto: number | null; bonus: number; malus: number }[];
     bench: { id: string; name: string; role: PlayerRole; voto: number | null; bonus: number; malus: number }[];
   } | null;
@@ -55,7 +58,7 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   const phase = liveWeek.status === "scheduled" ? "countdown" : "live";
   let preview: Awaited<ReturnType<typeof previewProvisional>> | null = null;
   try {
-    preview = await previewProvisional(liveWeek.id as string);
+    preview = await previewProvisional(liveWeek.id as string, now);
   } catch (error) {
     void reportError("Lega: centro partite, punteggi in diretta", error);
     preview = null;
@@ -82,14 +85,22 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
     return { ...empty, phase, gameweekNumber: number, gameweekId: liveWeek.id as string, mode };
   }
   const stats = preview.stats;
-  const { definition } = await definitionForLeague(admin, league.id, preview.definition);
+  const { definition, rules } = await definitionForLeague(admin, league.id, preview.definition);
   const leagueLineups = preview.lineups.filter((lineup) => teamIds.includes(lineup.fantasyTeamId));
   const scores = new Map(leagueLineups.map((lineup) => [
     lineup.fantasyTeamId,
     projectLiveScore(lineup.fantasyTeamId, liveWeek.id as string, lineup.slots, stats, definition),
   ]));
+  const office = new Set(leagueLineups.filter((lineup) => lineup.office).map((lineup) => lineup.fantasyTeamId));
+  // Dopo la chiusura valgono le regole del calcolo finale per chi non ha salvato (penalità comprese).
+  const closedAt = Date.parse(String(liveWeek.deadline_at ?? ""));
+  const deadlinePassed = liveWeek.status === "locked" || (Number.isFinite(closedAt) && closedAt <= now.getTime());
   const livePoints = new Map<string, number>();
-  for (const [teamId, score] of scores) livePoints.set(teamId, score.total);
+  for (const teamId of teamIds) {
+    const points = scores.get(teamId)?.total ?? null;
+    const counted = deadlinePassed ? teamWeekPoints(rules, { points, office: office.has(teamId) }) : points;
+    if (counted !== null) livePoints.set(teamId, counted);
+  }
   const weekPoints = new Map<string, number>();
   if (mode === "sum") {
     for (const teamId of teamIds) weekPoints.set(teamId, livePoints.get(teamId) ?? 0);
@@ -148,7 +159,8 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   };
   const mine = viewer ? {
     teamName: names.get(viewer.fantasyTeamId) ?? "La tua squadra",
-    total: round2(viewerScore?.total ?? 0),
+    total: round2(livePoints.get(viewer.fantasyTeamId) ?? viewerScore?.total ?? 0),
+    office: office.has(viewer.fantasyTeamId),
     starters: viewer.slots.filter((slot) => slot.benchOrder == null).map((slot) => cardOf(slot.playerId, true)),
     bench: viewer.slots.filter((slot) => slot.benchOrder != null).sort((left, right) => (left.benchOrder ?? 0) - (right.benchOrder ?? 0)).map((slot) => cardOf(slot.playerId, false)),
   } : null;

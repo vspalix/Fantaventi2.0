@@ -7,7 +7,7 @@ import type { PlayerRole } from "@/lib/types";
 
 type RosterRow = { id: string; role: PlayerRole; name: string };
 
-type SlotCopy = {
+export type OfficeSlot = {
   player_id: string;
   is_captain: boolean;
   is_vice_captain: boolean;
@@ -15,11 +15,25 @@ type SlotCopy = {
   slot_order?: number;
 };
 
-export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: string[]) {
+type RegistrationRow = {
+  player_id: string;
+  role: PlayerRole;
+  effective_from_gameweek: number;
+  effective_to_gameweek: number | null;
+};
+
+/**
+ * Le formazioni d'ufficio che il calcolo della giornata registrerebbe adesso, senza scrivere niente.
+ * Solo per le squadre senza formazione e con almeno una lega che riporta l'ultima formazione:
+ * se tutte le sue leghe danno la penalità, la squadra non ne riceve una.
+ * La stessa funzione serve al calcolo ufficiale (che poi le salva) e alle schermate live (che le mostrano).
+ */
+export async function planForgottenLineups(gameweekId: string, onlyTeamIds?: string[]) {
+  const plans = new Map<string, OfficeSlot[]>();
   const admin = createAdminSupabase();
   const week = await admin.from("gameweeks").select("id, number, season_id").eq("id", gameweekId).maybeSingle();
   if (week.error) throw new Error(week.error.message);
-  if (!week.data) return 0;
+  if (!week.data) return plans;
   const seasonId = week.data.season_id as string;
   const number = Number(week.data.number);
 
@@ -27,13 +41,13 @@ export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: str
   if (teams.error) throw new Error(teams.error.message);
   const allowed = onlyTeamIds ? new Set(onlyTeamIds) : null;
   const teamIds = (teams.data ?? []).map((row) => row.id as string).filter((id) => !allowed || allowed.has(id));
-  if (teamIds.length === 0) return 0;
+  if (teamIds.length === 0) return plans;
 
   const existing = await admin.from("lineups").select("fantasy_team_id").eq("gameweek_id", gameweekId).in("fantasy_team_id", teamIds);
   if (existing.error) throw new Error(existing.error.message);
   const filed = new Set((existing.data ?? []).map((row) => row.fantasy_team_id as string));
   const missing = teamIds.filter((teamId) => !filed.has(teamId));
-  if (missing.length === 0) return 0;
+  if (missing.length === 0) return plans;
 
   const memberships = await admin
     .from("private_league_members")
@@ -54,6 +68,11 @@ export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: str
     list.push(row.private_league_id as string);
     leaguesByTeam.set(teamId, list);
   }
+  const eligible = missing.filter((teamId) => {
+    const modes = (leaguesByTeam.get(teamId) ?? []).flatMap((leagueId) => modeByLeague.get(leagueId) ?? []);
+    return modes.length > 0 && officeLineupMode(modes) === "carry";
+  });
+  if (eligible.length === 0) return plans;
 
   const earlier = await admin
     .from("gameweeks")
@@ -65,48 +84,146 @@ export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: str
   const earlierIds = [...numberByWeek.keys()];
   const previous = earlierIds.length === 0
     ? { data: [], error: null }
-    : await admin.from("lineups").select("id, fantasy_team_id, gameweek_id").in("fantasy_team_id", missing).in("gameweek_id", earlierIds);
+    : await admin.from("lineups").select("id, fantasy_team_id, gameweek_id").in("fantasy_team_id", eligible).in("gameweek_id", earlierIds);
   if (previous.error) throw new Error(previous.error.message);
-
-  let filedCount = 0;
-  for (const teamId of missing) {
-    const modes = (leaguesByTeam.get(teamId) ?? []).flatMap((leagueId) => modeByLeague.get(leagueId) ?? []);
-    if (modes.length === 0 || officeLineupMode(modes) === "penalty") continue;
+  const sourceByTeam = new Map<string, string>();
+  for (const teamId of eligible) {
     const source = (previous.data ?? [])
       .filter((row) => row.fantasy_team_id === teamId)
       .sort((left, right) => (numberByWeek.get(right.gameweek_id as string) ?? 0) - (numberByWeek.get(left.gameweek_id as string) ?? 0))[0];
-    const roster = await rosterOfWeek(seasonId, number, teamId);
-    const carried = source ? await carriedSlots(seasonId, number, roster, source.id as string) : null;
+    if (source) sourceByTeam.set(teamId, source.id as string);
+  }
+
+  const [slotsByLineup, stintsByTeam] = await Promise.all([
+    slotsOfLineups([...sourceByTeam.values()]),
+    activeStints(eligible, number),
+  ]);
+  const rosterIds = [...new Set([...stintsByTeam.values()].flat())];
+  const slotIds = [...new Set([...slotsByLineup.values()].flat().map((slot) => slot.player_id))];
+  const [names, registrations] = await Promise.all([
+    playerNames(rosterIds),
+    registrationsOf(seasonId, [...new Set([...rosterIds, ...slotIds])]),
+  ]);
+
+  for (const teamId of eligible) {
+    const roster = rosterOf(stintsByTeam.get(teamId) ?? [], number, names, registrations);
+    const sourceId = sourceByTeam.get(teamId);
+    const carried = sourceId ? carriedSlots(number, roster, slotsByLineup.get(sourceId) ?? [], registrations) : null;
     const slots = carried ?? alphabeticalSlots(roster);
-    if (slots.length === 0) continue;
+    if (slots.length > 0) plans.set(teamId, slots);
+  }
+  return plans;
+}
+
+/** Registra le formazioni d'ufficio mancanti. Una sola per squadra e giornata, anche con due giri insieme. */
+export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: string[]) {
+  const plans = await planForgottenLineups(gameweekId, onlyTeamIds);
+  let filedCount = 0;
+  for (const [teamId, slots] of plans) {
     const copied = await copyLineup(teamId, gameweekId, slots);
     if (copied) filedCount += 1;
   }
   return filedCount;
 }
 
-async function slotsOf(lineupId: string): Promise<SlotCopy[]> {
+async function slotsOfLineups(lineupIds: string[]) {
+  const byLineup = new Map<string, OfficeSlot[]>();
+  if (lineupIds.length === 0) return byLineup;
   const admin = createAdminSupabase();
   const slots = await admin
     .from("lineup_slots")
-    .select("player_id, is_captain, is_vice_captain, is_starter, slot_order")
-    .eq("lineup_id", lineupId);
+    .select("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order")
+    .in("lineup_id", lineupIds);
   const plain = slots.error && /is_starter|slot_order/i.test(slots.error.message)
-    ? await admin.from("lineup_slots").select("player_id, is_captain, is_vice_captain").eq("lineup_id", lineupId)
+    ? await admin.from("lineup_slots").select("lineup_id, player_id, is_captain, is_vice_captain").in("lineup_id", lineupIds)
     : slots;
   if (plain.error) throw new Error(plain.error.message);
-  return (plain.data ?? []) as SlotCopy[];
+  for (const row of (plain.data ?? []) as (OfficeSlot & { lineup_id: string })[]) {
+    const list = byLineup.get(row.lineup_id) ?? [];
+    list.push({
+      player_id: row.player_id,
+      is_captain: Boolean(row.is_captain),
+      is_vice_captain: Boolean(row.is_vice_captain),
+      is_starter: row.is_starter,
+      slot_order: row.slot_order,
+    });
+    byLineup.set(row.lineup_id, list);
+  }
+  return byLineup;
+}
+
+async function activeStints(teamIds: string[], gameweek: number) {
+  const stints = await createAdminSupabase()
+    .from("roster_stints")
+    .select("fantasy_team_id, player_id, active_from_gameweek, active_until_gameweek")
+    .in("fantasy_team_id", teamIds);
+  if (stints.error) throw new Error(stints.error.message);
+  const byTeam = new Map<string, string[]>();
+  for (const stint of stints.data ?? []) {
+    const from = Number(stint.active_from_gameweek);
+    const until = stint.active_until_gameweek == null ? null : Number(stint.active_until_gameweek);
+    if (from > gameweek || (until !== null && until < gameweek)) continue;
+    const list = byTeam.get(stint.fantasy_team_id as string) ?? [];
+    list.push(stint.player_id as string);
+    byTeam.set(stint.fantasy_team_id as string, list);
+  }
+  return byTeam;
+}
+
+async function playerNames(playerIds: string[]) {
+  if (playerIds.length === 0) return new Map<string, string>();
+  const people = await createAdminSupabase().from("players").select("id, full_name").in("id", playerIds);
+  if (people.error) throw new Error(people.error.message);
+  return new Map((people.data ?? []).map((row) => [row.id as string, row.full_name as string]));
+}
+
+async function registrationsOf(seasonId: string, playerIds: string[]): Promise<RegistrationRow[]> {
+  if (playerIds.length === 0) return [];
+  const registrations = await createAdminSupabase()
+    .from("player_registrations")
+    .select("player_id, role, effective_from_gameweek, effective_to_gameweek")
+    .eq("season_id", seasonId)
+    .in("player_id", playerIds)
+    .order("effective_from_gameweek", { ascending: true });
+  if (registrations.error) throw new Error(registrations.error.message);
+  return (registrations.data ?? []).map((row) => ({
+    player_id: row.player_id as string,
+    role: row.role as PlayerRole,
+    effective_from_gameweek: Number(row.effective_from_gameweek),
+    effective_to_gameweek: row.effective_to_gameweek == null ? null : Number(row.effective_to_gameweek),
+  }));
+}
+
+/** La rosa della giornata: chi è in rosa e ha un ruolo valido in quella giornata. */
+function rosterOf(
+  playerIds: string[],
+  gameweek: number,
+  names: ReadonlyMap<string, string>,
+  registrations: RegistrationRow[],
+): RosterRow[] {
+  const wanted = new Set(playerIds);
+  const roleOf = new Map<string, PlayerRole>();
+  for (const row of registrations) {
+    if (!wanted.has(row.player_id)) continue;
+    const until = row.effective_to_gameweek;
+    if (row.effective_from_gameweek > gameweek || (until !== null && until < gameweek)) continue;
+    roleOf.set(row.player_id, row.role);
+  }
+  return playerIds.flatMap((playerId) => {
+    const role = roleOf.get(playerId);
+    if (!role) return [];
+    return [{ id: playerId, role, name: names.get(playerId) ?? "" }];
+  });
 }
 
 /** L'ultima formazione, riportata sui calciatori che sono in rosa in questa giornata. */
-async function carriedSlots(
-  seasonId: string,
+function carriedSlots(
   gameweek: number,
   roster: RosterRow[],
-  lineupId: string,
-): Promise<SlotCopy[] | null> {
-  const ordered = (await slotsOf(lineupId))
-    .sort((left, right) => Number(left.slot_order ?? 0) - Number(right.slot_order ?? 0));
+  sourceSlots: OfficeSlot[],
+  registrations: RegistrationRow[],
+): OfficeSlot[] | null {
+  const ordered = [...sourceSlots].sort((left, right) => Number(left.slot_order ?? 0) - Number(right.slot_order ?? 0));
   const previous: CarriedLineup = {
     playerIds: ordered.filter((slot) => slot.is_starter !== false).map((slot) => slot.player_id),
     benchIds: ordered.filter((slot) => slot.is_starter === false).map((slot) => slot.player_id),
@@ -114,13 +231,18 @@ async function carriedSlots(
     viceId: ordered.find((slot) => slot.is_vice_captain)?.player_id ?? null,
   };
   const present = new Set(roster.map((player) => player.id));
-  const gone = ordered.map((slot) => slot.player_id).filter((id) => !present.has(id));
-  const formerRoles = gone.length > 0 ? await rolesOf(seasonId, gameweek, gone) : new Map<string, PlayerRole>();
+  const gone = new Set(ordered.map((slot) => slot.player_id).filter((id) => !present.has(id)));
+  const formerRoles = new Map<string, PlayerRole>();
+  for (const row of registrations) {
+    // Chi è uscito dal listone tiene l'ultimo ruolo avuto fino a questa giornata.
+    if (!gone.has(row.player_id) || row.effective_from_gameweek > gameweek) continue;
+    formerRoles.set(row.player_id, row.role);
+  }
   const picked = carryLineup(roster, previous, formerRoles);
   return picked ? toSlots(picked.playerIds, picked.benchIds, picked.captainId, picked.viceId) : null;
 }
 
-function toSlots(starterIds: string[], benchIds: string[], captainId: string | null, viceId: string | null): SlotCopy[] {
+function toSlots(starterIds: string[], benchIds: string[], captainId: string | null, viceId: string | null): OfficeSlot[] {
   const slot = (playerId: string, index: number, starter: boolean) => ({
     player_id: playerId,
     is_captain: starter && playerId === captainId,
@@ -134,67 +256,17 @@ function toSlots(starterIds: string[], benchIds: string[], captainId: string | n
   ];
 }
 
-async function rolesOf(seasonId: string, gameweek: number, playerIds: string[]) {
-  const registrations = await createAdminSupabase()
-    .from("player_registrations")
-    .select("player_id, role, effective_from_gameweek, effective_to_gameweek")
-    .eq("season_id", seasonId)
-    .in("player_id", playerIds)
-    .order("effective_from_gameweek", { ascending: true });
-  if (registrations.error) throw new Error(registrations.error.message);
-  const roles = new Map<string, PlayerRole>();
-  for (const row of registrations.data ?? []) {
-    // Chi è uscito dal listone tiene l'ultimo ruolo avuto fino a questa giornata.
-    if (Number(row.effective_from_gameweek) > gameweek) continue;
-    roles.set(row.player_id as string, row.role as PlayerRole);
-  }
-  return roles;
-}
-
-async function rosterOfWeek(seasonId: string, gameweek: number, teamId: string): Promise<RosterRow[]> {
-  const admin = createAdminSupabase();
-  const stints = await admin
-    .from("roster_stints")
-    .select("player_id, active_from_gameweek, active_until_gameweek")
-    .eq("fantasy_team_id", teamId);
-  if (stints.error) throw new Error(stints.error.message);
-  const playerIds = (stints.data ?? [])
-    .filter((stint) => {
-      const from = Number(stint.active_from_gameweek);
-      const until = stint.active_until_gameweek == null ? null : Number(stint.active_until_gameweek);
-      return from <= gameweek && (until === null || until >= gameweek);
-    })
-    .map((stint) => stint.player_id as string);
-  if (playerIds.length === 0) return [];
-  const people = await admin.from("players").select("id, full_name").in("id", playerIds);
-  if (people.error) throw new Error(people.error.message);
-  const registrations = await admin
-    .from("player_registrations")
-    .select("player_id, role, effective_from_gameweek, effective_to_gameweek")
-    .eq("season_id", seasonId)
-    .in("player_id", playerIds);
-  if (registrations.error) throw new Error(registrations.error.message);
-  const roleOf = new Map<string, PlayerRole>();
-  for (const row of registrations.data ?? []) {
-    const from = Number(row.effective_from_gameweek);
-    const until = row.effective_to_gameweek == null ? null : Number(row.effective_to_gameweek);
-    if (from > gameweek || (until !== null && until < gameweek)) continue;
-    roleOf.set(row.player_id as string, row.role as PlayerRole);
-  }
-  const names = new Map((people.data ?? []).map((row) => [row.id as string, row.full_name as string]));
-  return playerIds.flatMap((playerId) => {
-    const role = roleOf.get(playerId);
-    if (!role) return [];
-    return [{ id: playerId, role, name: names.get(playerId) ?? "" }];
-  });
-}
-
-function alphabeticalSlots(roster: RosterRow[]): SlotCopy[] {
+function alphabeticalSlots(roster: RosterRow[]): OfficeSlot[] {
   const picked = alphabeticalOfficeLineup(roster);
   return picked ? toSlots(picked.starterIds, picked.benchIds, picked.captainId, picked.viceId) : [];
 }
 
-async function copyLineup(teamId: string, gameweekId: string, slots: SlotCopy[]) {
+/** Il vincolo «una formazione per squadra e giornata» ha fermato un secondo inserimento. */
+function alreadyFiled(error: { code?: string; message: string }) {
+  return error.code === "23505" || /lineups_fantasy_team_id_gameweek_id_key|duplicate key/i.test(error.message);
+}
+
+async function copyLineup(teamId: string, gameweekId: string, slots: OfficeSlot[]) {
   const admin = createAdminSupabase();
   const withOrigin = await admin.from("lineups").insert({
     id: randomUUID(),
@@ -212,6 +284,8 @@ async function copyLineup(teamId: string, gameweekId: string, slots: SlotCopy[])
       status: "locked",
     }).select("id").maybeSingle()
     : withOrigin;
+  // Un altro giro l'ha appena registrata: resta quella e non se ne crea una seconda.
+  if (created.error && alreadyFiled(created.error)) return false;
   if (created.error) throw new Error(created.error.message);
   const lineupId = created.data?.id as string | undefined;
   if (!lineupId || slots.length === 0) return Boolean(lineupId);

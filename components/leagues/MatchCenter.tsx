@@ -69,6 +69,7 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
               </div>
             ))}
             <p className="small">Parziale {live.mine.total.toLocaleString("it-IT")} · {live.mine.teamName}</p>
+            {live.mine.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
           </div>
         ) : (
           <EmptyState title="Niente da seguire">

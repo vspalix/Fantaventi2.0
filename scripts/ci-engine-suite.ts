@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
@@ -102,11 +103,40 @@ async function main() {
   console.log(`Inizio lega e impostazioni: ${leagueStart.failures.length === 0 ? "PASSED" : "FAILED"} ${leagueStart.passed}/${leagueStart.total}`);
   for (const failure of leagueStart.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed;
+  const office = runOfficeLineupLive();
+  console.log(`Formazione d'ufficio in diretta: ${office.failures.length === 0 ? "PASSED" : "FAILED"} ${office.passed}/${office.total}`);
+  for (const failure of office.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || total < 100) process.exit(1);
+}
+
+/**
+ * La prova con il finto Supabase gira in un processo a parte, senza le variabili del database vero:
+ * così non tocca mai Supabase, nemmeno quando `.env.local` è presente.
+ */
+function runOfficeLineupLive() {
+  const env = { ...process.env };
+  for (const name of Object.keys(env)) {
+    if (/SUPABASE|TELEGRAM|VAPID|CRON_SECRET|DATABASE_URL|POSTGRES/i.test(name)) delete env[name];
+  }
+  const run = spawnSync(process.execPath, ["--import", "tsx", path.join("scripts", "test-office-lineup-live.ts")], {
+    cwd: process.cwd(),
+    env,
+    encoding: "utf8",
+    timeout: 120_000,
+  });
+  const output = `${run.stdout ?? ""}`;
+  const summary = output.match(/(PASSED|FAILED) (\d+)\/(\d+)/);
+  if (!summary) {
+    return { total: 1, passed: 0, failures: ["prova non eseguita"] };
+  }
+  const failures = output.split(/\r?\n/).filter((line) => line.startsWith("- ")).map((line) => line.slice(2));
+  if (run.status !== 0 && failures.length === 0) failures.push("prova interrotta");
+  return { total: Number(summary[3]), passed: Number(summary[2]), failures };
 }
 
 main().catch((error: unknown) => {

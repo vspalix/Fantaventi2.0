@@ -49,6 +49,14 @@ function listValues(text: string) {
   return splitTop(text).map((value) => value.replace(/^"(.*)"$/, "$1"));
 }
 
+/** Numeri come numeri; il resto, date comprese, come testo. */
+function order(value: unknown, raw: string) {
+  const left = Number(value);
+  const right = Number(raw);
+  if (Number.isFinite(left) && Number.isFinite(right)) return left - right;
+  return String(value) < raw ? -1 : String(value) > raw ? 1 : 0;
+}
+
 function matches(row: Row, column: string, filter: string) {
   const dot = filter.indexOf(".");
   const op = filter.slice(0, dot);
@@ -60,10 +68,10 @@ function matches(row: Row, column: string, filter: string) {
     case "neq": return text !== raw;
     case "is": return raw === "null" ? value == null : text === raw;
     case "in": return text !== null && listValues(raw.replace(/^\((.*)\)$/, "$1")).includes(text);
-    case "lt": return value != null && Number(value) < Number(raw);
-    case "lte": return value != null && Number(value) <= Number(raw);
-    case "gt": return value != null && Number(value) > Number(raw);
-    case "gte": return value != null && Number(value) >= Number(raw);
+    case "lt": return value != null && order(value, raw) < 0;
+    case "lte": return value != null && order(value, raw) <= 0;
+    case "gt": return value != null && order(value, raw) > 0;
+    case "gte": return value != null && order(value, raw) >= 0;
     default: throw new Error(`Filtro non previsto nel finto Supabase: ${op}`);
   }
 }
@@ -79,8 +87,11 @@ export class FakeSupabase {
 
   async start() {
     this.server = createServer((request, response) => {
-      void this.handle(request).then(({ status, body }) => {
-        response.writeHead(status, { "content-type": "application/json" });
+      void this.handle(request).then(({ status, body, count }) => {
+        response.writeHead(status, {
+          "content-type": "application/json",
+          ...(count === undefined ? {} : { "content-range": `*/${count}` }),
+        });
         response.end(body === undefined ? "" : JSON.stringify(body));
       });
     });
@@ -132,7 +143,7 @@ export class FakeSupabase {
     )));
   }
 
-  private async handle(request: IncomingMessage): Promise<{ status: number; body?: unknown }> {
+  private async handle(request: IncomingMessage): Promise<{ status: number; body?: unknown; count?: number }> {
     const url = new URL(request.url ?? "/", "http://fake");
     const [, rest, , table] = url.pathname.split("/");
     const method = request.method ?? "GET";
@@ -155,6 +166,7 @@ export class FakeSupabase {
       return { status: 200, body: shaped[0] };
     };
     try {
+      if (method === "HEAD") return { status: 200, count: this.filtered(table, params).length };
       if (method === "GET") {
         let rows = this.filtered(table, params);
         const order = params.get("order");

@@ -1,4 +1,5 @@
 import { BONUS_FIELDS, type LeagueRules } from "@/lib/league-rules";
+import { scoringHistoryLines } from "@/lib/scoring-history";
 
 function signed(value: number) {
   const digits = Number.isInteger(value) ? 0 : 1;
@@ -32,6 +33,10 @@ export function buildOfficialRegulation(leagueName: string, rules: LeagueRules) 
   const cleanSheet = rules.cleanSheetEnabled
     ? `L'imbattibilità del portiere vale **${signed(rules.cleanSheetPoints)}** se ha un voto e non subisce gol.`
     : "L'imbattibilità del portiere è **spenta**.";
+  const past = scoringHistoryLines(rules.scoringHistory);
+  const changes = past.length === 0
+    ? ""
+    : `\n\nI valori qui sopra sono quelli di oggi. Nelle giornate precedenti, dove l'admin ha scelto di non ricalcolare, valgono questi:\n\n${past.map((line) => `- ${line}`).join("\n")}`;
   const postponed = rules.postponement === "political_six"
     ? "Una partita rinviata o sospesa assegna il **6 politico**, senza bonus né malus, finché non arrivano i voti veri."
     : "Una partita rinviata o sospesa resta **fuori dal calcolo** finché non viene disputata: niente 6 politico e niente riserva al suo posto.";
@@ -118,7 +123,7 @@ Il fantavoto è voto + bonus + malus. Senza voto pubblicato il fantavoto non esi
 | --- | --- | --- |
 ${bonusRows}
 
-Il gol e il rigore segnato sono due voci distinte, come le pubblica Fantacalcio. Nel calcolo ufficiale il malus del capitano effettivo è raddoppiato. I bonus no. Nella proiezione il malus resta quello della voce: un'ammonizione è −0,5, un gol +3, un gol subito dal portiere −1.
+Il gol e il rigore segnato sono due voci distinte, come le pubblica Fantacalcio. Nel calcolo ufficiale il malus del capitano effettivo è raddoppiato. I bonus no. Nella proiezione il malus resta quello della voce: un'ammonizione è −0,5, un gol +3, un gol subito dal portiere −1.${changes}
 
 ## 10. Capitano e vice
 

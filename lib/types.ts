@@ -123,6 +123,9 @@ export type LineupOrigin = "saved" | "previous" | "office" | "empty";
 /** Risposta del salvataggio formazione: la formazione registrata e quando. */
 export type SavedLineup = { lineup: LineupPick; savedAt: string | null };
 
+/** Un bonus cambiato a lega iniziata: l'admin sceglie da quando vale. */
+export type ScoringChoice = { fromMatchday: number; changed: string[] };
+
 export type OpponentLineup = {
   fantasyTeamId: string;
   teamName: string;

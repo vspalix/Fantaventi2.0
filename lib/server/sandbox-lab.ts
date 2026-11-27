@@ -280,7 +280,7 @@ export async function simulateSandbox(cursor: number, requested: number): Promis
   const source = await admin.from("seasons").select("ruleset_id, rulesets(definition)").eq("id", real.id).single();
   if (source.error || !source.data) throw new Error(source.error?.message ?? "Ruleset non trovato.");
   const ruleset = Array.isArray(source.data.rulesets) ? source.data.rulesets[0] : source.data.rulesets;
-  const { definition } = await definitionForLeague(admin, league.id, (ruleset?.definition ?? {}) as RulesetDefinition);
+  const { definition } = await definitionForLeague(admin, league.id, (ruleset?.definition ?? {}) as RulesetDefinition, null);
   const rulesetId = source.data.ruleset_id as string;
   const prepared = await loadPreparedTeams(real.id);
   const until = Math.min(size, from + BATCH - 1);

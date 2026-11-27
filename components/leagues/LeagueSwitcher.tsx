@@ -1,25 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import { WheelPicker } from "@/components/lineups/WheelPicker";
 
 export type SwitchLeague = { id: string; teamName: string; leagueName: string };
 
-/** Oltre questo numero di leghe compare la ricerca. */
-const SEARCH_FROM = 7;
+/** Fino a questo numero di leghe basta la tendina; oltre si sceglie con il rullo. */
+const LIST_UP_TO = 7;
 
 function initialOf(name: string) {
   return name.trim().charAt(0).toUpperCase();
 }
 
 /**
- * Tendina in alto per saltare da una lega all'altra: mostra la lega in uso e, aperta,
- * l'elenco completo con la ricerca per nome della lega o della squadra.
+ * Scelta della lega nella barra in alto: mostra quella in uso e, aperta, l'elenco
+ * (tendina) o il rullo con la ricerca quando le leghe sono tante.
  */
 export function LeagueSwitcher({
   leagues,
   currentId,
   open,
+  switching,
   onToggle,
   onClose,
   onChoose,
@@ -27,28 +30,19 @@ export function LeagueSwitcher({
   leagues: SwitchLeague[];
   currentId: string;
   open: boolean;
+  /** La lega scelta si sta caricando: lo si mostra subito. */
+  switching: boolean;
   onToggle: () => void;
   onClose: () => void;
   onChoose: (leagueId: string) => void;
 }) {
-  const [query, setQuery] = useState("");
-  const list = useRef<HTMLUListElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const current = leagues.find((league) => league.id === currentId) ?? leagues[0];
-  const wanted = query.trim().toLocaleLowerCase("it");
-  const shown = wanted
-    ? leagues.filter((league) => `${league.leagueName} ${league.teamName}`.toLocaleLowerCase("it").includes(wanted))
-    : leagues;
+  const wheel = leagues.length > LIST_UP_TO;
 
   useEffect(() => {
-    if (!open) {
-      setQuery("");
-      return;
-    }
-    // La lega in uso è subito visibile, anche in fondo a un elenco lungo.
-    const box = list.current;
-    const active = box?.querySelector<HTMLElement>('[aria-current="true"]');
-    if (box && active) box.scrollTop = active.offsetTop - (box.clientHeight - active.offsetHeight) / 2;
+    // Il rullo gestisce da sé il tasto Esc.
+    if (!open || wheel) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       onClose();
@@ -56,40 +50,51 @@ export function LeagueSwitcher({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-    // onClose cambia a ogni disegno: qui conta solo l'apertura.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, wheel, onClose]);
+
+  const all = (
+    <Link className="lsw-all" href="/leghe" onClick={onClose}>
+      <span>Tutte le leghe, entra o crea</span>
+      <span aria-hidden="true">›</span>
+    </Link>
+  );
 
   return (
     <div className="lsw">
-      <button ref={trigger} className="lsw-trigger" type="button" aria-expanded={open} aria-haspopup="dialog" onClick={onToggle}>
+      <button ref={trigger} className="lsw-trigger" type="button" aria-expanded={open} aria-haspopup="dialog" aria-busy={switching} onClick={onToggle}>
         <span className="lsw-trigger-text">
           <strong>{current.leagueName}</strong>
           <small>{current.teamName}</small>
         </span>
-        <svg viewBox="0 0 24 24" aria-hidden="true">
-          <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        {switching ? (
+          <span className="spinner" aria-hidden="true" />
+        ) : (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
       </button>
-      {open ? (
+      {open && wheel ? createPortal(
+        <WheelPicker
+          title="Le tue leghe"
+          items={leagues.map((league) => ({ id: league.id, label: league.leagueName, sub: league.teamName }))}
+          selectedId={current.id}
+          search={`Cerca tra ${leagues.length} leghe`}
+          emptyText="Nessuna lega con questo nome."
+          confirmLabel="Apri"
+          confirmOnActiveTap
+          footer={all}
+          onConfirm={onChoose}
+          onClose={onClose}
+        />,
+        document.body,
+      ) : null}
+      {open && !wheel ? (
         <>
           <button className="lsw-backdrop" type="button" tabIndex={-1} aria-label="Chiudi l'elenco delle leghe" onClick={onClose} />
           <div className="lsw-panel" role="dialog" aria-label="Le tue leghe">
-            {leagues.length >= SEARCH_FROM ? (
-              <input
-                className="lsw-search"
-                type="search"
-                aria-label="Cerca una lega"
-                placeholder={`Cerca tra ${leagues.length} leghe`}
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && shown.length > 0) onChoose(shown[0].id);
-                }}
-              />
-            ) : null}
-            <ul className="lsw-list" ref={list}>
-              {shown.map((league) => (
+            <ul className="lsw-list">
+              {leagues.map((league) => (
                 <li key={league.id}>
                   <button type="button" aria-current={league.id === current.id} onClick={() => onChoose(league.id)}>
                     <span className="lsw-crest" aria-hidden="true">{initialOf(league.leagueName)}</span>
@@ -102,13 +107,20 @@ export function LeagueSwitcher({
                 </li>
               ))}
             </ul>
-            {shown.length === 0 ? <p className="lsw-empty">Nessuna lega con questo nome.</p> : null}
-            <Link className="lsw-all" href="/leghe" onClick={onClose}>
-              <span>Tutte le leghe, entra o crea</span>
-              <span aria-hidden="true">›</span>
-            </Link>
+            {all}
           </div>
         </>
+      ) : null}
+      {switching ? (
+        <div className="lsw-wait" role="status">
+          <div className="lsw-wait-body">
+            <p>Apro <strong>{current.leagueName}</strong></p>
+            <div className="skeleton skeleton-title" />
+            <div className="skeleton skeleton-card" />
+            <div className="skeleton skeleton-card" />
+            <div className="skeleton skeleton-card" />
+          </div>
+        </div>
       ) : null}
     </div>
   );

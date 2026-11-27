@@ -6,9 +6,10 @@ import { InboxBell } from "@/components/InboxBell";
 import { LeagueSwitcher } from "@/components/leagues/LeagueSwitcher";
 import { ModeSwitch } from "@/components/ModeSwitch";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { createBrowserSupabase, hasPublicSupabaseEnv } from "@/lib/supabase/browser";
 import { isHubTab, LEAGUE_TAB_EVENT, type HubTab } from "@/lib/hub-tabs";
+import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 
 export type HeaderSeason = { id: string; label: string };
 export type HeaderSquad = { id: string; teamName: string; leagueName: string };
@@ -37,6 +38,8 @@ export function SiteHeader({
   const pathname = usePathname();
   const search = useSearchParams();
   const router = useRouter();
+  /** Vero finché la schermata della lega scelta non è arrivata. */
+  const [switching, startSwitch] = useTransition();
   const [leagueTab, setLeagueTab] = useState(search.get("tab"));
   const [open, setOpen] = useState<"menu" | "profile" | "more" | "leagues" | null>(null);
   const bar = useRef<HTMLElement>(null);
@@ -44,12 +47,16 @@ export function SiteHeader({
   const pathLeague = pathname.match(/^\/leghe\/([^/]+)/)?.[1];
   /** L'ultima lega scelta o visitata: la parte comune non si rilegge a ogni cambio di schermata. */
   const [picked, setPicked] = useState<string | null>(null);
-  const current = squads.find((squad) => squad.id === pathLeague)
+  // Mentre si carica la lega scelta, in alto si legge già il suo nome.
+  const current = (switching ? squads.find((squad) => squad.id === picked) : undefined)
+    ?? squads.find((squad) => squad.id === pathLeague)
     ?? squads.find((squad) => squad.id === picked)
     ?? squads.find((squad) => squad.id === activeLeagueId)
     ?? squads[0]
     ?? null;
   const leagueHref = (tab: string) => current ? `/leghe/${current.id}?tab=${tab}` : "/leghe";
+
+  const closeMenus = useCallback(() => setOpen(null), []);
 
   function openLeague(tab: HubTab, event?: { preventDefault: () => void }) {
     setOpen(null);
@@ -99,7 +106,7 @@ export function SiteHeader({
       const target = event.target;
       if (!(target instanceof Node)) return;
       if (bar.current?.contains(target)) return;
-      if (target instanceof Element && target.closest(".tabbar, .drawer, .inbox, .more-sheet")) return;
+      if (target instanceof Element && target.closest(".tabbar, .drawer, .inbox, .more-sheet, .wheel-backdrop")) return;
       setOpen(null);
     }
     document.addEventListener("pointerdown", close);
@@ -118,18 +125,17 @@ export function SiteHeader({
 
   function chooseSquad(leagueId: string) {
     setOpen(null);
+    const onDashboard = pathname === "/";
+    if (leagueId === current?.id && (onDashboard || pathLeague === leagueId)) return;
     setPicked(leagueId);
-    const saved = fetch("/api/active-league", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ leagueId }),
+    window.scrollTo(0, 0);
+    // La scelta si segna subito sul dispositivo, senza aspettare il server: è lo stesso
+    // cookie di /api/active-league e non dà permessi (ogni pagina li ricontrolla).
+    document.cookie = `${LEAGUE_FOCUS_COOKIE}=${encodeURIComponent(leagueId)}; path=/; max-age=${60 * 60 * 24 * 400}; samesite=lax`;
+    startSwitch(() => {
+      if (onDashboard) router.refresh();
+      else router.push(`/leghe/${leagueId}`);
     });
-    if (pathname === "/") {
-      // La Dashboard si rilegge solo dopo che la scelta è stata salvata, altrimenti mostra la lega di prima.
-      void saved.finally(() => router.refresh());
-      return;
-    }
-    router.push(`/leghe/${leagueId}`);
   }
 
   async function signOut() {
@@ -181,9 +187,10 @@ export function SiteHeader({
           <LeagueSwitcher
             leagues={squads}
             currentId={current.id}
+            switching={switching}
             open={open === "leagues"}
             onToggle={() => setOpen(open === "leagues" ? null : "leagues")}
-            onClose={() => setOpen(null)}
+            onClose={closeMenus}
             onChoose={chooseSquad}
           />
         ) : (

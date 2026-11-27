@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type { PlayerRole } from "@/lib/types";
 
-export type WheelItem = { id: string; label: string; role: PlayerRole; detail?: string };
+/** `role` mostra il bollino del ruolo; senza, compare l'iniziale. `sub` è la seconda riga. */
+export type WheelItem = { id: string; label: string; role?: PlayerRole; detail?: string; sub?: string };
 
 const ROW = 48;
 const VISIBLE = 5;
@@ -15,29 +16,50 @@ const ROLE_LETTER: Record<PlayerRole, string> = { GK: "P", DEF: "D", MID: "C", F
  */
 export function WheelPicker({
   title,
-  items,
+  items: everyItem,
   selectedId,
+  search,
+  emptyText,
+  confirmLabel = "Conferma",
+  confirmOnActiveTap = false,
+  footer,
   onConfirm,
   onClose,
 }: {
   title: string;
   items: WheelItem[];
   selectedId: string | null;
+  /** Testo del campo di ricerca; senza, il campo non c'è. */
+  search?: string;
+  emptyText?: string;
+  confirmLabel?: string;
+  /** Un secondo tocco sulla riga al centro la sceglie. */
+  confirmOnActiveTap?: boolean;
+  footer?: ReactNode;
   onConfirm: (id: string) => void;
   onClose: () => void;
 }) {
   const wheel = useRef<HTMLDivElement>(null);
-  const start = Math.max(0, items.findIndex((item) => item.id === selectedId));
+  const [query, setQuery] = useState("");
+  const wanted = query.trim().toLocaleLowerCase("it");
+  const items = wanted
+    ? everyItem.filter((item) => `${item.label} ${item.sub ?? ""}`.toLocaleLowerCase("it").includes(wanted))
+    : everyItem;
+  const start = wanted ? 0 : Math.max(0, items.findIndex((item) => item.id === selectedId));
   const [pos, setPos] = useState(start);
   const frame = useRef(0);
   const active = Math.min(items.length - 1, Math.max(0, Math.round(pos)));
 
   useLayoutEffect(() => {
-    if (wheel.current) wheel.current.scrollTop = start * ROW;
     wheel.current?.focus({ preventScroll: true });
-    // Solo all'apertura: il rullo parte dalla scelta attuale.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useLayoutEffect(() => {
+    if (wheel.current) wheel.current.scrollTop = start * ROW;
+    setPos(start);
+    // All'apertura e a ogni ricerca: il rullo riparte dalla scelta attuale o dal primo risultato.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wanted]);
 
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
@@ -68,8 +90,21 @@ export function WheelPicker({
         <div className="wheel-head">
           <button className="ghost" type="button" onClick={onClose}>Annulla</button>
           <h2>{title}</h2>
-          <button className="primary" type="button" disabled={items.length === 0} onClick={() => onConfirm(items[active].id)}>Conferma</button>
+          <button className="primary" type="button" disabled={items.length === 0} onClick={() => onConfirm(items[active].id)}>{confirmLabel}</button>
         </div>
+        {search ? (
+          <input
+            className="wheel-search"
+            type="search"
+            aria-label={search}
+            placeholder={search}
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && items[active]) onConfirm(items[active].id);
+            }}
+          />
+        ) : null}
         <div className="wheel-frame" style={{ height: ROW * VISIBLE }}>
           <div className="wheel-band" aria-hidden="true" style={{ top: ROW * Math.floor(VISIBLE / 2), height: ROW }} />
           <div
@@ -103,16 +138,26 @@ export function WheelPicker({
                     opacity: Math.max(0.25, 1 - Math.abs(distance) * 0.28),
                     transform: `perspective(400px) rotateX(${-tilt * 50}deg) scale(${1 - Math.abs(tilt) * 0.12})`,
                   }}
-                  onClick={() => goTo(index)}
+                  onClick={() => (confirmOnActiveTap && index === active ? onConfirm(item.id) : goTo(index))}
                 >
-                  <span className="role-chip" data-role={item.role}>{ROLE_LETTER[item.role]}</span>
-                  <strong>{item.label}</strong>
+                  {item.role ? (
+                    <span className="role-chip" data-role={item.role}>{ROLE_LETTER[item.role]}</span>
+                  ) : (
+                    <span className="lsw-crest" aria-hidden="true">{item.label.trim().charAt(0).toUpperCase()}</span>
+                  )}
+                  {item.sub ? (
+                    <span className="wheel-two"><strong>{item.label}</strong><small>{item.sub}</small></span>
+                  ) : (
+                    <strong>{item.label}</strong>
+                  )}
                   {item.detail ? <span className="wheel-detail">{item.detail}</span> : null}
                 </div>
               );
             })}
           </div>
         </div>
+        {items.length === 0 && emptyText ? <p className="wheel-empty">{emptyText}</p> : null}
+        {footer}
       </div>
     </div>
   );

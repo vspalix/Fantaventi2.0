@@ -59,7 +59,7 @@ export type HomeBoard = {
   deadlineAt: string | null;
   deadlineLabel: string | null;
   fixtures: HomeFixture[];
-  leagues: HomeLeagueCard[];
+  /** La lega mostrata: i suoi numeri sono gli unici che la Dashboard calcola. */
   focus: HomeLeagueCard | null;
   promo: HomePromo | null;
   probabiliHref: string;
@@ -73,21 +73,22 @@ function clubLabel(row: { code?: string; club_translations?: { locale: string; s
 
 export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   const admin = createAdminSupabase();
-  const [season, leagues, promo, jar] = await Promise.all([
-    getCurrentSeason(admin),
+  const seasonRead = getCurrentSeason(admin);
+  const [season, leagues, promo, jar, weeks] = await Promise.all([
+    seasonRead,
     listLeaguesForUser(userId),
     loadHomePromo(),
     cookies(),
+    seasonRead.then((current) => admin
+      .from("gameweeks")
+      .select("id, number, deadline_at, status")
+      .eq("season_id", current.id)
+      .gte("number", 1)
+      .lte("number", 38)
+      .order("number", { ascending: true })),
   ]);
   const saved = jar.get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
-
-  const weeks = await admin
-    .from("gameweeks")
-    .select("id, number, deadline_at, status")
-    .eq("season_id", season.id)
-    .gte("number", 1)
-    .lte("number", 38)
-    .order("number", { ascending: true });
+  const focusLeague = leagues.find((league) => league.id === saved) ?? leagues[0] ?? null;
   if (weeks.error) throw new Error(weeks.error.message);
   const calendar = weeks.data ?? [];
   const now = Date.now();
@@ -98,7 +99,7 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
   ));
 
   const weekIds = calendar.map((week) => week.id as string);
-  const [fixtures, cards] = await Promise.all([
+  const [fixtures, focus, look, sponsors] = await Promise.all([
     (async (): Promise<HomeFixture[]> => {
       if (weekIds.length === 0) return [];
       const matches = await admin
@@ -121,12 +122,9 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
         status: match.status as string,
       }));
     })(),
-    Promise.all(leagues.map((league) => leagueCard(admin, season.id, league.id, league.name, league.teamId, calendar))),
-  ]);
-
-  const focus = cards.find((card) => card.id === saved) ?? cards[0] ?? null;
-  const focusLeague = leagues.find((league) => league.id === focus?.id) ?? null;
-  const [look, sponsors] = await Promise.all([
+    focusLeague
+      ? leagueCard(admin, season.id, focusLeague.id, focusLeague.name, focusLeague.teamId, calendar)
+      : Promise.resolve(null),
     readTeamLook(focusLeague?.teamId ?? null, focusLeague?.teamName || "La tua squadra"),
     readSponsors(),
   ]);
@@ -141,7 +139,6 @@ export async function loadHomeBoard(userId: string): Promise<HomeBoard> {
     deadlineAt: nextWeek ? nextWeek.deadline_at as string : null,
     deadlineLabel: nextWeek ? `Giornata ${nextWeek.number}` : null,
     fixtures,
-    leagues: cards,
     focus,
     promo: promo.banner,
     probabiliHref: promo.probabiliHref,

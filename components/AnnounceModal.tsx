@@ -1,38 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { Announcement } from "@/lib/announcements";
+import { useEffect, useRef, useState } from "react";
+import { queueAnnouncements, type Announcement } from "@/lib/announcements";
 import { nativeShare, triggerHaptic } from "@/lib/native/bridge";
 
-const STORAGE = "fv-announcement-seen";
+let sending: Promise<unknown> = Promise.resolve();
 
-function seenIds() {
-  try {
-    const raw = window.localStorage.getItem(STORAGE);
-    const parsed = raw ? JSON.parse(raw) as unknown : [];
-    return new Set(Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : []);
-  } catch {
-    return new Set<string>();
-  }
+// Un invio alla volta, così due annunci di fila non si sovrascrivono. Se non parte, l'annuncio
+// ricompare al prossimo ingresso; i guasti del server li segnala l'API.
+function markSeen(id: string) {
+  sending = sending
+    .then(() => fetch("/api/announcements/seen", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+      keepalive: true,
+    }))
+    .catch(() => undefined);
 }
 
 export function AnnounceModal({ items }: { items: Announcement[] }) {
   const [queue, setQueue] = useState<Announcement[]>([]);
+  const closed = useRef(new Set<string>());
 
   useEffect(() => {
-    const seen = seenIds();
-    setQueue(items.filter((item) => !item.oncePerUser || !seen.has(item.id)));
+    setQueue((list) => queueAnnouncements(list, items, closed.current));
   }, [items]);
 
   const current = queue[0];
+  const shownOnce = current?.oncePerUser ? current.id : null;
+
+  // Conta come visto appena compare, anche se poi si chiude l'app senza premere la ×.
+  useEffect(() => {
+    if (shownOnce) markSeen(shownOnce);
+  }, [shownOnce]);
+
   if (!current) return null;
 
   function close() {
-    if (current.oncePerUser) {
-      const seen = seenIds();
-      seen.add(current.id);
-      window.localStorage.setItem(STORAGE, JSON.stringify([...seen]));
-    }
+    closed.current.add(current.id);
     setQueue((list) => list.slice(1));
   }
 

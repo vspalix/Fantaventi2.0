@@ -9,14 +9,28 @@ export type EntryContext = {
   startMatchday: number;
   /** false nelle leghe a numero chiuso. */
   allowed: boolean;
+  /**
+   * Chi è iscritto ma non ha ancora schierato: la giornata da cui può giocare. Vale per dargli
+   * subito la media; non lo fa contare nella media degli altri.
+   */
+  waiting?: ReadonlyMap<string, number>;
 };
 
 type Week = { id: string; number: number };
 
 /** La giornata di ingresso di chi è arrivato in corsa, altrimenti null. */
 export function lateEntryOf(context: EntryContext, teamId: string) {
-  const entry = context.entryByTeam.get(teamId);
+  const entry = context.entryByTeam.get(teamId) ?? context.waiting?.get(teamId);
   return context.allowed && entry !== undefined && entry > context.startMatchday ? entry : null;
+}
+
+/**
+ * La giornata da cui gioca chi non ha ancora schierato: quella da cui parte la sua rosa oppure,
+ * se non ha una rosa, la prima ancora da chiudere. null se coincide con l'inizio della lega.
+ */
+export function waitingWeek(rosterFrom: number | null, nextOpen: number, startMatchday: number) {
+  const week = Math.max(rosterFrom ?? nextOpen, startMatchday);
+  return week > startMatchday ? week : null;
 }
 
 /** La media di una giornata fra chi era già in gioco; null se non c'era nessuno. */

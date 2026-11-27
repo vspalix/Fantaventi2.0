@@ -11,6 +11,7 @@ import { HomeCacheProvider, SwitchStage } from "@/components/home/HomeCache";
 import { AnnounceModal } from "@/components/AnnounceModal";
 import { NativeBridge } from "@/components/NativeBridge";
 import { ClubBadgeProvider } from "@/components/TeamBadge";
+import { unseenAnnouncements } from "@/lib/announcements";
 import { accentInk, accentOrDefault } from "@/lib/brand";
 import { readBrand } from "@/lib/server/brand";
 import { loadActiveAnnouncements } from "@/lib/server/announcements";
@@ -175,7 +176,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           ) : null}
           <SwitchStage>{children}</SwitchStage>
         </main>
-        {announcements.length > 0 ? <AnnounceModal items={announcements} /> : null}
+        {user ? <AnnounceModal key={user.id} items={unseenAnnouncements(announcements, user.app_metadata)} /> : null}
         <NativeBridge />
         <ToastHost />
         </HomeCacheProvider>

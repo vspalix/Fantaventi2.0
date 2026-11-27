@@ -28,7 +28,8 @@ export async function loadSeasonWeeks(admin: SupabaseClient, seasonId: string) {
 
 export async function rosterAppliesFrom(admin: SupabaseClient, seasonId: string, now = Date.now()) {
   const weeks = await loadSeasonWeeks(admin, seasonId);
-  const open = weeks.find((week) => week.status === "open");
+  // Una giornata «aperta» con l'orario passato è già chiusa: si passa alla successiva.
+  const open = weeks.find((week) => week.status === "open" && new Date(week.deadline_at).getTime() > now);
   if (open) return open.number;
   const upcoming = weeks.find((week) => (
     (week.status === "scheduled" || week.status === "open")

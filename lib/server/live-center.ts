@@ -3,7 +3,7 @@ import { weekGain } from "@/lib/late-entry";
 import { fantapuntiToGoals, headToHeadPairings, headToHeadPoints, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
 import { pitchEvents } from "@/lib/engagement/live-board";
 import { teamWeekPoints } from "@/lib/office-lineup";
-import { fantasyPointsForLeague, leagueEntries } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, leagueEntries, waitingEntries } from "@/lib/server/league-scores";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { reportError } from "@/lib/server/error-report";
@@ -82,6 +82,13 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
         entryByTeam: entries.entryByTeam,
         startMatchday: league.startMatchday,
         allowed: league.rules.enrollment !== "closed",
+        waiting: await waitingEntries(
+          teamIds,
+          entries.entryByTeam,
+          rows.map((row) => ({ number: Number(row.number), deadlineAt: row.deadline_at as string })),
+          league.startMatchday,
+          now.getTime(),
+        ),
       };
       for (const week of closed) {
         const fantasy = new Map(teamIds.map((teamId) => [teamId, points.get(`${teamId}:${week.id}`) ?? 0]));

@@ -7,7 +7,7 @@ import { carryLineup, lineupSaveIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
 import { entryCredit } from "@/lib/late-entry";
-import { fantasyPointsForLeague } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, waitingEntries } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { loadWeekMatchState, type WeekMatchState } from "@/lib/server/roster";
@@ -1199,7 +1199,14 @@ async function standingsInApp(
     if (!live && modeOf(number) === "knockout") return 0;
     return fantasyOf(teamId, gameweekId);
   };
-  const entryContext = { teamIds, entryByTeam, startMatchday, allowed: options.allowLateEntry };
+  const waiting = await waitingEntries(
+    teamIds,
+    entryByTeam,
+    gameweeks.map((gameweek) => ({ number: gameweek.number, deadlineAt: gameweek.deadline_at })),
+    startMatchday,
+    now,
+  );
+  const entryContext = { teamIds, entryByTeam, startMatchday, allowed: options.allowLateEntry, waiting };
 
   return rankStandings(participants.map((participant) => {
     const credit = entryCredit(entryContext, participant.fantasyTeamId, seasonBase, pointsOf);

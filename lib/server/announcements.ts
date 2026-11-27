@@ -1,5 +1,11 @@
+import type { User } from "@supabase/supabase-js";
 import { cache } from "react";
-import type { Announcement, AnnouncementKind } from "@/lib/announcements";
+import {
+  SEEN_ANNOUNCEMENTS_KEY,
+  withSeenAnnouncement,
+  type Announcement,
+  type AnnouncementKind,
+} from "@/lib/announcements";
 import { reportUnlessMissing } from "@/lib/server/error-report";
 import { forgetShared, shared, SHARED_TAGS } from "@/lib/server/shared-cache";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -55,7 +61,7 @@ async function queryActiveAnnouncements(): Promise<Announcement[]> {
   return (rows.data ?? []).map((row) => mapRow(row as Parameters<typeof mapRow>[0]));
 }
 
-// Gli annunci attivi sono uguali per tutti: chi li ha già visti lo ricorda il telefono o il browser.
+// Gli annunci attivi sono uguali per tutti: chi li ha già visti si legge dal suo account, fuori da qui.
 const sharedActiveAnnouncements = shared(SHARED_TAGS.announcements, 300, queryActiveAnnouncements);
 
 export const loadActiveAnnouncements = cache(async (): Promise<Announcement[]> => {
@@ -66,6 +72,20 @@ export const loadActiveAnnouncements = cache(async (): Promise<Announcement[]> =
     return [];
   }
 });
+
+/** Segna sull'account che un annuncio «una sola volta» è comparso. `user` è sempre chi ha fatto la richiesta. */
+export async function markAnnouncementSeen(user: Pick<User, "id" | "app_metadata">, id: unknown) {
+  // Si salvano solo annunci veri e accesi: niente testi arbitrari sull'account.
+  const item = (await loadActiveAnnouncements()).find((announcement) => announcement.id === id && announcement.oncePerUser);
+  if (!item) return;
+  const seen = withSeenAnnouncement(user.app_metadata, item.id);
+  if (!seen) return;
+  // Supabase unisce le chiavi: il resto dei dati dell'account non cambia.
+  const saved = await createAdminSupabase().auth.admin.updateUserById(user.id, {
+    app_metadata: { [SEEN_ANNOUNCEMENTS_KEY]: seen },
+  });
+  if (saved.error) throw new Error(`Database error su annuncio visto: ${saved.error.message}`);
+}
 
 export async function listAnnouncements(): Promise<Announcement[]> {
   const admin = createAdminSupabase();

@@ -49,6 +49,8 @@ export function runLeagueStartChecks() {
       && same(chosen.checkpoints, [{ afterMatchday: 19, changes: 4 }]) && same(chosen.goalBands, [{ min: 65, goals: 1 }])
       && same(chosen.phases, hybrid),
   );
+  check("Lega nuova: l'imbattibilità del portiere parte accesa e vale 1", DEFAULT_LEAGUE_RULES.cleanSheetEnabled && parseLeagueRules(undefined).cleanSheetEnabled && parseLeagueRules({}).cleanSheetPoints === 1);
+  check("Chi la spegne la trova spenta", parseLeagueRules({ ...DEFAULT_LEAGUE_RULES, cleanSheetEnabled: false }).cleanSheetEnabled === false);
   check("La coppa parte dove scelto", scoringPhase(chosen, 31).kind === "knockout" && scoringPhase(chosen, 13).kind === "regular");
 
   // Ingresso in corsa: A, B e C dalla giornata 1; D entra alla 3; E non ha mai schierato.

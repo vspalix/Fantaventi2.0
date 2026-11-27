@@ -2672,6 +2672,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .td-who strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; }
 .td-who small { color: var(--muted); font-size: 11px; }
 .td-captain { flex: none; display: grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 10px; font-weight: 700; }
+.td-vice { box-shadow: inset 0 0 0 1px var(--accent); background: transparent; color: var(--accent); }
 .td-club { display: inline-flex; align-items: center; gap: 3px; color: var(--muted-dim); font-size: 10px; letter-spacing: 0.04em; }
 .td-mark { display: inline-flex; align-items: center; gap: 1px; flex: none; }
 .td-mark .score-icon { width: 15px; height: 15px; }

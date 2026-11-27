@@ -11,6 +11,7 @@ export type CompactPlayer = {
   vote: number | null;
   fanta: number | null;
   captain?: boolean;
+  vice?: boolean;
   /** Cosa scrivere al posto del voto, se per questo calciatore è diverso. */
   emptyText?: string;
   played: boolean;
@@ -61,6 +62,7 @@ export function compactFromLive(sheet: LiveLineupSheet) {
     vote: row.voto,
     fanta: row.fantavoto,
     captain: row.isCaptain,
+    vice: row.isVice,
     emptyText: row.waiting ? "—" : "S.V.",
     played: !benched && row.voto != null,
     entered: false,
@@ -78,6 +80,7 @@ export function compactFromAudit(players: AuditPlayer[]) {
     vote: player.baseVote,
     fanta: player.fantavoto,
     captain: player.captain,
+    vice: player.vice,
     played: player.baseVote != null,
     entered: player.source === "substitute",
     events: eventsFromAudit(player),

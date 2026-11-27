@@ -1,7 +1,7 @@
 import { parseFantacalcioIndisponibili } from "@/lib/availability-providers/fantacalcio";
 import { scoreLineup, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
 import { compactFromAudit, eventsFromAudit } from "@/lib/lineups/compact-sheet";
-import type { AuditPlayer } from "@/lib/engine/score-audit";
+import { explainScore, type AuditPlayer } from "@/lib/engine/score-audit";
 import {
   availabilitySummaryKind,
   availabilityWriteKind,
@@ -126,6 +126,7 @@ function audit(input: Partial<AuditPlayer> & Pick<AuditPlayer, "playerId" | "rol
     malusFactor: 1,
     fantavoto: input.fantavoto ?? input.baseVote ?? 6,
     captain: false,
+    vice: false,
     replacedId: null,
     replacedName: null,
     ...input,
@@ -331,6 +332,33 @@ export function runRulesCoverage() {
       && sheet.bench[0]?.played === false,
     `titolari ${sheet.starters.map((item) => item.id).join(",")} panchina ${sheet.bench.map((item) => `${item.id}:${item.entered}`).join(",")}`,
   );
+
+  const marksOf = (captainVote: number | null, mode: "official" | "provisional") => {
+    const stats = new Map(SHAPE.map(([id, role]) => [id, row(id, role, id === "m1" ? { voto: captainVote } : {})]));
+    const explained = explainScore({
+      fantasyTeamId: "rosa",
+      teamName: "Rosa",
+      gameweekNumber: 13,
+      slots: SHAPE.map(([id, role]) => ({ playerId: id, role, isCaptain: id === "m1", isVice: id === "m2" })),
+      stats,
+      definition: RULES,
+      names: new Map(),
+      mode,
+      matchFinished: new Set(),
+      ranking: "sum",
+      totals: [],
+      storedTotal: null,
+    });
+    const shown = compactFromAudit(explained.players);
+    return [...shown.starters, ...shown.bench]
+      .flatMap((item) => [item.captain ? `C:${item.id}` : "", item.vice ? `V:${item.id}` : ""])
+      .filter(Boolean)
+      .sort()
+      .join(",");
+  };
+  add("Capitano e vice hanno ognuno il suo segno", marksOf(6, "official") === "C:m1,V:m2", marksOf(6, "official"));
+  add("Il vice che fa da capitano mostra solo la C", marksOf(null, "official") === "C:m2", marksOf(null, "official"));
+  add("La proiezione non assegna né capitano né vice", marksOf(6, "provisional") === "", marksOf(6, "provisional"));
 
   return {
     passed: cases.filter((item) => item.pass).length,

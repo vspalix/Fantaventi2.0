@@ -83,8 +83,8 @@ function seed(): Tables {
     ],
     fantasy_teams: TEAMS.map((team) => ({ id: `team-${team}`, season_id: SEASON, user_id: `user-${team}`, name: `Squadra ${team}` })),
     private_leagues: [
-      { id: "league-carry", settings: { missedLineup: "carry", defenseEnabled: false, captainEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
-      { id: "league-penalty", settings: { missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
+      { id: "league-carry", settings: { missedLineup: "carry", defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
+      { id: "league-penalty", settings: { missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }, competition_format: "classic", start_matchday: 2, end_matchday: 38 },
     ],
     private_league_members: [
       ...["A", "B", "C"].map((team) => ({ private_league_id: "league-carry", fantasy_team_id: `team-${team}` })),
@@ -235,8 +235,8 @@ export async function runOfficeLineupLiveChecks() {
       rules,
       participants: teams.map((team) => ({ userId: `user-${team}`, fantasyTeamId: `team-${team}`, teamName: `Squadra ${team}`, displayName: team })),
     } as unknown as LeagueDetail);
-    const carryLeague = league("league-carry", ["A", "B", "C"], parseLeagueRules({ missedLineup: "carry", defenseEnabled: false, captainEnabled: false }));
-    const penaltyLeague = league("league-penalty", ["B", "D", "E"], parseLeagueRules({ missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false }));
+    const carryLeague = league("league-carry", ["A", "B", "C"], parseLeagueRules({ missedLineup: "carry", defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }));
+    const penaltyLeague = league("league-penalty", ["B", "D", "E"], parseLeagueRules({ missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }));
     const centerB = await loadLiveCenter(carryLeague, "user-B", AFTER);
     check("Live: B vede la sua formazione d'ufficio", centerB.mine?.office === true && (centerB.mine?.starters.length ?? 0) === 11, JSON.stringify(centerB.mine?.office));
     check("Live: B vede i suoi punti parziali", centerB.mine?.total === score("team-B")?.provisionalTotal, `${centerB.mine?.total} / ${score("team-B")?.provisionalTotal}`);

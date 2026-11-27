@@ -42,6 +42,7 @@ function fromSlots(opponent: OpponentLineup): { starters: CompactPlayer[]; bench
     vote: null,
     fanta: null,
     captain: slot.isCaptain,
+    vice: slot.isVice,
     played: false,
     entered: false,
     events: [],

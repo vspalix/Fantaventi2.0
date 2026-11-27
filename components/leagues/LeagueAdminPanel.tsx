@@ -62,7 +62,7 @@ export function LeagueAdminPanel({
       ...current,
       format: value,
       ranking: value === "h2h" ? "head_to_head" : "sum",
-      phases: value === current.format ? current.phases : defaultPhases(value),
+      phases: value === current.format ? current.phases : defaultPhases(value, startMatchday, endMatchday),
     }));
   }
 
@@ -179,7 +179,7 @@ export function LeagueAdminPanel({
           </label>
         </div>
         <label>
-          Formato
+          Modalità di gioco
           <select value={rules.format} onChange={(event) => setFormat(event.target.value as CompetitionFormat)}>
             {COMPETITION_FORMATS.map((item) => (
               <option key={item.id} value={item.id}>{item.label}</option>
@@ -325,8 +325,8 @@ export function LeagueAdminPanel({
                     value={phase.format}
                     onChange={(event) => setPhase(index, { format: event.target.value === "h2h" ? "h2h" : "classic" })}
                   >
-                    <option value="classic">Somma punti</option>
-                    <option value="h2h">Scontri diretti</option>
+                    <option value="classic">Tutti contro tutti</option>
+                    <option value="h2h">1 contro 1</option>
                   </select>
                 ) : <span className="small muted">Eliminazione diretta</span>}
                 <label>

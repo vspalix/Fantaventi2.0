@@ -902,7 +902,7 @@ export function LeagueHub({
         <p className="small muted">
           {hub.league.seasonCode} · Giornate {hub.league.startMatchday}–{hub.league.endMatchday}
           {" · "}
-          {hub.league.rules.format === "h2h" ? "Scontri diretti" : hub.league.rules.format === "hybrid" ? "Fasi" : "Somma punti"}
+          {hub.league.rules.format === "h2h" ? "1 contro 1" : hub.league.rules.format === "hybrid" ? "A fasi" : "Tutti contro tutti"}
           {" · "}
           {hub.league.rules.visibility === "public" ? "Pubblica" : "Privata"}
           {" · "}

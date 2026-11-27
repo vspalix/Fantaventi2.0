@@ -1,5 +1,6 @@
 import { awardBadges, bonusWeight, h2hFlips, heavyMalus, overtakes, pitchEvents } from "@/lib/engagement/live-board";
-import { parseLeagueRules, weekScoreMode } from "@/lib/league-rules";
+import { inLeagueRange, parseLeagueRules, weekScoreMode } from "@/lib/league-rules";
+import { readLeagueSettings } from "@/lib/server/league-settings";
 import { writeLeagueFeed } from "@/lib/server/league-feed";
 import { previewProvisional } from "@/lib/server/live-score";
 import { reminderKey } from "@/lib/server/lineup-reminder";
@@ -274,6 +275,8 @@ async function awardLatestBadges() {
 
 async function awardLeagueWeek(leagueId: string, gameweekId: string, gameweekNumber: number) {
   const admin = createAdminSupabase();
+  // Niente premi per giornate fuori dalla lega.
+  if (!inLeagueRange((await readLeagueSettings(admin, leagueId)).range, gameweekNumber)) return 0;
   const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", leagueId);
   if (members.error) return 0;
   const teamIds = (members.data ?? []).map((row) => row.fantasy_team_id as string);

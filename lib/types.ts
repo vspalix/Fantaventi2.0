@@ -117,7 +117,8 @@ export type LineupPick = {
   viceId: string | null;
 };
 
-export type LineupOrigin = "saved" | "previous" | "empty";
+/** `office`: giornata chiusa senza formazione salvata, vale quella d'ufficio che il calcolo registrerà. */
+export type LineupOrigin = "saved" | "previous" | "office" | "empty";
 
 /** Risposta del salvataggio formazione: la formazione registrata e quando. */
 export type SavedLineup = { lineup: LineupPick; savedAt: string | null };
@@ -128,6 +129,8 @@ export type OpponentLineup = {
   displayName: string;
   isMine: boolean;
   filed: boolean;
+  /** Formazione d'ufficio: la squadra non ha salvato e vale quella che il calcolo registrerà. */
+  office?: boolean;
   revealed: boolean;
   slots: {
     playerId: string;
@@ -167,6 +170,7 @@ export type PartialStanding = {
   displayName: string;
   points: number | null;
   filed: boolean;
+  office?: boolean;
   live: boolean;
 };
 
@@ -188,6 +192,10 @@ export type LiveLineupSheet = {
   starters: LivePlayerRow[];
   bench: LivePlayerRow[];
   partialTotal: number | null;
+  /** Formazione d'ufficio: chi non ha salvato vede quella che il calcolo registrerà. */
+  office?: boolean;
+  /** Penalità della lega per la formazione non inviata: è lei il punteggio della giornata. */
+  penalty?: number | null;
 };
 
 export type HubFixture = {

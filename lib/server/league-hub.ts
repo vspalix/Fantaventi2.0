@@ -2,9 +2,10 @@ import { attachAvailability } from "@/lib/server/availability";
 import { getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
-import { filedPlayerScore, liveFormula, projectLiveScore } from "@/lib/engine/calculator";
+import { filedPlayerScore, liveFormula, projectLiveScore, type LineupSlotInput } from "@/lib/engine/calculator";
 import { carryLineup, formationIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
+import { teamWeekPoints } from "@/lib/office-lineup";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
@@ -101,6 +102,17 @@ function pickFromSlots(slots: SlotRow[]): LineupPick {
     captainId: captain?.player_id ?? null,
     viceId: vice?.player_id ?? null,
   };
+}
+
+/** Le righe di una formazione del calcolo live, nella forma delle righe salvate. */
+function slotRowsOf(slots: LineupSlotInput[]): Required<SlotRow>[] {
+  return slots.map((slot, index) => ({
+    player_id: slot.playerId,
+    is_captain: Boolean(slot.isCaptain),
+    is_vice_captain: Boolean(slot.isVice),
+    is_starter: slot.benchOrder == null,
+    slot_order: slot.benchOrder ?? index + 1,
+  }));
 }
 
 function restrictPick(pick: LineupPick, rosterIds: Set<string>): LineupPick {
@@ -228,6 +240,17 @@ export async function loadLeagueHub(
   let lineup = mine ? restrictPick(pickFromSlots(slotsOf(mine)), rosterIds) : emptyPick();
   let lineupOrigin: LineupOrigin = mine ? "saved" : "empty";
   let carriedFromMatchday: number | null = null;
+  // Giornata chiusa senza formazione salvata: vale quella d'ufficio che registrerà il calcolo.
+  const officeRows = (teamId: string) => {
+    if (!locked || !selectedPreview?.office.has(teamId)) return null;
+    const found = selectedPreview.lineups.find((item) => item.fantasyTeamId === teamId);
+    return found ? slotRowsOf(found.slots) : null;
+  };
+  const myOffice = !mine && team ? officeRows(team.id) : null;
+  if (myOffice) {
+    lineup = restrictPick(pickFromSlots(myOffice), rosterIds);
+    lineupOrigin = "office";
+  }
   if (!mine && team && selected && editable) {
     const carried = await carriedLineup(admin, team.id, league.seasonId, selected.number, roster, byId);
     if (carried) {
@@ -238,7 +261,9 @@ export async function loadLeagueHub(
   }
 
   const opponents: OpponentLineup[] = league.participants.map((participant) => {
-    const row = lineupRows.find((item) => item.fantasy_team_id === participant.fantasyTeamId);
+    const saved = lineupRows.find((item) => item.fantasy_team_id === participant.fantasyTeamId);
+    const office = saved ? null : officeRows(participant.fantasyTeamId);
+    const row = saved ?? (office ? { fantasy_team_id: participant.fantasyTeamId, lineup_slots: office } : undefined);
     const isMine = participant.fantasyTeamId === team?.id;
     const revealed = isMine || locked;
     const named = (slot: SlotRow) => {
@@ -267,6 +292,7 @@ export async function loadLeagueHub(
       displayName: participant.displayName,
       isMine,
       filed: Boolean(row),
+      office: Boolean(office),
       revealed,
       slots,
       bench,
@@ -277,7 +303,7 @@ export async function loadLeagueHub(
     : null;
   const [partial, live, checkpointHistory, lastRound] = await Promise.all([
     selectedPreview
-      ? Promise.resolve(partialFromPreview(league.participants, selectedPreview.scores, opponents))
+      ? Promise.resolve(partialFromPreview(league.participants, selectedPreview, opponents))
       : partialStandings(admin, league.participants, selected?.id ?? null, opponents, standingPack.weekPoints),
     liveStandingsFor(league.id, standingPack.rows, livePreview),
     loadCheckpointHistory({
@@ -297,7 +323,7 @@ export async function loadLeagueHub(
     !lastClosed
       ? Promise.resolve([] as PartialStanding[])
       : livePreview && lastClosed.id === liveWeek?.id
-        ? Promise.resolve(partialFromPreview(league.participants, livePreview.scores, []))
+        ? Promise.resolve(partialFromPreview(league.participants, livePreview, []))
         : partialStandings(admin, league.participants, lastClosed.id, [], standingPack.weekPoints),
   ]);
   const liveSheet = selectedPreview && team
@@ -446,7 +472,16 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
   const locked = CLOSED.has(row.status) || new Date(row.deadline_at).getTime() <= Date.now();
   const team = teamOf(userId, league.participants);
   const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
-  const lineupRows = teamIds.length ? await lineupsFor(admin, row.id, teamIds) : [];
+  const savedRows = teamIds.length ? await lineupsFor(admin, row.id, teamIds) : [];
+  // Giornata chiusa e non ancora calcolata: chi non ha salvato gioca con la formazione d'ufficio.
+  const preview = locked && row.status !== "scored" && row.status !== "final" ? await loadPreview(row.id, league.id) : null;
+  const officeTeams = new Set<string>();
+  const lineupRows = [...savedRows];
+  for (const lineup of preview?.lineups ?? []) {
+    if (!lineup.office || !teamIds.includes(lineup.fantasyTeamId)) continue;
+    officeTeams.add(lineup.fantasyTeamId);
+    lineupRows.push({ fantasy_team_id: lineup.fantasyTeamId, lineup_slots: slotRowsOf(lineup.slots) });
+  }
   const playerIds = [...new Set(lineupRows.flatMap((item) => slotsOf(item).map((slot) => slot.player_id)))];
   const byId = new Map<string, CatalogPlayer>();
   if (playerIds.length > 0) {
@@ -514,6 +549,7 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
       displayName: participant.displayName,
       isMine,
       filed: Boolean(lineup),
+      office: officeTeams.has(participant.fantasyTeamId),
       revealed,
       slots: source.filter((slot) => slot.is_starter !== false).map(named).sort((left, right) => ROLE_ORDER[left.role] - ROLE_ORDER[right.role] || left.fullName.localeCompare(right.fullName, "it")),
       bench: source.filter((slot) => slot.is_starter === false).sort((left, right) => (left.slot_order ?? 0) - (right.slot_order ?? 0)).map(named),
@@ -527,7 +563,9 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
       void reportError("Lega: punti della giornata in calendario", error);
     }
   }
-  const partial = await partialStandings(admin, league.participants, row.id, opponents, counted);
+  const partial = preview
+    ? partialFromPreview(league.participants, preview, opponents)
+    : await partialStandings(admin, league.participants, row.id, opponents, counted);
   const seasonClubs = await admin
     .from("season_clubs")
     .select("club_id, clubs(code, club_translations(locale, name, short_name))")
@@ -625,11 +663,15 @@ async function squadsFor(
 async function loadPreview(gameweekId: string, leagueId: string) {
   try {
     const preview = await previewProvisional(gameweekId);
-    const { definition } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition);
+    const { definition, rules } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition);
     const stats = preview.stats;
     return {
       definition,
+      rules,
       stats,
+      lineups: preview.lineups,
+      /** Squadre che giocano con la formazione d'ufficio, non ancora registrata. */
+      office: new Set(preview.lineups.filter((lineup) => lineup.office).map((lineup) => lineup.fantasyTeamId)),
       scores: preview.lineups.map((lineup) => projectLiveScore(
         lineup.fantasyTeamId,
         gameweekId,
@@ -644,20 +686,32 @@ async function loadPreview(gameweekId: string, leagueId: string) {
   }
 }
 
+type Preview = NonNullable<Awaited<ReturnType<typeof loadPreview>>>;
+
+/** Punti live di una squadra in questa lega: formazione d'ufficio e penalità come nel calcolo finale. */
+function previewPoints(preview: Preview, teamId: string) {
+  const score = preview.scores.find((item) => item.fantasyTeamId === teamId);
+  return teamWeekPoints(preview.rules, {
+    points: score ? score.provisionalTotal : null,
+    office: preview.office.has(teamId),
+  });
+}
+
 function partialFromPreview(
   participants: LeagueHubData["league"]["participants"],
-  scores: Awaited<ReturnType<typeof previewProvisional>>["scores"],
+  preview: Preview,
   lineups: OpponentLineup[],
 ): PartialStanding[] {
   const filed = new Set(lineups.filter((lineup) => lineup.filed).map((lineup) => lineup.fantasyTeamId));
-  const byTeam = new Map(scores.map((score) => [score.fantasyTeamId, score.provisionalTotal]));
+  const scored = new Set(preview.scores.map((score) => score.fantasyTeamId));
   const ranked = participants.map((participant) => ({
     rank: 0,
     fantasyTeamId: participant.fantasyTeamId,
     teamName: participant.teamName,
     displayName: participant.displayName,
-    points: round2(byTeam.get(participant.fantasyTeamId) ?? 0),
-    filed: filed.has(participant.fantasyTeamId) || byTeam.has(participant.fantasyTeamId),
+    points: round2(previewPoints(preview, participant.fantasyTeamId) ?? 0),
+    filed: filed.has(participant.fantasyTeamId) || scored.has(participant.fantasyTeamId),
+    office: preview.office.has(participant.fantasyTeamId),
     live: true,
   })).sort((left, right) => {
     if (right.points !== left.points) return right.points - left.points;
@@ -729,8 +783,17 @@ function lineupSheet(
         formula: liveFormula(rated.voto, rated.bonus ?? 0, rated.malus ?? 0),
       }];
     }),
-    partialTotal: score ? round2(score.provisionalTotal) : null,
+    partialTotal: partialTotalOf(preview, fantasyTeamId),
+    office: preview.office.has(fantasyTeamId),
+    penalty: preview.rules.missedLineup === "penalty" && (!score || preview.office.has(fantasyTeamId))
+      ? preview.rules.missedLineupPenalty
+      : null,
   };
+}
+
+function partialTotalOf(preview: Preview, fantasyTeamId: string) {
+  const points = previewPoints(preview, fantasyTeamId);
+  return points === null ? null : round2(points);
 }
 
 async function partialStandings(
@@ -999,10 +1062,12 @@ async function liveStandingsFor(
   return {
     rows: rankStandings(official.map((row) => {
       const score = extra.get(row.fantasyTeamId);
-      if (!score) return { ...row, ratedPlayers: null, onPitch: null };
+      // Penalità comprese: chi non ha formazione in una lega con penalità la prende già in diretta.
+      const points = round2(row.points + (previewPoints(preview, row.fantasyTeamId) ?? 0));
+      if (!score) return { ...row, points, ratedPlayers: null, onPitch: null };
       return {
         ...row,
-        points: round2(row.points + score.provisionalTotal),
+        points,
         ratedPlayers: score.ratedPlayersCount,
         onPitch: score.onPitchCount,
       };

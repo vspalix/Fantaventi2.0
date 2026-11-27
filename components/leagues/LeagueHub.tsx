@@ -50,9 +50,14 @@ async function readJson<T>(response: Response): Promise<T> {
   return readAction<T>(response);
 }
 
-/** Chiusa la formazione vale solo quella salvata: proposte e modifiche in sospeso non contano. */
+/**
+ * Chiusa la formazione vale solo quella salvata: proposte e modifiche in sospeso non contano.
+ * Senza formazione salvata vale quella d'ufficio, la stessa che registrerà il calcolo.
+ */
 function savedPick(hub: LeagueHubData): LeagueHubData["lineup"] {
-  return hub.lineupOrigin === "saved" ? hub.lineup : { playerIds: [], benchIds: [], captainId: null, viceId: null };
+  return hub.lineupOrigin === "saved" || hub.lineupOrigin === "office"
+    ? hub.lineup
+    : { playerIds: [], benchIds: [], captainId: null, viceId: null };
 }
 
 function formatPoints(value: number | null) {
@@ -530,7 +535,9 @@ export function LeagueHub({
     const saved = savedPick(latest);
     showPick(saved, latest.roster);
     const same = shown === JSON.stringify([saved.playerIds, saved.benchIds, saved.captainId, saved.viceId]);
-    setClosedNote(latest.lineupOrigin !== "saved"
+    setClosedNote(latest.lineupOrigin === "office"
+      ? "Tempo scaduto: per questa giornata non risulta una formazione salvata. Vale quella d'ufficio."
+      : latest.lineupOrigin !== "saved"
       ? "Tempo scaduto: per questa giornata non risulta una formazione salvata."
       : same
         ? "Tempo scaduto: questa è la formazione salvata."
@@ -986,6 +993,9 @@ export function LeagueHub({
             </p>
           ) : null}
 
+          {hub.lineupOrigin === "office" && !closedNote ? (
+            <p className="banner" role="status">Non hai salvato la formazione: vale quella d'ufficio, cioè l'ultima salvata adattata alla rosa di questa giornata.</p>
+          ) : null}
           {hub.liveSheet ? <PlayedLineup sheet={hub.liveSheet} /> : null}
           {hub.liveSheet ? null : (
             <section className="roster-main lineup-panel" data-pending={pending || picks.locked}>
@@ -1355,6 +1365,7 @@ function FormationCard({
       {useCarried ? (
         <p className="small muted">Ultima formazione salvata, giornata {carried?.from}. Non ancora confermata per questa giornata.</p>
       ) : null}
+      {opponent.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
       {!opponent.filed && !useCarried ? <p>Non schierata.</p> : !opponent.revealed && !useCarried ? (
         <p>Schierata. I nomi si vedono all&apos;inizio della giornata.</p>
       ) : (
@@ -1485,6 +1496,9 @@ function PlayedLineup({ sheet }: { sheet: LiveLineupSheet }) {
         <h2>Giocatori in campo</h2>
         <CompactLineup starters={liveRows(sheet.starters)} bench={liveRows(sheet.bench)} empty="—" />
       </section>
+      {sheet.penalty != null ? (
+        <p className="small">In questa lega chi non salva la formazione prende la penalità: {formatPoints(sheet.penalty)} punti.</p>
+      ) : null}
       <p className="small muted">
         Proiezione {formatPoints(sheet.partialTotal)}
         <InfoTip label="Proiezione">Somma dei fantavoti già pubblicati. La panchina entra solo se il titolare è senza voto. Difesa, bonus capitano e classifica ufficiale restano al calcolo dei 130 minuti.</InfoTip>
@@ -1665,7 +1679,7 @@ function PartialTable({ rows, source, mineId }: { rows: LeagueHubData["partial"]
   const mine = source.find((row) => row.fantasyTeamId === mineId) ?? null;
   return (
     <>
-      {mine ? <MinePin rank={mine.rank ? `${mine.rank}°` : "–"} name={mine.teamName} detail={mine.filed ? "Schierata" : "Non schierata"} points={mine.points === null ? "—" : formatPoints(mine.points)} /> : null}
+      {mine ? <MinePin rank={mine.rank ? `${mine.rank}°` : "–"} name={mine.teamName} detail={mine.office ? "D'ufficio" : mine.filed ? "Schierata" : "Non schierata"} points={mine.points === null ? "—" : formatPoints(mine.points)} /> : null}
       <div className="board-scroll">
         <table className="standings board">
           <thead>
@@ -1681,7 +1695,7 @@ function PartialTable({ rows, source, mineId }: { rows: LeagueHubData["partial"]
                 <td className="pin">{row.rank || "—"}</td>
                 <td className="pin pin-team">
                   <strong>{row.teamName}</strong>
-                  <span>{row.filed ? "Schierata" : "Non schierata"}</span>
+                  <span>{row.office ? "D'ufficio" : row.filed ? "Schierata" : "Non schierata"}</span>
                 </td>
                 <td className="board-pt">{row.points === null ? "—" : formatPoints(row.points)}</td>
               </tr>

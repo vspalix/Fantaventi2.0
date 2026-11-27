@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
 import { SerieACalendar } from "@/components/serie-a/SerieACalendar";
 import { SetupNotice } from "@/components/SetupNotice";
-import { loadSerieACalendar } from "@/lib/server/serie-a-calendar";
+import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
+import { loadMyCalendarPlayers, loadSerieACalendar } from "@/lib/server/serie-a-calendar";
 import { publicError } from "@/lib/server/api-error";
 import { getSessionUser } from "@/lib/server/session";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -19,8 +21,9 @@ export default async function SerieAPage() {
     );
   }
   try {
-    const calendar = await loadSerieACalendar();
-    return <SerieACalendar title={calendar.title} focus={calendar.focus} rounds={calendar.rounds} />;
+    const focusLeague = (await cookies()).get(LEAGUE_FOCUS_COOKIE)?.value ?? null;
+    const [calendar, mine] = await Promise.all([loadSerieACalendar(), loadMyCalendarPlayers(user.id, focusLeague)]);
+    return <SerieACalendar title={calendar.title} focus={calendar.focus} rounds={calendar.rounds} mine={mine} />;
   } catch (error) {
     return (
       <section className="card">

@@ -1558,15 +1558,13 @@ button.shirt-empty:disabled { cursor: default; }
   border-radius: 4px;
   object-fit: cover;
 }
-.club-pair { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
-.club-pair-score { font-family: var(--font-mono), ui-monospace, monospace; font-weight: 700; }
 
 .gw-stepper { display: flex; align-items: center; gap: 8px; }
 .gw-stepper select { flex: 1; min-width: 0; }
 .gw-stepper .ghost { width: 44px; padding: 0; font-size: 22px; }
 
-.cal-matches, .cal-teams { display: grid; }
-.cal-match, .cal-team {
+.cal-teams { display: grid; }
+.cal-team {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1582,15 +1580,8 @@ button.shirt-empty:disabled { cursor: default; }
   text-align: left;
 }
 /* Righe squadra: posizione, nome, punti e freccia che si apre */
-.cal-team[data-featured="true"] {
-  margin-bottom: 10px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface-2));
-}
-.cal-team[data-mine="true"]:not([data-featured="true"]) { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.cal-team[data-open="true"]:not([data-featured="true"]) { background: var(--surface-2); border-bottom-color: transparent; }
+.cal-team[data-mine="true"] { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.cal-team[data-open="true"] { background: var(--surface-2); border-bottom-color: transparent; }
 .cal-rank { flex: none; width: 30px; color: var(--muted); font-size: var(--fs-sm); font-weight: 600; text-align: center; }
 .cal-name { display: grid; gap: 2px; min-width: 0; flex: 1; }
 .cal-name strong, .cal-name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1601,7 +1592,8 @@ button.shirt-empty:disabled { cursor: default; }
 .cal-team[data-mine="true"] .cal-points, .cal-team[data-mine="true"] .cal-rank { color: var(--accent); }
 .cal-chevron { flex: none; width: 16px; color: var(--muted); font-size: 20px; line-height: 1; text-align: center; transition: transform 200ms ease; }
 .cal-team[data-open="true"] .cal-chevron { transform: rotate(90deg); color: var(--accent); }
-.cal-note, .cal-lineup { padding: 8px 0 12px 40px; }
+.cal-note { padding: 8px 0 12px 40px; }
+.cal-lineup { padding: 8px 0 12px; }
 
 .xi-sheet { display: grid; }
 .xi-row {
@@ -2640,4 +2632,109 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
   .rg-table th, .rg-table td { padding-inline: 8px; }
   .rg-table th { letter-spacing: 0.02em; }
   .rg-number { width: 30px; height: 30px; }
+}
+
+/* Giornata: la propria squadra, classifica e dettaglio */
+.card.gd-mine, .card.gd-ranking { display: grid; gap: 12px; min-width: 0; padding: 18px 16px; }
+.card.gd-mine { border-color: color-mix(in srgb, var(--accent) 55%, transparent); }
+.card p.gd-kicker { margin: 0; color: var(--accent); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.gd-mine-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gd-place, .gd-mine-name, .gd-mine-points { display: grid; line-height: 1.2; }
+.gd-place { flex: none; justify-items: center; min-width: 56px; padding: 8px 6px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 14px; background: var(--surface-deep); }
+.gd-place strong { color: var(--accent); font-size: 26px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gd-place small, .gd-mine-name small, .gd-mine-points small { color: var(--muted); font-size: var(--fs-xs); }
+.gd-mine-name { flex: 1; min-width: 0; gap: 2px; }
+.gd-mine-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-lg); font-weight: 600; }
+.gd-mine-points { flex: none; justify-items: end; }
+.gd-mine-points strong { font-size: 28px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gd-open { width: 100%; min-height: 46px; }
+.gd-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.card .gd-title h2 { margin: 0; }
+.gd-title .text-button { margin-left: auto; padding-inline: 4px; color: var(--accent); }
+.gd-team { min-width: 0; scroll-margin-top: 90px; }
+.gd-loading { padding: 8px 0 12px; }
+
+.score-icon { flex: none; width: 18px; height: 18px; }
+.td { display: grid; gap: 18px; min-width: 0; padding: 6px 0 12px; }
+.td h3 { margin: 0 0 8px; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.td ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.td .td-note { margin: 8px 0 0; color: var(--muted); font-size: var(--fs-sm); }
+.td-special { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-deep); }
+.td-special-icon { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--surface-2); color: var(--accent); }
+.td-special-icon .score-icon { width: 20px; height: 20px; }
+.td-special-text { flex: 1; display: grid; gap: 2px; min-width: 0; line-height: 1.3; }
+.td-special-text strong { font-size: var(--fs-md); font-weight: 600; }
+.td-special-text small { color: var(--muted); font-size: var(--fs-xs); line-height: 1.4; }
+.td-special > b { flex: none; font-size: var(--fs-lg); font-weight: 600; font-variant-numeric: tabular-nums; }
+.td [data-tone="up"] { color: var(--ok); }
+.td [data-tone="down"] { color: var(--danger); }
+.td-special[data-tone] { color: var(--text); }
+.td-special > b[data-tone="flat"] { color: var(--muted); }
+.td .td-defense { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 4px 4px; }
+.td-defense span { padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: var(--fs-xs); }
+.td-defense span[data-used="true"] { border-color: color-mix(in srgb, var(--accent) 50%, transparent); color: var(--text); }
+.td-defense small { flex-basis: 100%; color: var(--muted-dim); font-size: 11px; }
+.td-total { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; background: var(--accent); color: var(--accent-ink); }
+.td-total span { font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.td-total strong { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.td-player { display: flex; align-items: flex-start; gap: 10px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-deep); }
+.td-player[data-counts="false"] { background: transparent; }
+.td-player[data-counts="false"] .td-name strong, .td-player[data-counts="false"] .td-score strong { color: var(--muted); }
+.td-player .role-chip { flex: none; margin-top: 2px; }
+.td-who { flex: 1; display: grid; gap: 5px; min-width: 0; }
+.td .td-who p { margin: 0; }
+.td-name { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.td-name strong { overflow-wrap: anywhere; color: var(--text); font-size: var(--fs-md); font-weight: 600; line-height: 1.3; }
+.td-captain { flex: none; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 700; }
+.td-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; color: var(--muted); font-size: var(--fs-xs); }
+.td-swap { display: inline-flex; align-items: center; gap: 3px; }
+.td-swap .score-icon { width: 13px; height: 13px; }
+.td ul.td-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.td-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-2); color: var(--text); font-size: var(--fs-xs); }
+.td-chip .score-icon { width: 16px; height: 16px; }
+.td-chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+.td-chip[data-kind="goal"] .score-icon, .td-chip[data-kind="penalty"] .score-icon, .td-chip[data-kind="clean"] .score-icon, .td-chip[data-kind="save"] .score-icon { color: var(--ok); }
+.td-chip[data-kind="assist"] .score-icon { color: var(--mid); }
+.td-chip[data-kind="yellow"] .score-icon { color: #f5cf3d; }
+.td-chip[data-kind="red"] .score-icon, .td-chip[data-kind="own"] .score-icon, .td-chip[data-kind="miss"] .score-icon, .td-chip[data-kind="conceded"] .score-icon, .td-chip[data-kind="double"] .score-icon { color: var(--danger); }
+.td-chip[data-kind="political"] .score-icon { color: var(--accent); }
+.td-score { flex: none; display: grid; justify-items: end; min-width: 54px; line-height: 1.2; }
+.td-score strong { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.td-score small { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.td-swaps li { display: flex; align-items: flex-start; gap: 8px; color: var(--muted); font-size: var(--fs-sm); line-height: 1.45; }
+.td-swaps .score-icon { margin-top: 1px; color: var(--ok); }
+.td-swaps li[data-empty="true"] .score-icon { color: var(--danger); }
+@media (min-width: 900px) {
+  .td ul.td-players { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 360px) {
+  .card.gd-mine, .card.gd-ranking { padding-inline: 12px; }
+  .gd-place { min-width: 46px; }
+  .gd-place strong { font-size: 22px; }
+  .gd-mine-points strong { font-size: 22px; }
+  .td-player, .td-special { padding-inline: 10px; gap: 8px; }
+  .td-special-icon { width: 30px; height: 30px; }
+}
+
+/* Calendario Serie A: partite divise per giorno */
+.cs { width: 100%; min-width: 0; }
+.cs-head .section-title { margin: 0; }
+.cs-head p { margin: 6px 0 0; color: var(--muted); font-size: var(--fs-sm); }
+.cs-day { display: grid; gap: 8px; min-width: 0; }
+.cs-day h2 { margin: 4px 0 0; color: var(--accent); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
+.cs-day ul { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.cs-match { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 10px; padding: 14px 12px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--surface); }
+.cs-team { display: grid; justify-items: center; gap: 6px; min-width: 0; text-align: center; }
+.cs-team .team-badge { width: 30px; height: 30px; }
+.cs-team span { max-width: 100%; overflow-wrap: anywhere; font-size: var(--fs-md); font-weight: 600; line-height: 1.2; }
+.cs-middle { display: grid; justify-items: center; gap: 2px; min-width: 70px; }
+.cs-score { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cs-time { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-deep); font-size: var(--fs-md); font-weight: 600; font-variant-numeric: tabular-nums; }
+.cs-middle small { color: var(--muted); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+.cs-mine { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cs-mine-side { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; align-content: start; gap: 4px; min-width: 0; }
+.cs-player { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; padding: 3px 10px 3px 4px; border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); border-radius: 999px; font-size: var(--fs-xs); font-weight: 600; }
+.cs-player > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (min-width: 900px) {
+  .cs-day ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

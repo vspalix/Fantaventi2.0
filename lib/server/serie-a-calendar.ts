@@ -1,10 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { getCurrentSeason } from "@/lib/server/catalog";
+import { getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
+import { reportError } from "@/lib/server/error-report";
+import { listLeaguesForUser } from "@/lib/server/leagues";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { schemaHint } from "@/lib/server/live-score";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import type { PlayerRole } from "@/lib/types";
 
 export type CalendarFixture = {
   home: string;
@@ -374,8 +377,13 @@ async function writeMatchPatch(
 
 export type SerieAMatch = {
   id: string;
+  /** Nome breve, usato per lo stemma. */
   home: string;
   away: string;
+  homeName: string;
+  awayName: string;
+  homeClubId: string;
+  awayClubId: string;
   kickoffAt: string;
   homeGoals: number | null;
   awayGoals: number | null;
@@ -386,6 +394,50 @@ export type SerieARound = {
   status: string;
   matches: SerieAMatch[];
 };
+
+export type MyCalendarPlayers = {
+  leagueName: string;
+  players: { id: string; name: string; role: PlayerRole; clubId: string; from: number; until: number | null }[];
+};
+
+/**
+ * I calciatori della propria squadra nella lega scelta, per segnarli sulle partite.
+ * È un di più: se non si leggono, il calendario si vede lo stesso.
+ */
+export async function loadMyCalendarPlayers(userId: string, focusLeagueId: string | null): Promise<MyCalendarPlayers | null> {
+  try {
+    const leagues = await listLeaguesForUser(userId);
+    const league = leagues.find((item) => item.id === focusLeagueId) ?? leagues[0];
+    if (!league?.teamId) return null;
+    const admin = createAdminSupabase();
+    const season = await getCurrentSeason(admin);
+    const [catalog, stints] = await Promise.all([
+      loadCatalog(season.id),
+      admin
+        .from("roster_stints")
+        .select("player_id, active_from_gameweek, active_until_gameweek")
+        .eq("fantasy_team_id", league.teamId),
+    ]);
+    if (stints.error) throw new Error(stints.error.message);
+    const byId = new Map(catalog.players.map((player) => [player.id, player]));
+    const players = (stints.data ?? []).flatMap((stint) => {
+      const player = byId.get(stint.player_id as string);
+      if (!player) return [];
+      return [{
+        id: player.id,
+        name: player.fullName,
+        role: player.role,
+        clubId: player.clubId,
+        from: Number(stint.active_from_gameweek),
+        until: stint.active_until_gameweek == null ? null : Number(stint.active_until_gameweek),
+      }];
+    });
+    return { leagueName: league.name, players };
+  } catch (error) {
+    void reportError("Schermata Calendario: calciatori della squadra", error);
+    return null;
+  }
+}
 
 export async function loadSerieACalendar(): Promise<{ title: string; focus: number; rounds: SerieARound[] }> {
   const admin = createAdminSupabase();
@@ -423,7 +475,8 @@ export async function loadSerieACalendar(): Promise<{ title: string; focus: numb
   const names = new Map((clubs.data ?? []).map((club) => {
     const translations = club.club_translations as { locale?: string; short_name?: string; name?: string }[] | null;
     const label = translations?.find((item) => item.locale === "it") ?? translations?.[0];
-    return [club.id as string, label?.short_name || label?.name || (club.code as string) || "Club"] as const;
+    const short = label?.short_name || label?.name || (club.code as string) || "Club";
+    return [club.id as string, { short, name: label?.name || short }] as const;
   }));
   const byWeek = new Map<string, SerieAMatch[]>();
   for (const match of plain.data ?? []) {
@@ -439,8 +492,12 @@ export async function loadSerieACalendar(): Promise<{ title: string; focus: numb
     const list = byWeek.get(record.gameweek_id) ?? [];
     list.push({
       id: record.id,
-      home: names.get(record.home_club_id) ?? "Casa",
-      away: names.get(record.away_club_id) ?? "Trasferta",
+      home: names.get(record.home_club_id)?.short ?? "Casa",
+      away: names.get(record.away_club_id)?.short ?? "Trasferta",
+      homeName: names.get(record.home_club_id)?.name ?? "Casa",
+      awayName: names.get(record.away_club_id)?.name ?? "Trasferta",
+      homeClubId: record.home_club_id,
+      awayClubId: record.away_club_id,
       kickoffAt: record.kickoff_at,
       homeGoals: record.home_goals == null ? null : Number(record.home_goals),
       awayGoals: record.away_goals == null ? null : Number(record.away_goals),

@@ -54,15 +54,3 @@ export function TeamBadge({
     </svg>
   );
 }
-
-export function ClubPair({ home, away, score }: { home: string; away: string; score?: string | null }) {
-  return (
-    <span className="club-pair">
-      <TeamBadge teamName={home} />
-      <span>{home}</span>
-      <span className="club-pair-score">{score ?? "–"}</span>
-      <TeamBadge teamName={away} />
-      <span>{away}</span>
-    </span>
-  );
-}

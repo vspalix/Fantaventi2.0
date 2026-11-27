@@ -2,9 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { InfoTip } from "@/components/InfoTip";
-import { CompactLineup, type CompactPlayer, type LineBonuses } from "@/components/lineups/CompactLineup";
+import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
+import { TeamDetail } from "@/components/scores/TeamDetail";
+import type { ScoreAudit } from "@/lib/engine/score-audit";
 import type { LeagueHubData, LiveLineupSheet, OpponentLineup } from "@/lib/types";
 import { readableError } from "@/lib/feedback";
+
+/** Quante squadre alla volta: la classifica resta veloce anche con tantissimi iscritti. */
+const PAGE = 50;
 
 type CalendarWeek = {
   selectedGameweekId: string;
@@ -14,13 +19,13 @@ type CalendarWeek = {
   selectedFixtures: LeagueHubData["home"]["selectedFixtures"];
 };
 
-type Sheet = {
-  fantasyTeamId: string;
-  total: number;
-  starters: CompactPlayer[];
-  bench: CompactPlayer[];
-  bonuses?: LineBonuses;
-};
+/** Il dettaglio di una squadra in una giornata calcolata. */
+type Detail =
+  | { state: "ok"; audit: ScoreAudit }
+  | { state: "none" }
+  | { state: "error"; text: string };
+
+type Standing = LeagueHubData["partial"][number];
 
 function points(value: number | null) {
   if (value == null) return "—";
@@ -77,8 +82,11 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
   const [week, setWeek] = useState<CalendarWeek | null>(null);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** Cosa è aperto: «mine» per il riquadro in alto, altrimenti la squadra in classifica. */
   const [openId, setOpenId] = useState<string | null>(null);
-  const [sheets, setSheets] = useState<Record<string, Sheet[]>>({});
+  const [details, setDetails] = useState<Record<string, Detail>>({});
+  const asked = useRef(new Set<string>());
+  const [visible, setVisible] = useState(PAGE);
   const selectedId = week?.selectedGameweekId ?? hub.selectedGameweekId;
   const index = Math.max(0, weeks.findIndex((item) => item.id === selectedId));
   const current = weeks[index] ?? null;
@@ -86,38 +94,80 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
   const partial = week?.partial ?? hub.partial;
   const scored = current?.status === "scored" || current?.status === "final";
   const pointsById = new Map(partial.map((row) => [row.fantasyTeamId, row]));
-  const teams = [...opponents].sort((left, right) => {
-    const leftRank = pointsById.get(left.fantasyTeamId)?.rank ?? 99;
-    const rightRank = pointsById.get(right.fantasyTeamId)?.rank ?? 99;
-    return leftRank - rightRank || left.teamName.localeCompare(right.teamName, "it");
-  });
-  const loaded = current ? sheets[current.id] : undefined;
+  // Chi non ha punti va in fondo: il suo posto in classifica non esiste.
+  const place = (teamId: string) => {
+    const row = pointsById.get(teamId);
+    return row?.points == null ? Number.MAX_SAFE_INTEGER : row.rank;
+  };
+  const teams = [...opponents].sort((left, right) => (
+    place(left.fantasyTeamId) - place(right.fantasyTeamId) || left.teamName.localeCompare(right.teamName, "it")
+  ));
   const gameweekId = current?.id ?? "";
   const mine = teams.find((team) => team.isMine) ?? null;
+  const mineIndex = teams.findIndex((team) => team.isMine);
   const mineStanding = mine ? pointsById.get(mine.fantasyTeamId) : undefined;
+  const best = teams.length > 0 ? pointsById.get(teams[0].fantasyTeamId)?.points ?? null : null;
   const requestedRound = useRef(initialRound);
+  const detailKey = (teamId: string) => `${gameweekId}:${teamId}`;
+
+  async function loadDetail(teamId: string) {
+    const key = detailKey(teamId);
+    if (asked.current.has(key)) return;
+    asked.current.add(key);
+    try {
+      const response = await fetch(`/api/leagues/${hub.league.id}/matchday?gameweekId=${gameweekId}&fantasyTeamId=${teamId}`);
+      const body = await response.json() as ScoreAudit & { error?: string };
+      if (response.status === 404) {
+        setDetails((kept) => ({ ...kept, [key]: { state: "none" } }));
+        return;
+      }
+      if (!response.ok) throw new Error(body.error ?? "Voti non disponibili.");
+      setDetails((kept) => ({ ...kept, [key]: { state: "ok", audit: body } }));
+    } catch (reason) {
+      // Si potrà richiedere di nuovo.
+      asked.current.delete(key);
+      setDetails((kept) => ({ ...kept, [key]: { state: "error", text: readableError(reason, "Voti non disponibili.") } }));
+    }
+  }
+
+  // Il dettaglio della propria squadra si prepara subito, così al tocco è già lì.
+  const mineId = mine?.filed ? mine.fantasyTeamId : "";
+  useEffect(() => {
+    if (scored && gameweekId && mineId) void loadDetail(mineId);
+    // loadDetail cambia a ogni disegno: contano solo giornata e squadra.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scored, gameweekId, mineId]);
+
+  function toggle(key: string, team: OpponentLineup) {
+    const opening = openId !== key;
+    setOpenId(opening ? key : null);
+    // Per chi non ha schierato non c’è nulla da chiedere.
+    if (opening && scored && team.filed) void loadDetail(team.fantasyTeamId);
+  }
+
+  function goToMine() {
+    if (mineIndex < 0) return;
+    if (mineIndex >= visible) setVisible(mineIndex + 10);
+    window.setTimeout(() => {
+      document.getElementById("gd-mine-row")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 50);
+  }
+
+  const detailFor = (team: OpponentLineup) => (
+    <TeamBlock
+      opponent={team}
+      scored={Boolean(scored)}
+      detail={details[detailKey(team.fantasyTeamId)] ?? null}
+      live={team.isMine && current && hub.home.gameweekNumber === current.number ? hub.liveSheet : null}
+      onRetry={() => void loadDetail(team.fantasyTeamId)}
+    />
+  );
 
   useEffect(() => {
     setWeek(null);
     setOpenId(null);
+    setVisible(PAGE);
   }, [hub.selectedGameweekId]);
-
-  useEffect(() => {
-    if (!gameweekId || !scored || sheets[gameweekId]) return;
-    let cancel = false;
-    void (async () => {
-      try {
-        const response = await fetch(`/api/leagues/${hub.league.id}/matchday?gameweekId=${gameweekId}&scope=sheets`);
-        const body = await response.json() as { sheets?: Sheet[]; error?: string };
-        if (cancel) return;
-        if (!response.ok) throw new Error(body.error ?? "Voti non disponibili.");
-        setSheets((cache) => ({ ...cache, [gameweekId]: body.sheets ?? [] }));
-      } catch (reason) {
-        if (!cancel) setError(readableError(reason, "Voti non disponibili."));
-      }
-    })();
-    return () => { cancel = true; };
-  }, [gameweekId, scored, sheets, hub.league.id]);
 
   async function choose(gameweekId: string) {
     if (!gameweekId || gameweekId === selectedId || pending) return;
@@ -129,6 +179,7 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
       const body = await response.json() as { calendar?: CalendarWeek; error?: string };
       if (!response.ok || !body.calendar) throw new Error(body.error ?? "Giornata non disponibile.");
       setWeek(body.calendar);
+      setVisible(PAGE);
     } catch (reason) {
       setError(readableError(reason, "Giornata non disponibile."));
     } finally {
@@ -182,75 +233,91 @@ export function MatchdayResults({ hub, initialRound }: { hub: LeagueHubData; ini
       </div>
       {error ? <p className="banner">{error}</p> : null}
 
-      <article className="card">
-        <h2>Risultati giornata{current ? ` ${current.number}` : ""}</h2>
-        <p className="small muted">Tocca una squadra per vedere la formazione e i voti <InfoTip label="Risultati di giornata">Posizione e punti di questa giornata. La tua squadra resta in alto e anche al suo posto in elenco.</InfoTip></p>
+      {mine ? (
+        <article className="card gd-mine">
+          <p className="gd-kicker">La tua squadra</p>
+          {/* Senza punti non c'è ancora una posizione: restano nome e spiegazione. */}
+          <div className="gd-mine-row">
+            {mineStanding?.points != null ? (
+              <span className="gd-place">
+                <strong>{mineStanding.rank}°</strong>
+                <small>su {teams.length}</small>
+              </span>
+            ) : null}
+            <span className="gd-mine-name">
+              <strong>{mine.teamName}</strong>
+              <small>{mineNote(mineStanding, best, Boolean(scored))}</small>
+            </span>
+            {mineStanding?.points != null ? (
+              <span className="gd-mine-points">
+                <strong>{points(mineStanding.points)}</strong>
+                <small>fantapunti</small>
+              </span>
+            ) : null}
+          </div>
+          <button className="ghost gd-open" type="button" aria-expanded={openId === "mine"} onClick={() => toggle("mine", mine)}>
+            {openId === "mine" ? "Chiudi il dettaglio" : "Vedi il dettaglio"}
+          </button>
+          {openId === "mine" ? detailFor(mine) : null}
+        </article>
+      ) : null}
+
+      <article className="card gd-ranking">
+        <div className="gd-title">
+          <h2>Classifica di giornata</h2>
+          <InfoTip label="Classifica di giornata">Posizione e punti di questa giornata. Tocca una squadra per vedere formazione, voti e bonus.</InfoTip>
+          {mineIndex >= 0 && teams.length > 8 ? (
+            <button className="text-button" type="button" onClick={goToMine}>Vai alla mia posizione</button>
+          ) : null}
+        </div>
         {teams.length === 0 ? <p className="small muted">Nessuna squadra iscritta.</p> : (
           <div className="cal-teams">
-            {mine ? (
-              <TeamRow
-                team={mine}
-                standing={mineStanding}
-                open={openId === mine.fantasyTeamId}
-                featured
-                onOpen={() => setOpenId(openId === mine.fantasyTeamId ? null : mine.fantasyTeamId)}
-              />
-            ) : null}
-            {mine && openId === mine.fantasyTeamId && current ? (
-              <TeamLineup
-                opponent={mine}
-                scored={Boolean(scored)}
-                sheet={loaded?.find((item) => item.fantasyTeamId === mine.fantasyTeamId) ?? null}
-                waiting={Boolean(scored && !loaded)}
-                live={hub.home.gameweekNumber === current.number ? hub.liveSheet : null}
-              />
-            ) : null}
-            {teams.map((team) => {
-              const standing = pointsById.get(team.fantasyTeamId);
+            {teams.slice(0, visible).map((team) => {
               const open = openId === team.fantasyTeamId;
-              const sheet = loaded?.find((item) => item.fantasyTeamId === team.fantasyTeamId) ?? null;
               return (
-                <div key={team.fantasyTeamId}>
+                <div className="gd-team" key={team.fantasyTeamId} id={team.isMine ? "gd-mine-row" : undefined}>
                   <TeamRow
                     team={team}
-                    standing={standing}
+                    standing={pointsById.get(team.fantasyTeamId)}
                     open={open}
-                    onOpen={() => setOpenId(open ? null : team.fantasyTeamId)}
+                    onOpen={() => toggle(team.fantasyTeamId, team)}
                   />
-                  {open && current && !team.isMine ? (
-                    <TeamLineup
-                      opponent={team}
-                      scored={Boolean(scored)}
-                      sheet={sheet}
-                      waiting={Boolean(scored && !loaded)}
-                      live={null}
-                    />
-                  ) : null}
+                  {open ? detailFor(team) : null}
                 </div>
               );
             })}
           </div>
         )}
+        {teams.length > visible ? (
+          <button className="ghost" type="button" onClick={() => setVisible(visible + PAGE)}>
+            Mostra altre {Math.min(PAGE, teams.length - visible)}
+          </button>
+        ) : null}
       </article>
     </section>
   );
+}
+
+function mineNote(standing: Standing | undefined, best: number | null, scored: boolean) {
+  if (standing?.points == null) return "I punti arrivano quando la giornata è calcolata.";
+  const gap = best == null ? 0 : best - standing.points;
+  const where = gap <= 0 ? "Primo posto di giornata" : `${points(gap)} dal primo`;
+  return scored ? where : `${where} · provvisorio`;
 }
 
 function TeamRow({
   team,
   standing,
   open,
-  featured = false,
   onOpen,
 }: {
   team: OpponentLineup;
   standing: { rank: number; points: number | null } | undefined;
   open: boolean;
-  featured?: boolean;
   onOpen: () => void;
 }) {
   return (
-    <button className="cal-team" type="button" aria-expanded={open} data-open={open} data-mine={team.isMine} data-featured={featured} onClick={onOpen}>
+    <button className="cal-team" type="button" aria-expanded={open} data-open={open} data-mine={team.isMine} onClick={onOpen}>
       <span className="cal-rank">{standing?.points == null ? "–" : `${standing.rank}°`}</span>
       <span className="cal-name">
         <strong>{team.teamName}</strong>
@@ -262,46 +329,50 @@ function TeamRow({
   );
 }
 
-function TeamLineup({
+function TeamBlock({
   opponent,
   scored,
-  sheet,
-  waiting,
+  detail,
   live,
+  onRetry,
 }: {
   opponent: OpponentLineup;
   scored: boolean;
-  sheet: Sheet | null;
-  waiting: boolean;
+  detail: Detail | null;
   live: LiveLineupSheet | null;
+  onRetry: () => void;
 }) {
-  if (!opponent.filed) return <p className="small muted cal-note">Non ha schierato.</p>;
+  if (!opponent.filed || detail?.state === "none") return <p className="small muted cal-note">Non ha schierato.</p>;
   if (!opponent.revealed) return <p className="small muted cal-note">La formazione si apre alla deadline.</p>;
-  if (sheet) {
-    return (
-      <div className="cal-lineup">
-        <CompactLineup starters={sheet.starters} bench={sheet.bench} bonuses={sheet.bonuses} />
-        <p className="small muted">Fantapunti {points(sheet.total)}</p>
-      </div>
-    );
+  if (scored) {
+    if (!detail) {
+      return (
+        <div className="stack gd-loading" role="status" aria-label="Carico il dettaglio">
+          <div className="skeleton skeleton-card" />
+          <div className="skeleton skeleton-card" />
+        </div>
+      );
+    }
+    if (detail.state === "error") {
+      return (
+        <div className="stack gd-loading">
+          <p className="banner">{detail.text}</p>
+          <button className="ghost" type="button" onClick={onRetry}>Riprova</button>
+        </div>
+      );
+    }
+    return <TeamDetail audit={detail.audit} />;
   }
-  if (live) {
-    const rows = fromLive(live);
-    return (
-      <div className="cal-lineup">
-        {opponent.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
-        <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
-        <p className="small muted">Proiezione {points(live.partialTotal)}. Il totale ufficiale arriva al calcolo della giornata.</p>
-      </div>
-    );
-  }
-  const rows = fromSlots(opponent);
+  const rows = live ? fromLive(live) : fromSlots(opponent);
   return (
     <div className="cal-lineup">
       {opponent.office ? <p className="small muted">Formazione d&apos;ufficio: non salvata in tempo.</p> : null}
       <CompactLineup starters={rows.starters} bench={rows.bench} empty="—" />
-      {waiting ? <p className="small muted">Carico i voti…</p> : null}
-      {!scored ? <p className="small muted">I voti compaiono quando la giornata è calcolata.</p> : null}
+      <p className="small muted">
+        {live
+          ? `Proiezione ${points(live.partialTotal)}. Il totale ufficiale arriva al calcolo della giornata.`
+          : "I voti compaiono quando la giornata è calcolata."}
+      </p>
     </div>
   );
 }

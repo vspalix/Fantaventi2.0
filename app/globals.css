@@ -220,10 +220,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .lsw-row-text strong { font-size: var(--fs-md); font-weight: 600; }
 .lsw-crest { flex: none; display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); border-radius: 11px; background: var(--surface-deep); color: var(--accent); font-size: var(--fs-lg); font-weight: 500; }
 .lsw-check { flex: none; color: var(--accent); font-weight: 700; }
-.lsw-wait { position: absolute; z-index: 1; top: 100%; left: 0; right: 0; height: 100dvh; overflow: hidden; background: var(--bg); }
-.lsw-wait-body { display: grid; gap: 14px; width: min(1120px, calc(100% - 24px)); margin: 0 auto; padding-top: 24px; }
-.lsw-wait p { margin: 0; color: var(--muted); }
-.lsw-wait p strong { color: var(--text); font-weight: 600; }
+.stage { display: contents; }
+.stage-hidden { display: none; }
+.stage-title { margin: 0; color: var(--muted); }
+.stage-title strong { color: var(--text); font-weight: 600; }
 .wheel-sheet input.wheel-search { min-height: 46px; }
 .wheel-two { flex: 1; display: grid; min-width: 0; line-height: 1.25; }
 .wheel-two small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: var(--fs-xs); }

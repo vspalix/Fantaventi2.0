@@ -7,6 +7,7 @@ import { MaintenanceBanner } from "@/components/MaintenanceBanner";
 import { ToastHost } from "@/components/ToastHost";
 import { SiteHeader, type HeaderSeason, type HeaderSquad } from "@/components/SiteHeader";
 import { MyLeaguesProvider } from "@/components/leagues/MyLeagues";
+import { HomeCacheProvider, SwitchStage } from "@/components/home/HomeCache";
 import { AnnounceModal } from "@/components/AnnounceModal";
 import { NativeBridge } from "@/components/NativeBridge";
 import { ClubBadgeProvider } from "@/components/TeamBadge";
@@ -151,6 +152,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
       <body className={sans.variable} style={{ ["--accent" as string]: accent, ["--accent-ink" as string]: accentInk(accent), ["--glow" as string]: `0 0 28px rgba(${red}, ${green}, ${blue}, 0.16)` }}>
         <ClubBadgeProvider badges={badges}>
         <MyLeaguesProvider leagues={myLeagues}>
+        <HomeCacheProvider owner={user?.id ?? null}>
         <Suspense fallback={<header className="site-header" />}>
           <SiteHeader
             email={user?.email ?? null}
@@ -171,11 +173,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               {authDown ? SESSION_UNAVAILABLE : "Qualche informazione non si è caricata. Ricarica la pagina tra poco."}
             </p>
           ) : null}
-          {children}
+          <SwitchStage>{children}</SwitchStage>
         </main>
         {announcements.length > 0 ? <AnnounceModal items={announcements} /> : null}
         <NativeBridge />
         <ToastHost />
+        </HomeCacheProvider>
         </MyLeaguesProvider>
         </ClubBadgeProvider>
       </body>

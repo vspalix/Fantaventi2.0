@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { WheelPicker } from "@/components/lineups/WheelPicker";
 
 export type SwitchLeague = { id: string; teamName: string; leagueName: string };
 
 /** Fino a questo numero di leghe basta la tendina; oltre si sceglie con il rullo. */
-const LIST_UP_TO = 7;
+export const LIST_UP_TO = 7;
 
 function initialOf(name: string) {
   return name.trim().charAt(0).toUpperCase();
@@ -26,12 +26,15 @@ export function LeagueSwitcher({
   onToggle,
   onClose,
   onChoose,
+  onHighlight,
 }: {
   leagues: SwitchLeague[];
   currentId: string;
   open: boolean;
-  /** La lega scelta si sta caricando: lo si mostra subito. */
+  /** I dati aggiornati della lega scelta stanno arrivando. */
   switching: boolean;
+  /** La lega ferma al centro del rullo: si può già preparare. */
+  onHighlight: (leagueId: string) => void;
   onToggle: () => void;
   onClose: () => void;
   onChoose: (leagueId: string) => void;
@@ -39,6 +42,14 @@ export function LeagueSwitcher({
   const trigger = useRef<HTMLButtonElement>(null);
   const current = leagues.find((league) => league.id === currentId) ?? leagues[0];
   const wheel = leagues.length > LIST_UP_TO;
+  const [highlighted, setHighlighted] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !highlighted) return;
+    // Si aspetta che il rullo si fermi, per non chiedere tutte le leghe che scorrono.
+    const timer = window.setTimeout(() => onHighlight(highlighted), 150);
+    return () => window.clearTimeout(timer);
+  }, [open, highlighted, onHighlight]);
 
   useEffect(() => {
     // Il rullo gestisce da sé il tasto Esc.
@@ -84,6 +95,7 @@ export function LeagueSwitcher({
           confirmLabel="Apri"
           confirmOnActiveTap
           footer={all}
+          onActiveChange={setHighlighted}
           onConfirm={onChoose}
           onClose={onClose}
         />,
@@ -110,17 +122,6 @@ export function LeagueSwitcher({
             {all}
           </div>
         </>
-      ) : null}
-      {switching ? (
-        <div className="lsw-wait" role="status">
-          <div className="lsw-wait-body">
-            <p>Apro <strong>{current.leagueName}</strong></p>
-            <div className="skeleton skeleton-title" />
-            <div className="skeleton skeleton-card" />
-            <div className="skeleton skeleton-card" />
-            <div className="skeleton skeleton-card" />
-          </div>
-        </div>
       ) : null}
     </div>
   );

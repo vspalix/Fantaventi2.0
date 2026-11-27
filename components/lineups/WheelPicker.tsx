@@ -23,6 +23,7 @@ export function WheelPicker({
   confirmLabel = "Conferma",
   confirmOnActiveTap = false,
   footer,
+  onActiveChange,
   onConfirm,
   onClose,
 }: {
@@ -36,6 +37,8 @@ export function WheelPicker({
   /** Un secondo tocco sulla riga al centro la sceglie. */
   confirmOnActiveTap?: boolean;
   footer?: ReactNode;
+  /** Chiamata quando cambia la riga al centro. */
+  onActiveChange?: (id: string) => void;
   onConfirm: (id: string) => void;
   onClose: () => void;
 }) {
@@ -49,6 +52,11 @@ export function WheelPicker({
   const [pos, setPos] = useState(start);
   const frame = useRef(0);
   const active = Math.min(items.length - 1, Math.max(0, Math.round(pos)));
+  const activeId = items[active]?.id;
+
+  useEffect(() => {
+    if (activeId) onActiveChange?.(activeId);
+  }, [activeId, onActiveChange]);
 
   useLayoutEffect(() => {
     wheel.current?.focus({ preventScroll: true });

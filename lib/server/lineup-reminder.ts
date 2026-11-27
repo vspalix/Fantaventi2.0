@@ -123,7 +123,7 @@ export async function saveReminderSettings(input: { enabled: unknown; leadMinute
 export async function runLineupReminder(now = Date.now(), deps: ReminderDeps = liveDeps()): Promise<ReminderReport> {
   const settings = await deps.settings();
   if (!settings.ready) return { skipped: "Manca la modifica al database.", weeks: [] };
-  if (!settings.enabled) return { skipped: "Promemoria spento dal Laboratorio.", weeks: [] };
+  if (!settings.enabled) return { skipped: "Promemoria spento da Admin › Notifiche.", weeks: [] };
 
   const weeks = await deps.upcomingWeeks(now, now + lookAheadMinutes(settings.leadMinutes) * MINUTE);
   if (weeks.length === 0) return { skipped: null, weeks: [] };

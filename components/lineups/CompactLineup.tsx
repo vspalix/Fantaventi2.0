@@ -105,8 +105,8 @@ function Row({ player, empty }: { player: CompactPlayer; empty: string }) {
           </span>
         ) : null}
       </span>
-      <span className="xi-vote">{voteText(player.vote, empty)}</span>
-      <span className="xi-fanta">{voteText(player.fanta, empty)}</span>
+      <span className="xi-vote">{voteText(player.vote, player.emptyText ?? empty)}</span>
+      <span className="xi-fanta">{voteText(player.fanta, player.emptyText ?? empty)}</span>
     </div>
   );
 }

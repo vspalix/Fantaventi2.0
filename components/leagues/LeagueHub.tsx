@@ -13,7 +13,8 @@ import { MyPagelle } from "@/components/leagues/MyPagelle";
 import { Pitch } from "@/components/leagues/Pitch";
 import { TeamBadge } from "@/components/TeamBadge";
 import { AvailabilityBadge, isUnavailable } from "@/components/lineups/AvailabilityBadge";
-import { CompactLineup, type CompactPlayer } from "@/components/lineups/CompactLineup";
+import { CompactLineup } from "@/components/lineups/CompactLineup";
+import { compactFromLive, LIVE_NOTE } from "@/lib/lineups/compact-sheet";
 import { WheelPicker } from "@/components/lineups/WheelPicker";
 import { BenchOrder } from "@/components/lineups/BenchOrder";
 import {
@@ -1517,35 +1518,19 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
   );
 }
 
-function liveRows(rows: LiveLineupSheet["starters"]): CompactPlayer[] {
-  return rows.map((row) => ({
-    id: row.playerId,
-    name: row.fullName,
-    role: row.role,
-    club: row.clubShort,
-    vote: row.voto,
-    fanta: row.fantavoto,
-    captain: row.isCaptain,
-    vice: row.isVice,
-    played: row.voto != null,
-    entered: false,
-    events: [],
-  }));
-}
-
 function PlayedLineup({ sheet }: { sheet: LiveLineupSheet }) {
   return (
     <div className="stack">
       <section className="panel">
         <h2>Giocatori in campo</h2>
-        <CompactLineup starters={liveRows(sheet.starters)} bench={liveRows(sheet.bench)} empty="—" />
+        <CompactLineup {...compactFromLive(sheet)} />
       </section>
       {sheet.penalty != null ? (
         <p className="small">In questa lega chi non salva la formazione prende la penalità: {formatPoints(sheet.penalty)} punti.</p>
       ) : null}
       <p className="small muted">
         Proiezione {formatPoints(sheet.partialTotal)}
-        <InfoTip label="Proiezione">Somma dei fantavoti già pubblicati. La panchina entra solo se il titolare è senza voto. Difesa, bonus capitano e classifica ufficiale restano al calcolo dei 130 minuti.</InfoTip>
+        <InfoTip label="Proiezione">{LIVE_NOTE} Anche difesa, bonus capitano e classifica ufficiale arrivano al calcolo.</InfoTip>
       </p>
     </div>
   );

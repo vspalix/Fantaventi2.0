@@ -1,5 +1,5 @@
 import type { AuditPlayer } from "@/lib/engine/score-audit";
-import type { PlayerRole } from "@/lib/types";
+import type { LiveLineupSheet, PlayerRole } from "@/lib/types";
 
 export type LineEvent = "goal" | "assist" | "yellow" | "red" | "own" | "miss" | "save" | "conceded" | "clean";
 
@@ -12,6 +12,8 @@ export type CompactPlayer = {
   fanta: number | null;
   captain?: boolean;
   vice?: boolean;
+  /** Cosa scrivere al posto del voto, se per questo calciatore è diverso. */
+  emptyText?: string;
   played: boolean;
   entered: boolean;
   events: { kind: LineEvent; count: number }[];
@@ -46,6 +48,27 @@ export function eventsFromAudit(player: AuditPlayer): CompactPlayer["events"] {
     events.push({ kind, count: Math.max(1, line.count) });
   }
   return events;
+}
+
+export const LIVE_NOTE = "In diretta contano solo i titolari con voto. La panchina entra al calcolo della giornata, se un titolare resta senza voto. S.V. vuol dire senza voto, il trattino che il voto non è ancora arrivato.";
+
+/** Le righe in diretta. In evidenza resta solo chi conta adesso: i titolari con voto. */
+export function compactFromLive(sheet: LiveLineupSheet) {
+  const map = (benched: boolean) => (row: LiveLineupSheet["starters"][number]): CompactPlayer => ({
+    id: row.playerId,
+    name: row.fullName,
+    role: row.role,
+    club: row.clubShort,
+    vote: row.voto,
+    fanta: row.fantavoto,
+    captain: row.isCaptain,
+    vice: row.isVice,
+    emptyText: row.waiting ? "—" : "S.V.",
+    played: !benched && row.voto != null,
+    entered: false,
+    events: [],
+  });
+  return { starters: sheet.starters.map(map(false)), bench: sheet.bench.map(map(true)) };
 }
 
 export function compactFromAudit(players: AuditPlayer[]) {

@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { realExternalCallsAllowed } from "@/lib/outbound";
 import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
 import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/lib/testing/scoringEngineTestSuite";
@@ -12,6 +13,7 @@ import { runLineupSaveChecks } from "./test-lineup-save";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
 import { runLineupReminderChecks } from "./test-lineup-reminder";
 import { runLiveGapChecks } from "./test-live-gaps";
+import { installTestNetworkGuard, removeSendingKeys } from "./test-guard";
 import { runRulesCoverage } from "./test-rules-coverage";
 import { runSubstitutionChecks } from "./test-substitutions";
 import { runVoteScheduleChecks } from "./test-vote-schedule";
@@ -19,8 +21,14 @@ import { runVoteScheduleChecks } from "./test-vote-schedule";
 const ENGINE_MIN = 34;
 const FULL_SUITE = 40;
 
+// Sul PC le verifiche non leggono .env.local, quindi non toccano il database vero.
+// Si può chiedere apposta con ALLOW_REAL_EXTERNAL_CALLS=true. Su Vercel e GitHub le variabili
+// arrivano già dall'ambiente e restano come prima.
 const envFile = path.join(process.cwd(), ".env.local");
-if (existsSync(envFile)) process.loadEnvFile(envFile);
+if (realExternalCallsAllowed() && existsSync(envFile)) process.loadEnvFile(envFile);
+// Dalle verifiche non parte niente, nemmeno su Vercel o con le chiavi aperte.
+removeSendingKeys();
+installTestNetworkGuard();
 
 function stampFrom(report: EngineTestReport, source: "ci") {
   const clean = report.checks.every((check) => check.status === "PASSED");
@@ -104,7 +112,7 @@ async function main() {
   console.log(`Inizio lega e impostazioni: ${leagueStart.failures.length === 0 ? "PASSED" : "FAILED"} ${leagueStart.passed}/${leagueStart.total}`);
   for (const failure of leagueStart.failures) console.log(`- ${failure}`);
 
-  const office = runOfficeLineupLive();
+  const office = runIsolated("test-office-lineup-live.ts");
   console.log(`Formazione d'ufficio in diretta: ${office.failures.length === 0 ? "PASSED" : "FAILED"} ${office.passed}/${office.total}`);
   for (const failure of office.failures) console.log(`- ${failure}`);
 
@@ -112,23 +120,27 @@ async function main() {
   console.log(`Annunci: ${announcements.failures.length === 0 ? "PASSED" : "FAILED"} ${announcements.passed}/${announcements.total}`);
   for (const failure of announcements.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed;
+  const outbound = runIsolated("test-outbound.ts");
+  console.log(`Niente invii veri in locale: ${outbound.failures.length === 0 ? "PASSED" : "FAILED"} ${outbound.passed}/${outbound.total}`);
+  for (const failure of outbound.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + outbound.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + outbound.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || outbound.failures.length > 0 || total < 100) process.exit(1);
 }
 
 /**
- * La prova con il finto Supabase gira in un processo a parte, senza le variabili del database vero:
- * così non tocca mai Supabase, nemmeno quando `.env.local` è presente.
+ * Queste prove girano in un processo a parte, senza le variabili del database vero e delle chiavi:
+ * così non toccano mai niente di vero, nemmeno quando `.env.local` è presente.
  */
-function runOfficeLineupLive() {
+function runIsolated(script: string) {
   const env = { ...process.env };
   for (const name of Object.keys(env)) {
-    if (/SUPABASE|TELEGRAM|VAPID|CRON_SECRET|DATABASE_URL|POSTGRES/i.test(name)) delete env[name];
+    if (/SUPABASE|TELEGRAM|VAPID|CRON_SECRET|DATABASE_URL|POSTGRES|RESEND|API_FOOTBALL|^ALLOW_REAL|^VERCEL|^AWS_LAMBDA/i.test(name)) delete env[name];
   }
-  const run = spawnSync(process.execPath, ["--import", "tsx", path.join("scripts", "test-office-lineup-live.ts")], {
+  const run = spawnSync(process.execPath, ["--import", "tsx", path.join("scripts", script)], {
     cwd: process.cwd(),
     env,
     encoding: "utf8",

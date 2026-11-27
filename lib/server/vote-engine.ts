@@ -74,7 +74,7 @@ const LABEL: Record<ReadTask["kind"], string> = {
   calendar: "calendario",
 };
 
-function emptyReport(): CycleReport {
+export function emptyReport(): CycleReport {
   return { synced: [], waiting: [], projected: [], audited: [], scored: [], skipped: [], errors: [], changed: 0, samples: [], reads: [], calendarChanged: 0 };
 }
 

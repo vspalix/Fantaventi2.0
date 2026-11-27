@@ -1,3 +1,4 @@
+import { assertExternalCall } from "@/lib/outbound";
 import { classifyStatus, probabilityOf, type AvailabilityProvider, type AvailabilityStatus, type ExternalAvailability } from "@/lib/availability-providers/types";
 
 const STATUSES = new Set<AvailabilityStatus>(["available", "starter", "bench", "doubt", "injured", "suspended"]);
@@ -7,6 +8,7 @@ export const externalJsonProvider: AvailabilityProvider = {
   async load(context) {
     const url = context.jsonUrl.trim();
     if (!/^https:\/\/[^\s]+$/i.test(url)) throw new Error("L'URL del JSON deve iniziare con https://.");
+    assertExternalCall("Indisponibili da JSON esterno");
     const response = await fetch(url, {
       headers: { "User-Agent": "Fantaventi/1.0", Accept: "application/json" },
       signal: AbortSignal.timeout(20000),

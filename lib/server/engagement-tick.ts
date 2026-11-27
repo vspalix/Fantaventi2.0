@@ -1,4 +1,5 @@
 import { awardBadges, bonusWeight, h2hFlips, heavyMalus, overtakes, pitchEvents } from "@/lib/engagement/live-board";
+import { logSkippedJob, realNotificationsAllowed } from "@/lib/outbound";
 import { inLeagueRange, parseLeagueRules, weekScoreMode } from "@/lib/league-rules";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { writeLeagueFeed } from "@/lib/server/league-feed";
@@ -45,6 +46,11 @@ async function templates() {
 }
 
 export async function runEngagementTick(now = new Date()) {
+  // Gli avvisi segnano «già inviato» nel database: con l'invio finto non si toccano.
+  if (!realNotificationsAllowed()) {
+    logSkippedJob("Avvisi di giornata");
+    return { sent: 0, badges: await awardLatestBadges() };
+  }
   const texts = await templates();
   // L'ultimo avviso a 30 minuti fa da riserva al promemoria formazioni e segue il suo interruttore
   // (Admin › Notifiche). Senza le colonne del promemoria vale il vecchio interruttore del testo.

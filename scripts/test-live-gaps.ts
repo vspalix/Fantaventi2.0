@@ -274,6 +274,9 @@ export async function runLiveGapChecks() {
   const previousChat = process.env.TELEGRAM_CHAT_ID;
   process.env.TELEGRAM_BOT_TOKEN = "token-di-prova";
   process.env.TELEGRAM_CHAT_ID = "1";
+  // La rete è finta (fetch sostituito): la chiave si apre solo per provare l'invio vero.
+  const previousSwitch = process.env.ALLOW_REAL_NOTIFICATIONS;
+  process.env.ALLOW_REAL_NOTIFICATIONS = "true";
   globalThis.fetch = () => Promise.reject(new DOMException("The operation was aborted", "AbortError"));
   let telegram = "";
   try {
@@ -291,6 +294,8 @@ export async function runLiveGapChecks() {
   delete process.env.TELEGRAM_BOT_TOKEN;
   delete process.env.TELEGRAM_CHAT_ID;
   const missingEnv = await sendTelegramMessage("controllo");
+  if (previousSwitch === undefined) delete process.env.ALLOW_REAL_NOTIFICATIONS;
+  else process.env.ALLOW_REAL_NOTIFICATIONS = previousSwitch;
   if (previousToken !== undefined) process.env.TELEGRAM_BOT_TOKEN = previousToken;
   if (previousChat !== undefined) process.env.TELEGRAM_CHAT_ID = previousChat;
   add("Senza variabili Telegram il messaggio non parte e non lancia", missingEnv.sent === false, missingEnv.sent ? "inviato" : missingEnv.reason);

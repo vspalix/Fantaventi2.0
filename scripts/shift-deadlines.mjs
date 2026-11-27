@@ -1,5 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
 
+// Questo script modifica le scadenze nel database: serve la chiave aperta apposta.
+if (process.env.ALLOW_REAL_EXTERNAL_CALLS !== "true") {
+  console.log("[finto] Nessuna modifica. Per scrivere davvero nel database imposta ALLOW_REAL_EXTERNAL_CALLS=true.");
+  process.exit(0);
+}
+
 const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });

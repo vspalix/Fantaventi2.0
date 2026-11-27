@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FAKE_NOTICE, logFake, realNotificationsAllowed } from "@/lib/outbound";
 import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
@@ -62,6 +63,10 @@ export async function POST(request: Request) {
     const message = body.message?.trim() ?? "";
     if (title.length < 2 || message.length < 2) {
       return NextResponse.json({ error: "Scrivi titolo e testo." }, { status: 400 });
+    }
+    if (!realNotificationsAllowed()) {
+      logFake("Notifica ai telefoni", `messaggio a tutti non inviato. ${title} | ${message}`);
+      return NextResponse.json({ error: FAKE_NOTICE }, { status: 409 });
     }
     if (!webPushReady()) {
       return NextResponse.json({ error: "Le notifiche non sono pronte: mancano le chiavi VAPID su Vercel." }, { status: 409 });

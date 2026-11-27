@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FAKE_NOTICE, realNotificationsAllowed } from "@/lib/outbound";
 import { apiError } from "@/lib/server/api-error";
 import { assertServiceEnv } from "@/lib/server/catalog";
 import { reportError } from "@/lib/server/error-report";
@@ -18,6 +19,7 @@ export async function POST(request: Request) {
         { kind: "prova-avviso" },
       );
       if (outcome === "sent" || outcome === "grouped") return NextResponse.json({ ok: true, outcome });
+      if (!realNotificationsAllowed()) return NextResponse.json({ ok: false, error: FAKE_NOTICE }, { status: 409 });
       return NextResponse.json({ ok: false, error: "Avviso non inviato: Telegram non ha accettato il messaggio. L'app continua a funzionare." }, { status: 502 });
     }
     const result = await sendSyncTestAlert();

@@ -47,6 +47,13 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Non mettere `/api/cron/process-matchday` in schedule. Non chiamare `refreshSerieAKickoffs` da lì.
 - Non lanciare sync di scrittura (Forza sync, `force: true`) mentre una giornata di Serie A è in corso.
 
+## Chiamate verso l'esterno
+
+- Notifiche, email e fonti esterne partono davvero solo su Vercel (`lib/outbound.ts`). Sul PC, nelle verifiche e negli script sono finte o bloccate.
+- Per aprirle apposta, solo nel terminale: `ALLOW_REAL_NOTIFICATIONS=true` (Telegram, notifiche ai telefoni, email) e `ALLOW_REAL_EXTERNAL_CALLS=true` (voti, calendario, indisponibili, script che scrivono nel database, lettura di `.env.local` nelle verifiche). I giri automatici chiedono tutte e due.
+- Ogni nuovo invio o chiamata esterna passa da `lib/outbound.ts`; chi segna nel database «già inviato» non deve farlo quando l'invio è finto. Prove in `scripts/test-outbound.ts`.
+- Il database di `.env.local` non è bloccato: ciò che si salva in locale si vede sul sito.
+
 ## Convenzioni
 
 - Ogni route e pagina sotto `/admin` passa da `requireSuperAdmin()`. Il cookie `fv-view` non è autorizzazione.

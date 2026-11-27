@@ -1,3 +1,4 @@
+import { FAKE_NOTICE, logFake, realNotificationsAllowed } from "@/lib/outbound";
 import {
   availabilitySummaryKind,
   availabilityWriteKind,
@@ -33,6 +34,15 @@ function escapeHtml(value: string) {
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+/** Il messaggio come lo si leggerebbe su Telegram, per il registro. */
+function plainText(html: string) {
+  return html
+    .replace(/<\/?b>/g, "")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&amp;", "&");
 }
 
 function quiet(reason: string) {
@@ -72,6 +82,10 @@ async function postToChat(token: string, chatId: string, text: string) {
 }
 
 export async function sendTelegramMessage(text: string): Promise<TelegramResult> {
+  if (!realNotificationsAllowed()) {
+    logFake("Telegram", `messaggio non inviato\n${plainText(text)}`);
+    return { sent: false, reason: FAKE_NOTICE };
+  }
   const keys = credentials();
   if (!keys) {
     quiet("Mancano TELEGRAM_BOT_TOKEN o TELEGRAM_CHAT_ID.");

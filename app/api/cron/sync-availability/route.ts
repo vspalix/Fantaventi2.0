@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { logSkippedJob, realJobsAllowed, skippedJobReason } from "@/lib/outbound";
 import { apiError } from "@/lib/server/api-error";
 import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { syncAvailability } from "@/lib/server/availability";
@@ -42,6 +43,10 @@ async function run(request: Request) {
   try {
     if (!(await authorized(request))) return NextResponse.json({ error: "Cron non autorizzato." }, { status: 401 });
     assertServiceEnv();
+    if (!realJobsAllowed()) {
+      logSkippedJob("Indisponibili");
+      return NextResponse.json({ skipped: true, reason: skippedJobReason("Indisponibili") });
+    }
     const settings = await readSystemSettings();
     if (!force && !settings.autoSyncEnabled) {
       const message = "Sincronizzazione automatica disattivata.";

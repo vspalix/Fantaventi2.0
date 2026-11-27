@@ -1,6 +1,12 @@
+import { logFake, realExternalCallsAllowed, SOURCES_SWITCH } from "@/lib/outbound";
 import { backfillEarlyWeeks } from "@/lib/server/backfill-early-weeks";
 
 async function main() {
+  // Questo script riscrive giornate nel database: serve la chiave aperta apposta.
+  if (!realExternalCallsAllowed()) {
+    logFake("Recupero giornate", `nessuna modifica. Per scrivere davvero nel database imposta ${SOURCES_SWITCH}=true.`);
+    return;
+  }
   const from = Number(process.argv[2] ?? 1);
   const to = Number(process.argv[3] ?? 9);
   const report = await backfillEarlyWeeks(from, to);

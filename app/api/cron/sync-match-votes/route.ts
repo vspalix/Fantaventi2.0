@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { assertRealJobs } from "@/lib/outbound";
 import { apiError } from "@/lib/server/api-error";
 import { cronSecretAccepted } from "@/lib/server/access-policy";
 import { assertServiceEnv } from "@/lib/server/catalog";
@@ -85,6 +86,8 @@ async function run(request: Request) {
     const now = new Date();
 
     if (force) {
+      // Prima del registro: un blocco in locale non è un errore da annotare nel database.
+      assertRealJobs("Lettura dei voti");
       try {
         const report = await meter("vote-fetch", () => syncDueMatchVotes(now));
         await finished(report, "manual");

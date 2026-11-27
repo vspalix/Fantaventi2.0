@@ -52,6 +52,15 @@ export function eventsFromAudit(player: AuditPlayer): CompactPlayer["events"] {
 
 export const LIVE_NOTE = "In diretta contano solo i titolari con voto. La panchina entra al calcolo della giornata, se un titolare resta senza voto. S.V. vuol dire senza voto, il trattino che il voto non è ancora arrivato.";
 
+/**
+ * Giornata appena iniziata: nessun titolare ha ancora un voto, quindi non c'è una classifica
+ * da mostrare. Senza formazioni in diretta non si può dire, e vale falso.
+ */
+export function awaitingVotes(sheets: (LiveLineupSheet | undefined)[]) {
+  const known = sheets.filter((sheet): sheet is LiveLineupSheet => Boolean(sheet));
+  return known.length > 0 && known.every((sheet) => sheet.starters.every((row) => row.voto === null));
+}
+
 /** Le righe in diretta. In evidenza resta solo chi conta adesso: i titolari con voto. */
 export function compactFromLive(sheet: LiveLineupSheet) {
   const map = (benched: boolean) => (row: LiveLineupSheet["starters"][number]): CompactPlayer => ({

@@ -927,6 +927,10 @@ export function LeagueHub({
             </p>
           ) : null}
         </header>
+      ) : shownTab === "regolamento" ? (
+        <header>
+          <h1 className="section-title">Regolamento</h1>
+        </header>
       ) : shownTab === "pagelle" ? null : (
       <header>
         <p className="small muted">
@@ -950,14 +954,14 @@ export function LeagueHub({
       ) : null}
       {error ? <p className="banner">{error}</p> : null}
       {message ? <p className="banner ok">{message}</p> : null}
-      {shownTab === "risultati" || shownTab === "classifica" || shownTab === "formazione" || shownTab === "pagelle" ? null : <div className="tabs scroll-tabs" role="tablist" aria-label="Sezioni della lega">
+      {shownTab === "risultati" || shownTab === "classifica" || shownTab === "formazione" || shownTab === "pagelle" || shownTab === "regolamento" ? null : <div className="tabs scroll-tabs" role="tablist" aria-label="Sezioni della lega">
         <button className="tab" type="button" data-active={shownTab === "home"} onClick={() => setTab("home")}>Home</button>
         <button className="tab" type="button" data-active={shownTab === "live"} onClick={() => setTab("live")}>Live</button>
         <button className="tab" type="button" data-active={shownTab === "bacheca"} onClick={() => setTab("bacheca")}>Bacheca</button>
         <button className="tab" type="button" data-active={shownTab === "squadre"} onClick={() => setTab("squadre")}>Squadre</button>
         <button className="tab" type="button" onClick={() => setTab("formazione")}>Formazione</button>
         <button className="tab" type="button" data-active={shownTab === "formazioni"} onClick={() => setTab("formazioni")}>Formazioni</button>
-        <button className="tab" type="button" data-active={shownTab === "regolamento"} onClick={() => setTab("regolamento")}>Regolamento</button>
+        <button className="tab" type="button" onClick={() => setTab("regolamento")}>Regolamento</button>
         <button className="tab" type="button" data-active={shownTab === "lega"} onClick={() => setTab("lega")}>Impostazioni</button>
       </div>}
 

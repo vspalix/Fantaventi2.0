@@ -3,7 +3,7 @@ import { getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
 import { filedPlayerScore, liveFormula, projectLiveScore, type LineupSlotInput } from "@/lib/engine/calculator";
-import { carryLineup, formationIssue } from "@/lib/formations";
+import { carryLineup, lineupSaveIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
 import { entryCredit } from "@/lib/late-entry";
@@ -1336,24 +1336,10 @@ export async function saveLeagueLineup(
 
   const playerIds = [...new Set(input.playerIds)];
   const benchIds = [...new Set(input.benchIds)].filter((playerId) => !playerIds.includes(playerId));
-  const shapeIssue = formationIssue(roster, playerIds);
-  if (shapeIssue) throw httpError(shapeIssue, 400);
-  const known = new Set(roster.map((player) => player.id));
-  if (benchIds.some((playerId) => !known.has(playerId))) {
-    throw httpError("Ogni panchinaro deve essere in rosa per questa giornata.", 400);
-  }
-  const unassigned = roster.filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id));
-  if (unassigned.length > 0) {
-    throw httpError("Metti in panchina i calciatori che non sono in campo.", 400);
-  }
-  if (!input.captainId || !playerIds.includes(input.captainId)) {
-    throw httpError("Scegli un capitano tra i titolari.", 400);
-  }
-  if (playerIds.length > 1 && (!input.viceId || input.viceId === input.captainId || !playerIds.includes(input.viceId))) {
-    throw httpError("Scegli un vice diverso dal capitano.", 400);
-  }
+  const issue = lineupSaveIssue(roster, { playerIds, benchIds, captainId: input.captainId, viceId: input.viceId });
+  if (issue) throw httpError(issue, 400);
 
-  const viceId = playerIds.length === 1 ? null : input.viceId;
+  const viceId = input.viceId;
   const error = await submitLineupSerialized(admin, {
     p_fantasy_team_id: team.id,
     p_gameweek_id: input.gameweekId,

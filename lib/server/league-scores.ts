@@ -1,6 +1,7 @@
 import { scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
 import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { waitingWeek } from "@/lib/late-entry";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { inChunks, readAllRows } from "@/lib/server/read-all";
 import type { PlayerRole } from "@/lib/types";
@@ -38,6 +39,39 @@ export async function leagueEntries(teamIds: string[], gameweeks: { id: string; 
     if (current === undefined || number < current) entryByTeam.set(teamId, number);
   }
   return { entryByTeam, fielded };
+}
+
+/** Per chi non ha ancora schierato: da quale giornata gioca (vedi `waitingWeek`). */
+export async function waitingEntries(
+  teamIds: string[],
+  entryByTeam: ReadonlyMap<string, number>,
+  gameweeks: { number: number; deadlineAt: string }[],
+  startMatchday: number,
+  now = Date.now(),
+) {
+  const waiting = new Map<string, number>();
+  const missing = teamIds.filter((teamId) => !entryByTeam.has(teamId));
+  if (missing.length === 0 || gameweeks.length === 0) return waiting;
+  const { data, error } = await readAllRows((from, to) => createAdminSupabase()
+    .from("roster_stints")
+    .select("fantasy_team_id, active_from_gameweek, active_until_gameweek")
+    .in("fantasy_team_id", missing)
+    .order("id")
+    .range(from, to));
+  if (error) throw new Error(error.message);
+  const numbers = gameweeks.map((week) => week.number);
+  const open = gameweeks.filter((week) => new Date(week.deadlineAt).getTime() > now).map((week) => week.number);
+  const nextOpen = open.length > 0 ? Math.min(...open) : Math.max(...numbers) + 1;
+  for (const teamId of missing) {
+    // Le righe di rosa finite prima dell'inizio della lega non contano.
+    const starts = data
+      .filter((row) => row.fantasy_team_id === teamId
+        && (row.active_until_gameweek === null || Number(row.active_until_gameweek) >= startMatchday))
+      .map((row) => Number(row.active_from_gameweek));
+    const week = waitingWeek(starts.length > 0 ? Math.min(...starts) : null, nextOpen, startMatchday);
+    if (week !== null) waiting.set(teamId, week);
+  }
+  return waiting;
 }
 
 export async function fantasyPointsForLeague(

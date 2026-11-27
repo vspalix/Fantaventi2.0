@@ -3,7 +3,6 @@ import { fantapuntiToGoals, headToHeadPairings, weekScoreMode } from "@/lib/leag
 import { pitchEvents } from "@/lib/engagement/live-board";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague } from "@/lib/server/league-settings";
-import { overlayPublishedVotes } from "@/lib/server/live-projection";
 import { previewProvisional } from "@/lib/server/live-score";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -81,13 +80,7 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   if (!preview) {
     return { ...empty, phase, gameweekNumber: number, gameweekId: liveWeek.id as string, mode };
   }
-  const roles = new Map<string, PlayerRole>();
-  for (const lineup of preview.lineups) {
-    for (const slot of lineup.slots) {
-      if (slot.role) roles.set(slot.playerId, slot.role);
-    }
-  }
-  const stats = await overlayPublishedVotes(preview.stats, league.seasonCode, number, roles);
+  const stats = preview.stats;
   const { definition } = await definitionForLeague(admin, league.id, preview.definition);
   const leagueLineups = preview.lineups.filter((lineup) => teamIds.includes(lineup.fantasyTeamId));
   const scores = new Map(leagueLineups.map((lineup) => [

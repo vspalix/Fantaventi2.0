@@ -234,6 +234,8 @@ export async function runVoteCycle(deps: ClockDeps, initial: ClockSnapshot, firs
         .map((task) => ({ task, problem: provisionalProblem(page, task, week) }));
       if (morning) {
         const missing = await writeCompleteMatches(deps, week, page, now, report);
+        // Le partite ancora incomplete restano visibili con i voti provvisori di questa lettura.
+        if (missing.length > 0 && page.votes.length > 0 && week.status !== "scored") await deps.writeProjection(week, page.votes);
         await finish(morning, missing.length > 0 ? "not_ready" : "ok", missing.join("; "));
         done.add(morning.key);
         if (missing.length === 0) {
@@ -317,7 +319,10 @@ export async function runManualRead(deps: ClockDeps, now: number): Promise<Cycle
         continue;
       }
       const missing = await writeCompleteMatches(deps, week, page, now, report);
-      if (missing.length > 0) continue;
+      if (missing.length > 0) {
+        if (page.votes.length > 0 && week.status !== "scored") await deps.writeProjection(week, page.votes);
+        continue;
+      }
       await rescoreRecovery(deps, week, report);
       if (week.status !== "scored" && week.number >= AUTO_CALC_FROM_GAMEWEEK && week.matches.every((match) => match.status === "finished")) {
         await calculateWeek(deps, week, false, report);

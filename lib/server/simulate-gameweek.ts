@@ -3,6 +3,7 @@ import { scoreLineup, ScoreEngineError, type PlayerStat, type RulesetDefinition,
 import { openFollowingGameweek } from "@/lib/server/gameweek-cycle";
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { getLeagueDetail } from "@/lib/server/leagues";
+import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -57,7 +58,8 @@ export async function ensureMockVotes(
   const existing = await admin
     .from("vote_imports")
     .select("id", { count: "exact", head: true })
-    .eq("gameweek_id", gameweek.id);
+    .eq("gameweek_id", gameweek.id)
+    .neq("source", PROVISIONAL_SOURCE);
   if (existing.error) throw new Error(existing.error.message);
   if ((existing.count ?? 0) > 0) return { created: false, rated: 0, listone: 0 };
 

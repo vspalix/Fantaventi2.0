@@ -8,6 +8,7 @@ import {
   type RulesetDefinition,
   type SubstitutionTrace,
   type TeamScore,
+  bonusAmount,
 } from "@/lib/engine/calculator";
 import { BONUS_FIELDS, fantapuntiToGoals, headToHeadPairings, type GoalBand, type LeagueRules } from "@/lib/league-rules";
 import type { PlayerRole } from "@/lib/types";
@@ -127,7 +128,7 @@ function eventLines(stat: PlayerStat | undefined, role: PlayerRole, definition: 
     if (event.gkOnly && role !== "GK") continue;
     const count = Number(stat[event.stat] ?? 0);
     if (!Number.isFinite(count) || count === 0) continue;
-    const unit = catalog[event.key] ?? 0;
+    const unit = bonusAmount(catalog, event.key);
     const field = BONUS_FIELDS.find((item) => item.key === event.key);
     lines.push({
       label: field?.label ?? event.key,

@@ -27,14 +27,14 @@ export async function POST(request: Request, context: RouteContext) {
     const benchIds = Array.isArray(body.benchIds) ? body.benchIds : [];
     const captainId = body.captainId ?? null;
     const viceId = body.viceId ?? null;
-    const hub = await meter("lineup-save", () => saveLeagueLineup(user.id, leagueId, {
+    const saved = await meter("lineup-save", () => saveLeagueLineup(user.id, leagueId, {
       gameweekId,
       playerIds,
       benchIds,
       captainId,
       viceId,
     }));
-    return NextResponse.json({ hub });
+    return NextResponse.json({ saved });
   } catch (error) {
     const { message, status } = publicError("API /api/leagues/[leagueId]/lineup (POST)", error);
     const locked = /scaduta|è chiusa|in corso/i.test(message);

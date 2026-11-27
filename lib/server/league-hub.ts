@@ -3,8 +3,7 @@ import { getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
 import { filedPlayerScore, liveFormula, projectLiveScore } from "@/lib/engine/calculator";
-import { overlayPublishedVotes } from "@/lib/server/live-projection";
-import { formationIssue } from "@/lib/formations";
+import { carryLineup, formationIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
@@ -24,6 +23,7 @@ import type {
   OpponentLineup,
   PartialStanding,
   PlayerRole,
+  SavedLineup,
   StandingRow,
 } from "@/lib/types";
 
@@ -120,7 +120,8 @@ async function carriedLineup(
   teamId: string,
   seasonId: string,
   beforeNumber: number,
-  rosterIds: Set<string>,
+  roster: CatalogPlayer[],
+  byId: Map<string, CatalogPlayer>,
 ) {
   const { data: weeks, error: weekError } = await admin
     .from("gameweeks")
@@ -145,8 +146,10 @@ async function carriedLineup(
   const rows = await lineupsFor(admin, source.id, [teamId]);
   const row = rows.find((item) => item.fantasy_team_id === teamId);
   if (!row) return null;
-  const pick = restrictPick(pickFromSlots(slotsOf(row)), rosterIds);
-  if (pick.playerIds.length === 0 && pick.benchIds.length === 0) return null;
+  // La proposta a video è la stessa formazione che verrebbe schierata d'ufficio.
+  const roles = new Map([...byId].map(([id, player]) => [id, player.role]));
+  const pick = carryLineup(roster, pickFromSlots(slotsOf(row)), roles);
+  if (!pick) return null;
   return { pick, number: source.number };
 }
 
@@ -188,7 +191,6 @@ export async function loadLeagueHub(
   const team = teamOf(userId, league.participants);
   const openWeek = rows.find((gameweek) => gameweek.status !== "scored" && gameweek.status !== "final") ?? null;
   const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
-  const roles = new Map([...byId].map(([id, player]) => [id, player.role]));
   const selectedUnderway = selected ? weekUnderway(selected, now, matchState) : false;
   const lastClosed = [...rows].reverse().find((gameweek) => isLocked(gameweek, now, inPlay)) ?? null;
   const liveRound = [...rows].reverse().find((gameweek) =>
@@ -201,10 +203,10 @@ export async function loadLeagueHub(
     selected && teamIds.length ? lineupsFor(admin, selected.id, teamIds) : Promise.resolve([] as Awaited<ReturnType<typeof lineupsFor>>),
     standingsFor(admin, league, league.participants, rows, now, inPlay),
     selectedUnderway && selected
-      ? loadPreview(selected.id, league.id, catalog.seasonCode, selected.number, roles)
+      ? loadPreview(selected.id, league.id)
       : Promise.resolve(null),
     liveWeek && liveWeek.id !== selected?.id
-      ? loadPreview(liveWeek.id, league.id, catalog.seasonCode, liveWeek.number, roles)
+      ? loadPreview(liveWeek.id, league.id)
       : Promise.resolve(null),
     team && focus
       ? admin.from("lineups").select("saved_at").eq("fantasy_team_id", team.id).eq("gameweek_id", focus.id).maybeSingle()
@@ -226,7 +228,7 @@ export async function loadLeagueHub(
   let lineupOrigin: LineupOrigin = mine ? "saved" : "empty";
   let carriedFromMatchday: number | null = null;
   if (!mine && team && selected && editable) {
-    const carried = await carriedLineup(admin, team.id, league.seasonId, selected.number, rosterIds);
+    const carried = await carriedLineup(admin, team.id, league.seasonId, selected.number, roster, byId);
     if (carried) {
       lineup = carried.pick;
       lineupOrigin = "previous";
@@ -275,7 +277,7 @@ export async function loadLeagueHub(
   const [partial, live, checkpointHistory, lastRound] = await Promise.all([
     selectedPreview
       ? Promise.resolve(partialFromPreview(league.participants, selectedPreview.scores, opponents))
-      : partialStandings(admin, league.participants, selected?.id ?? null, opponents),
+      : partialStandings(admin, league.participants, selected?.id ?? null, opponents, standingPack.weekPoints),
     liveStandingsFor(league.id, standingPack.rows, livePreview),
     loadCheckpointHistory({
       leagueId: league.id,
@@ -295,7 +297,7 @@ export async function loadLeagueHub(
       ? Promise.resolve([] as PartialStanding[])
       : livePreview && lastClosed.id === liveWeek?.id
         ? Promise.resolve(partialFromPreview(league.participants, livePreview.scores, []))
-        : partialStandings(admin, league.participants, lastClosed.id, []),
+        : partialStandings(admin, league.participants, lastClosed.id, [], standingPack.weekPoints),
   ]);
   const liveSheet = selectedPreview && team
     ? lineupSheet(lineup, roster, selectedPreview, team.id)
@@ -516,7 +518,15 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
       bench: source.filter((slot) => slot.is_starter === false).sort((left, right) => (left.slot_order ?? 0) - (right.slot_order ?? 0)).map(named),
     };
   });
-  const partial = await partialStandings(admin, league.participants, row.id, opponents);
+  let counted: Map<string, number> | null = null;
+  if (row.status === "scored" || row.status === "final") {
+    try {
+      counted = await fantasyPointsForLeague(league.id, league.seasonId, teamIds, [{ id: row.id, number: row.number }]);
+    } catch (error) {
+      void reportError("Lega: punti della giornata in calendario", error);
+    }
+  }
+  const partial = await partialStandings(admin, league.participants, row.id, opponents, counted);
   const seasonClubs = await admin
     .from("season_clubs")
     .select("club_id, clubs(code, club_translations(locale, name, short_name))")
@@ -611,17 +621,11 @@ async function squadsFor(
   });
 }
 
-async function loadPreview(
-  gameweekId: string,
-  leagueId: string,
-  seasonCode: string,
-  gameweekNumber: number,
-  roles: ReadonlyMap<string, PlayerRole>,
-) {
+async function loadPreview(gameweekId: string, leagueId: string) {
   try {
     const preview = await previewProvisional(gameweekId);
     const { definition } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition);
-    const stats = await overlayPublishedVotes(preview.stats, seasonCode, gameweekNumber, roles);
+    const stats = preview.stats;
     return {
       definition,
       stats,
@@ -733,6 +737,7 @@ async function partialStandings(
   participants: LeagueHubData["league"]["participants"],
   gameweekId: string | null,
   lineups: OpponentLineup[],
+  leaguePoints: ReadonlyMap<string, number> | null,
 ): Promise<PartialStanding[]> {
   const filed = new Set(lineups.filter((lineup) => lineup.filed).map((lineup) => lineup.fantasyTeamId));
   const scores = new Map<string, { points: number; live: boolean }>();
@@ -759,8 +764,9 @@ async function partialStandings(
         is_live?: boolean;
       };
       const live = Boolean(record.is_live);
+      const counted = leaguePoints?.get(`${record.fantasy_team_id}:${gameweekId}`);
       scores.set(record.fantasy_team_id, {
-        points: live ? Number(record.provisional_total ?? 0) : Number(record.total ?? 0),
+        points: live ? Number(record.provisional_total ?? 0) : counted ?? Number(record.total ?? 0),
         live,
       });
     }
@@ -1206,21 +1212,50 @@ function rankStandings(rows: StandingRow[]) {
   return ranked;
 }
 
+
+/**
+ * Salva la formazione con un controllo leggero: legge solo lega, giornate, stato delle partite
+ * e rosa della squadra (le stesse regole di loadLeagueHub per «modificabile»), non classifiche,
+ * formazioni degli altri o partite. Deadline, rosa e modulo li ricontrolla anche submit_lineup.
+ */
 export async function saveLeagueLineup(
   userId: string,
   leagueId: string,
   input: { gameweekId: string; playerIds: string[]; benchIds: string[]; captainId: string | null; viceId: string | null },
-) {
-  const hub = await loadLeagueHub(userId, leagueId, input.gameweekId);
-  if (!hub.selectedGameweekId || hub.selectedGameweekId !== input.gameweekId) {
-    throw httpError("Questa giornata non è nel range della lega.", 400);
-  }
-  if (!hub.editable) {
-    const week = hub.gameweeks.find((gameweek) => gameweek.id === input.gameweekId);
-    const underway = Boolean(week)
-      && week?.status !== "scored"
-      && week?.status !== "final"
-      && (week?.locked || new Date(week?.deadlineAt ?? 0).getTime() <= Date.now());
+): Promise<SavedLineup> {
+  const { assertWritesOpen } = await import("@/lib/server/maintenance");
+  const [league] = await Promise.all([getLeagueDetail(userId, leagueId), assertWritesOpen()]);
+  const team = teamOf(userId, league.participants);
+  if (!team) throw httpError("Prima salva la rosa: la formazione usa quei calciatori.", 400);
+
+  const admin = createAdminSupabase();
+  const now = Date.now();
+  const [catalog, gameweekQuery, matchState, stints] = await Promise.all([
+    loadCatalog(league.seasonId),
+    admin
+      .from("gameweeks")
+      .select("id, number, deadline_at, status")
+      .eq("season_id", league.seasonId)
+      .gte("number", league.startMatchday)
+      .lte("number", league.endMatchday)
+      .order("number", { ascending: true }),
+    loadWeekMatchState(admin, league.seasonId, now),
+    admin
+      .from("roster_stints")
+      .select("player_id, active_from_gameweek, active_until_gameweek")
+      .eq("fantasy_team_id", team.id),
+  ]);
+  if (gameweekQuery.error) throw new Error(gameweekQuery.error.message);
+  if (stints.error) throw new Error(stints.error.message);
+
+  const rows = (gameweekQuery.data ?? []) as GameweekRow[];
+  const week = rows.find((gameweek) => gameweek.id === input.gameweekId);
+  if (!week) throw httpError("Questa giornata non è nel range della lega.", 400);
+  const liveWeek = rows.find((gameweek) => weekUnderway(gameweek, now, matchState)) ?? null;
+  const next = liveWeek ? null : rows.find((gameweek) => !isLocked(gameweek, now, matchState.inPlay)) ?? null;
+  const locked = isLocked(week, now, matchState.inPlay);
+  if (!next || next.id !== week.id || locked) {
+    const underway = week.status !== "scored" && week.status !== "final" && locked;
     throw httpError(
       underway
         ? "Formazione bloccata. La giornata è in corso."
@@ -1228,22 +1263,26 @@ export async function saveLeagueLineup(
       409,
     );
   }
-  const { assertWritesOpen } = await import("@/lib/server/maintenance");
-  await assertWritesOpen();
 
-  const admin = createAdminSupabase();
-  const team = teamOf(userId, hub.league.participants);
-  if (!team) throw httpError("Prima salva la rosa: la formazione usa quei calciatori.", 400);
+  const byId = new Map(catalog.players.map((player) => [player.id, player]));
+  const roster = (stints.data ?? [])
+    .filter((stint) => {
+      const from = stint.active_from_gameweek as number;
+      const until = stint.active_until_gameweek as number | null;
+      return from <= week.number && (until === null || until >= week.number);
+    })
+    .map((stint) => byId.get(stint.player_id as string))
+    .filter((player): player is CatalogPlayer => Boolean(player));
 
   const playerIds = [...new Set(input.playerIds)];
   const benchIds = [...new Set(input.benchIds)].filter((playerId) => !playerIds.includes(playerId));
-  const shapeIssue = formationIssue(hub.roster, playerIds);
+  const shapeIssue = formationIssue(roster, playerIds);
   if (shapeIssue) throw httpError(shapeIssue, 400);
-  const known = new Set(hub.roster.map((player) => player.id));
+  const known = new Set(roster.map((player) => player.id));
   if (benchIds.some((playerId) => !known.has(playerId))) {
     throw httpError("Ogni panchinaro deve essere in rosa per questa giornata.", 400);
   }
-  const unassigned = hub.roster.filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id));
+  const unassigned = roster.filter((player) => !playerIds.includes(player.id) && !benchIds.includes(player.id));
   if (unassigned.length > 0) {
     throw httpError("Metti in panchina i calciatori che non sono in campo.", 400);
   }
@@ -1254,12 +1293,13 @@ export async function saveLeagueLineup(
     throw httpError("Scegli un vice diverso dal capitano.", 400);
   }
 
+  const viceId = playerIds.length === 1 ? null : input.viceId;
   const { error } = await admin.rpc("submit_lineup", {
     p_fantasy_team_id: team.id,
     p_gameweek_id: input.gameweekId,
     p_player_ids: playerIds,
     p_captain_id: input.captainId,
-    p_vice_captain_id: playerIds.length === 1 ? null : input.viceId,
+    p_vice_captain_id: viceId,
     p_bench_ids: benchIds,
   });
   if (error) {
@@ -1269,12 +1309,16 @@ export async function saveLeagueLineup(
     throw new Error(error.message);
   }
 
+  const savedAt = new Date().toISOString();
   const stamped = await admin
     .from("lineups")
-    .update({ saved_at: new Date().toISOString() })
+    .update({ saved_at: savedAt })
     .eq("fantasy_team_id", team.id)
     .eq("gameweek_id", input.gameweekId);
   if (stamped.error && !/saved_at|schema cache/i.test(stamped.error.message)) throw new Error(stamped.error.message);
 
-  return loadLeagueHub(userId, leagueId, input.gameweekId);
+  return {
+    lineup: { playerIds, benchIds, captainId: input.captainId, viceId },
+    savedAt: stamped.error ? null : savedAt,
+  };
 }

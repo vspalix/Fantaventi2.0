@@ -11,6 +11,7 @@ import {
 import { fileForgottenLineups } from "@/lib/server/forgotten-lineup";
 import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { isOfficialMatchClosed, isSettledGameweek } from "@/lib/server/match-window";
+import { loadProvisionalVotes, withProvisionalVotes } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -40,7 +41,8 @@ type RawSlot = {
   slot_order?: number;
 };
 
-async function loadContext(gameweekId: string) {
+/** `provisional` aggiunge i voti letti agli orari programmati. Il calcolo ufficiale non lo chiede mai. */
+async function loadContext(gameweekId: string, options?: { provisional?: boolean }) {
   const admin = createAdminSupabase();
   const { data: gameweek, error: gameweekError } = await admin
     .from("gameweeks")
@@ -153,6 +155,11 @@ async function loadContext(gameweekId: string) {
     if (finishedClubs.has(clubId)) matchFinished.add(playerId);
   }
 
+  if (options?.provisional && !isSettledGameweek(String(gameweek.status))) {
+    const merged = withProvisionalVotes(stats, await loadProvisionalVotes(gameweekId), matchFinished, roleByPlayer);
+    for (const [playerId, stat] of merged) stats.set(playerId, stat);
+  }
+
   const postponed = await admin
     .from("real_matches")
     .select("home_club_id, away_club_id")
@@ -246,25 +253,14 @@ async function upsertLiveRow(
   if (error) throw new Error(schemaHint(error.message));
 }
 
-function liveScoresFor(
-  gameweekId: string,
-  context: Awaited<ReturnType<typeof loadContext>>,
-  overlay?: Map<string, PlayerStat>,
-) {
-  return context.lineups.map((lineup) => {
-    const stats = new Map(context.stats);
-    if (overlay) {
-      for (const [id, stat] of overlay) {
-        const current = stats.get(id);
-        stats.set(id, { ...stat, role: current?.role ?? stat.role });
-      }
-    }
-    return projectLiveScore(lineup.fantasyTeamId, gameweekId, lineup.slots, stats, context.definition);
-  });
+function liveScoresFor(gameweekId: string, context: Awaited<ReturnType<typeof loadContext>>) {
+  return context.lineups.map((lineup) => (
+    projectLiveScore(lineup.fantasyTeamId, gameweekId, lineup.slots, context.stats, context.definition)
+  ));
 }
 
 export async function calculateProvisionalForTeam(fantasyTeamId: string, gameweekId: string) {
-  const context = await loadContext(gameweekId);
+  const context = await loadContext(gameweekId, { provisional: true });
   if (isSettledGameweek(context.gameweek.status)) {
     throw httpError(`La giornata ${context.gameweek.number} è già calcolata: il parziale non la riscrive.`, 409);
   }
@@ -276,7 +272,7 @@ export async function calculateProvisionalForTeam(fantasyTeamId: string, gamewee
 }
 
 export async function previewProvisional(gameweekId: string) {
-  const context = await loadContext(gameweekId);
+  const context = await loadContext(gameweekId, { provisional: true });
   return {
     definition: context.definition,
     stats: context.stats,
@@ -294,23 +290,8 @@ export async function refreshProvisionalScores(gameweekId: string) {
   if (isSettledGameweek(String(gate.data.status))) {
     return { gameweekNumber: Number(gate.data.number), teams: 0, skipped: true };
   }
-  const context = await loadContext(gameweekId);
+  const context = await loadContext(gameweekId, { provisional: true });
   const scores = liveScoresFor(gameweekId, context);
-  for (const score of scores) {
-    await upsertLiveRow(context.admin, gameweekId, context.rulesetId, score);
-  }
-  return { gameweekNumber: context.gameweek.number, teams: scores.length, skipped: false };
-}
-
-export async function persistLiveProjection(gameweekId: string, overlay: Map<string, PlayerStat>) {
-  const admin = createAdminSupabase();
-  const gate = await admin.from("gameweeks").select("number, status").eq("id", gameweekId).maybeSingle();
-  if (gate.error) throw new Error(gate.error.message);
-  if (!gate.data || isSettledGameweek(String(gate.data.status))) {
-    return { gameweekNumber: Number(gate.data?.number ?? 0), teams: 0, skipped: true };
-  }
-  const context = await loadContext(gameweekId);
-  const scores = liveScoresFor(gameweekId, context, overlay);
   for (const score of scores) {
     await upsertLiveRow(context.admin, gameweekId, context.rulesetId, score);
   }

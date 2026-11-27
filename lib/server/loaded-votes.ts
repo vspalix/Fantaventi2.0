@@ -1,4 +1,5 @@
 import { loadCatalog } from "@/lib/server/catalog";
+import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -76,6 +77,7 @@ export async function loadLoadedVotes(userId: string, gameweekId: string) {
     .from("vote_imports")
     .select("id, source, source_note, imported_at")
     .eq("gameweek_id", gameweekId)
+    .neq("source", PROVISIONAL_SOURCE)
     .order("imported_at", { ascending: false });
   if (importError) throw new Error(importError.message);
 

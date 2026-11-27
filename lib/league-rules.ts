@@ -22,9 +22,9 @@ export type GoalBand = {
 };
 
 export const COMPETITION_FORMATS: { id: CompetitionFormat; label: string; detail: string }[] = [
-  { id: "classic", label: "Classifica a somma", detail: "Ogni giornata somma i fantapunti. Nessuna conversione in gol." },
-  { id: "h2h", label: "Scontri diretti", detail: "Calendario a coppie. I fantapunti diventano gol secondo le soglie della lega, poi 3, 1 o 0." },
-  { id: "hybrid", label: "Fasi", detail: "Regular season a somma o scontri diretti, poi una fase finale a eliminazione. La coppa non entra nella classifica di regular season." },
+  { id: "classic", label: "Tutti contro tutti", detail: "Classifica a somma: ogni giornata i fantapunti si aggiungono al totale, senza gol." },
+  { id: "h2h", label: "1 contro 1", detail: "Scontri diretti: ogni giornata sfidi una squadra. I fantapunti diventano gol, poi 3 punti a chi vince, 1 a testa se pari." },
+  { id: "hybrid", label: "A fasi", detail: "Prima tutti contro tutti o 1 contro 1, poi una coppa a eliminazione che non entra in quella classifica." },
 ];
 
 export const DEFAULT_GOAL_BANDS: GoalBand[] = [
@@ -71,15 +71,38 @@ export type LeagueRules = {
   phases: LeaguePhase[];
 };
 
-export function defaultPhases(format: CompetitionFormat): LeaguePhase[] {
-  if (format === "h2h") return [{ kind: "regular", format: "h2h", fromMatchday: 1, toMatchday: 38 }];
-  if (format === "hybrid") {
+/** `from` e `to` sono le giornate della lega: nelle fasi la coppa prende le ultime. */
+export function defaultPhases(format: CompetitionFormat, from = 1, to = 38): LeaguePhase[] {
+  if (format === "h2h") return [{ kind: "regular", format: "h2h", fromMatchday: from, toMatchday: to }];
+  if (format === "hybrid" && to > from) {
+    const cut = Math.max(from, to - 8);
     return [
-      { kind: "regular", format: "classic", fromMatchday: 1, toMatchday: 30 },
-      { kind: "knockout", format: "h2h", fromMatchday: 31, toMatchday: 38 },
+      { kind: "regular", format: "classic", fromMatchday: from, toMatchday: cut },
+      { kind: "knockout", format: "h2h", fromMatchday: cut + 1, toMatchday: to },
     ];
   }
-  return [{ kind: "regular", format: "classic", fromMatchday: 1, toMatchday: 38 }];
+  return [{ kind: "regular", format: "classic", fromMatchday: from, toMatchday: to }];
+}
+
+export type LeagueRange = { from: number; to: number };
+
+export function inLeagueRange(range: LeagueRange, matchday: number) {
+  return matchday >= range.from && matchday <= range.to;
+}
+
+/**
+ * Le giornate scelte per una lega nuova: non si parte da una giornata già chiusa.
+ * `next` è la prima giornata ancora da chiudere, `last` l'ultima del calendario.
+ * Restituisce il messaggio da mostrare se la scelta non va bene.
+ */
+export function newLeagueRange(start: unknown, end: unknown, next: number, last: number): LeagueRange | string {
+  const from = start === null || start === undefined || start === "" ? Number.NaN : Number(start);
+  const to = end === undefined || end === null || end === "" ? last : Number(end);
+  if (!Number.isInteger(from) || !Number.isInteger(to)) return "Scegli la giornata da cui parte la lega.";
+  if (from < next) return `La giornata ${from} è già chiusa: la lega può partire dalla ${next}.`;
+  if (to > last) return `Il calendario arriva alla giornata ${last}.`;
+  if (from > to) return "La lega non può finire prima della giornata di inizio.";
+  return { from, to };
 }
 
 export const DEFAULT_LEAGUE_RULES: LeagueRules = {

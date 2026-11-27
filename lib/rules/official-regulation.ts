@@ -36,10 +36,10 @@ export function buildOfficialRegulation(leagueName: string, rules: LeagueRules) 
     ? "Una partita rinviata o sospesa assegna il **6 politico**, senza bonus né malus, finché non arrivano i voti veri."
     : "Una partita rinviata o sospesa resta **fuori dal calcolo** finché non viene disputata: niente 6 politico e niente riserva al suo posto.";
   const formatName = rules.format === "h2h"
-    ? "Scontri diretti: i fantapunti diventano gol con le soglie della lega, poi 3 punti alla vittoria, 1 al pareggio e 0 alla sconfitta."
+    ? "1 contro 1 (scontri diretti): i fantapunti diventano gol con le soglie della lega, poi 3 punti alla vittoria, 1 al pareggio e 0 alla sconfitta."
     : rules.format === "hybrid"
-      ? "Fasi: la regular season segue il formato scelto e la coppa resta fuori da quella classifica."
-      : "Classifica a somma: ogni giornata aggiunge i fantapunti.";
+      ? "A fasi: la regular season segue il formato scelto e la coppa resta fuori da quella classifica."
+      : "Tutti contro tutti (classifica a somma): ogni giornata aggiunge i fantapunti.";
   const roseShare = rules.exclusiveRosters
     ? "In questa lega le rose sono esclusive: lo stesso calciatore non può stare in due squadre."
     : "Le rose non sono esclusive: più squadre della stessa lega possono scegliere lo stesso calciatore.";

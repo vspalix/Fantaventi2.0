@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { BusyLabel } from "@/components/BusyLabel";
 import { CopyInviteLink } from "@/components/leagues/CopyInviteLink";
-import { CreateLeagueForm } from "@/components/leagues/CreateLeagueForm";
+import { CreateLeagueForm, type NewLeague, type SeasonCalendar } from "@/components/leagues/CreateLeagueForm";
 import { JoinImportPrompt } from "@/components/leagues/JoinImportPrompt";
 import { LeagueListCard } from "@/components/leagues/LeagueListCard";
 import { useMyLeagues } from "@/components/leagues/MyLeagues";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import type { LeagueRules } from "@/lib/league-rules";
 import { pushToast } from "@/lib/toast";
 import type { LeagueSummary, RosterImportSource } from "@/lib/types";
 import { readAction, readableError } from "@/lib/feedback";
@@ -28,6 +27,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
   /** null finché l'elenco non è arrivato. */
   const [leagues, setLeagues] = useState<LeagueSummary[] | null>(known);
   const [publicLeagues, setPublicLeagues] = useState<LeagueSummary[]>([]);
+  const [calendar, setCalendar] = useState<SeasonCalendar | null>(null);
   const [mode, setMode] = useState<"join" | "create">("join");
   const [code, setCode] = useState("");
   const [created, setCreated] = useState<(LeagueSummary & { rulesStored?: boolean }) | null>(null);
@@ -54,11 +54,12 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
     if (!signedIn) return;
     let cancelled = false;
     fetch("/api/leagues")
-      .then((response) => readJson<{ leagues: LeagueSummary[]; publicLeagues?: LeagueSummary[] }>(response))
+      .then((response) => readJson<{ leagues: LeagueSummary[]; publicLeagues?: LeagueSummary[]; calendar?: SeasonCalendar }>(response))
       .then((body) => {
         if (!cancelled) {
           setLeagues(body.leagues);
           setPublicLeagues(body.publicLeagues ?? []);
+          setCalendar(body.calendar ?? null);
         }
       })
       .catch((reason: unknown) => {
@@ -72,7 +73,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
     };
   }, [signedIn]);
 
-  async function createLeague(name: string, rules: LeagueRules) {
+  async function createLeague(league: NewLeague) {
     if (flight.current) return false;
     flight.current = true;
     setPending(true);
@@ -81,7 +82,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
       const body = await readJson<{ league: LeagueSummary & { rulesStored?: boolean } }>(await fetch("/api/leagues", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, rules }),
+        body: JSON.stringify(league),
       }));
       setCreated(body.league);
       setLeagues((current) => [body.league, ...(current ?? []).filter((league) => league.id !== body.league.id)]);
@@ -188,7 +189,7 @@ export function LeagueManager({ signedIn }: { signedIn: boolean }) {
             </form>
           </div>
           <div hidden={mode !== "create"}>
-            <CreateLeagueForm pending={pending} onCreate={createLeague} />
+            <CreateLeagueForm pending={pending} calendar={calendar} onCreate={createLeague} />
           </div>
         </section>
 

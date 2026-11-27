@@ -1,5 +1,5 @@
 import { projectLiveScore, type PlayerStat } from "@/lib/engine/calculator";
-import { fantapuntiToGoals, headToHeadPairings, weekScoreMode } from "@/lib/league-rules";
+import { fantapuntiToGoals, headToHeadPairings, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
 import { pitchEvents } from "@/lib/engagement/live-board";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
 import { definitionForLeague } from "@/lib/server/league-settings";
@@ -45,7 +45,8 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
     .eq("season_id", league.seasonId)
     .order("number");
   if (weeks.error) throw new Error(weeks.error.message);
-  const rows = weeks.data ?? [];
+  const range = { from: league.startMatchday, to: league.endMatchday };
+  const rows = (weeks.data ?? []).filter((row) => inLeagueRange(range, Number(row.number)));
   const liveWeek = [...rows].reverse().find((row) => row.status === "open" || row.status === "locked")
     ?? rows.find((row) => row.status === "scheduled");
   if (!liveWeek) return empty;

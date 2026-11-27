@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createJoinCode } from "@/lib/join-code";
 import { publicHandle } from "@/lib/public-name";
-import { parseLeagueRules, type LeagueRules } from "@/lib/league-rules";
+import { newLeagueRange, parseLeagueRules, type LeagueRange, type LeagueRules } from "@/lib/league-rules";
 import { leagueActor } from "@/lib/server/access-policy";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -223,11 +223,36 @@ export async function ensureLeagueTeam(userId: string, leagueId: string, preferr
   return team;
 }
 
+/** Le giornate tra cui si può scegliere per una lega nuova. */
+export async function seasonCalendar(admin: ReturnType<typeof createAdminSupabase>, seasonId: string) {
+  const [rounds, open] = await Promise.all([
+    seasonRoundCount(admin, seasonId),
+    admin
+      .from("gameweeks")
+      .select("number, deadline_at")
+      .eq("season_id", seasonId)
+      .in("status", ["scheduled", "open"])
+      .gt("deadline_at", new Date().toISOString())
+      .order("number", { ascending: true })
+      .limit(1),
+  ]);
+  if (open.error) throw new Error(open.error.message);
+  const last = rounds > 0 ? rounds : 38;
+  const first = open.data?.[0];
+  return {
+    rounds,
+    last,
+    next: first ? Number(first.number) : last,
+    nextDeadlineAt: first ? (first.deadline_at as string) : null,
+  };
+}
+
 export async function createLeague(
   userId: string,
   email: string | undefined,
   name: string,
   rulesInput?: unknown,
+  rangeInput?: { startMatchday?: unknown; endMatchday?: unknown },
 ) {
   const trimmed = name.trim();
   if (trimmed.length < 2 || trimmed.length > 40) {
@@ -239,6 +264,14 @@ export async function createLeague(
   await ensureProfile(admin, userId, email);
   const season = await getCurrentSeason(admin);
   const id = crypto.randomUUID();
+  // La scelta delle giornate si controlla prima di creare qualsiasi cosa.
+  const calendar = await seasonCalendar(admin, season.id);
+  let chosen: LeagueRange | null = null;
+  if (rangeInput?.startMatchday !== undefined) {
+    const range = newLeagueRange(rangeInput.startMatchday, rangeInput.endMatchday, calendar.next, calendar.last);
+    if (typeof range === "string") throw httpError(range, 400);
+    chosen = range;
+  }
 
   let joinCode = createJoinCode();
   let created = false;
@@ -283,9 +316,9 @@ export async function createLeague(
   }
   if (!created) throw new Error("Non sono riuscito a generare un codice invito univoco.");
 
-  const rounds = await seasonRoundCount(admin, season.id);
-  const rangePatch: { start_matchday: number; end_matchday?: number } = { start_matchday: 1 };
-  if (rounds > 0) rangePatch.end_matchday = rounds;
+  const rangePatch: { start_matchday: number; end_matchday?: number } = { start_matchday: chosen?.from ?? 1 };
+  const end = chosen?.to ?? calendar.rounds;
+  if (end > 0) rangePatch.end_matchday = end;
   const updated = await admin.from("private_leagues").update(rangePatch).eq("id", id);
   const missingColumn = Boolean(updated.error
     && /column|schema cache/i.test(updated.error.message)

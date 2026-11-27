@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { fetchFantacalcioMatchweek, votesForClubs, type FantacalcioPlayerVote } from "@/lib/server/fantacalcio-live";
-import { schemaHint, scoreOfficialGameweek, refreshProvisionalScores, persistLiveProjection } from "@/lib/server/live-score";
+import { schemaHint, scoreOfficialGameweek, refreshProvisionalScores } from "@/lib/server/live-score";
+import { saveProvisionalVotes, type ProvisionalVote } from "@/lib/server/provisional-votes";
 import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
 import { sendTelegramMessage } from "@/lib/server/telegram-alert";
 import { runManualRead, runVoteCycle, type ClockDeps, type CycleReport, type VotePage } from "@/lib/server/vote-engine";
 import { planVoteClock, type ClockSnapshot, type VotePlan } from "@/lib/server/vote-schedule";
-import type { PlayerStat } from "@/lib/engine/calculator";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type { MatchVoteSyncResult } from "@/lib/server/vote-engine";
@@ -78,13 +78,12 @@ async function projectPublishedVotes(
   const players = await admin.from("players").select("id, external_ref").in("external_ref", refs);
   if (players.error) throw new Error(players.error.message);
   const playerId = new Map((players.data ?? []).map((player) => [player.external_ref as string, player.id as string]));
-  const overlay = new Map<string, PlayerStat>();
+  const known: ProvisionalVote[] = [];
   for (const vote of votes) {
     const id = playerId.get(vote.externalRef);
     if (!id) continue;
-    overlay.set(id, {
+    known.push({
       playerId: id,
-      role: "MID",
       voto: vote.voto,
       goals: vote.goals,
       assists: vote.assists,
@@ -95,12 +94,12 @@ async function projectPublishedVotes(
       penaltiesSaved: vote.penaltiesSaved,
       ownGoals: vote.ownGoals,
       goalsConceded: vote.goalsConceded,
-      postponed: false,
-      withoutVote: vote.voto === null,
     });
   }
-  if (overlay.size === 0) return;
-  await persistLiveProjection(gameweekId, overlay);
+  if (known.length === 0) return;
+  // Prima si salvano i voti (le schermate leggono questi), poi i totali provvisori.
+  await saveProvisionalVotes(gameweekId, known);
+  await refreshProvisionalScores(gameweekId);
 }
 
 async function markFinished(admin: ReturnType<typeof createAdminSupabase>, matchId: string) {

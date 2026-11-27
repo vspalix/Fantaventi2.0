@@ -59,7 +59,7 @@ const votes = await voteAdapter.parse({ bytes: await bufferOf((book) => {
   const atalanta = sheet.addRow(["Atalanta"]);
   sheet.mergeCells(atalanta.number, 1, atalanta.number, 13);
   sheet.addRow(["Cod.", "Ruolo", "Nome", "Voto", "Gf", "Gs", "Rp", "Rs", "Rf", "Au", "Amm", "Esp", "Ass"]);
-  sheet.addRow([101, "P", "Marco Sportiello", "6*", 0, 1, 0, 0, 1, 0, 1, 0, 0]);
+  sheet.addRow([101, "P", "Marco Sportiello", "6*", 0, 1, 1, 0, 0, 0, 1, 0, 0]);
   sheet.addRow([104, "D", "Senza voto", null, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   sheet.addRow([1909, "ALL", "Palladino", 6.5, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
   const inter = sheet.addRow(["Inter"]);
@@ -75,7 +75,7 @@ const votes = await voteAdapter.parse({ bytes: await bufferOf((book) => {
 if (votes.votes.length !== 2 || votes.skippedWithoutVote !== 1) {
   throw new Error(`Voti inattesi: ${JSON.stringify(votes)}`);
 }
-if (votes.votes[0]?.voto !== 6 || votes.votes[0]?.goalsConceded !== 1 || votes.votes[0]?.clubName !== "Atalanta" || votes.votes[1]?.assists !== 1) {
+if (votes.votes[0]?.voto !== 6 || votes.votes[0]?.goalsConceded !== 1 || votes.votes[0]?.penaltiesSaved !== 1 || votes.votes[0]?.clubName !== "Atalanta" || votes.votes[1]?.assists !== 1) {
   throw new Error(`Dettaglio voti inatteso: ${JSON.stringify(votes.votes)}`);
 }
 if (votes.votes.some((row) => row.externalRef === "104" || row.name === "Palladino")) {

@@ -9,9 +9,10 @@ const HEADER_NAMES: Record<string, keyof NormalizedVote | "role"> = {
   voto: "voto",
   gf: "goals",
   gs: "goalsConceded",
-  rp: "penaltiesScored",
+  // Rp = rigori parati, Rs = sbagliati, Rf = rigori fatti. Gf non comprende i rigori.
+  rp: "penaltiesSaved",
   rs: "penaltiesMissed",
-  rf: "penaltiesSaved",
+  rf: "penaltiesScored",
   au: "ownGoals",
   amm: "yellowCards",
   esp: "redCards",

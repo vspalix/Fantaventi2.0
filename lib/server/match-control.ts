@@ -5,6 +5,7 @@ import { schemaHint, scoreOfficialGameweek } from "@/lib/server/live-score";
 import { rebuildWeekBoard } from "@/lib/server/engagement-tick";
 import { ensureMockVotes } from "@/lib/server/simulate-gameweek";
 import { reportError } from "@/lib/server/error-report";
+import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 function httpError(message: string, status: number) {
@@ -146,7 +147,8 @@ export async function calculateImportedGameweek(userId: string, input: { leagueI
   const imports = await admin
     .from("vote_imports")
     .select("id", { count: "exact", head: true })
-    .eq("gameweek_id", gameweek.id);
+    .eq("gameweek_id", gameweek.id)
+    .neq("source", PROVISIONAL_SOURCE);
   if (imports.error) throw new Error(schemaHint(imports.error.message));
   if ((imports.count ?? 0) === 0) {
     throw httpError("Carica prima i voti ufficiali di questa giornata.", 409);

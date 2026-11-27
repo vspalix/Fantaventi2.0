@@ -4,6 +4,7 @@ import { writeSuiteStamp } from "@/lib/server/engine-suite-report";
 import { runReadLatencyBench } from "@/lib/testing/queryLatencyBench";
 import { runScoringEngineTestSuite, withChecks, type EngineTestReport } from "@/lib/testing/scoringEngineTestSuite";
 import { runErrorReportChecks } from "./test-error-report";
+import { runLineupAndPointsChecks } from "./test-lineup-and-points";
 import { runMatchdayLifecycle } from "./test-matchday-lifecycle";
 import { runLiveGapChecks } from "./test-live-gaps";
 import { runRulesCoverage } from "./test-rules-coverage";
@@ -82,11 +83,15 @@ async function main() {
   console.log(`Errori e avvisi: ${errors.failures.length === 0 ? "PASSED" : "FAILED"} ${errors.passed}/${errors.total}`);
   for (const failure of errors.failures) console.log(`- ${failure}`);
 
-  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total;
-  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed;
+  const lineups = await runLineupAndPointsChecks();
+  console.log(`Formazioni, rigori e voti salvati: ${lineups.failures.length === 0 ? "PASSED" : "FAILED"} ${lineups.passed}/${lineups.total}`);
+  for (const failure of lineups.failures) console.log(`- ${failure}`);
+
+  const total = report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total;
+  const passed = report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || total < 100) process.exit(1);
 }
 
 main().catch((error: unknown) => {

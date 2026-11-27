@@ -91,8 +91,16 @@ function round2(value: number) {
   return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
-function amount(catalog: Record<string, number>, key: string) {
-  return catalog[key] ?? 0;
+/**
+ * I rigori hanno un valore anche quando il regolamento salvato non li elenca (a quello di
+ * stagione manca il rigore segnato). Il gol su azione è una voce a parte: la fonte non
+ * conta il rigore tra i gol, quindi ogni rete vale una volta sola.
+ * Una lega che spegne o cambia la voce la scrive nel catalogo, e vale quella.
+ */
+const PENALTY_DEFAULTS: Record<string, number> = { penalty_scored: 3, penalty_saved: 3, penalty_missed: -3 };
+
+export function bonusAmount(catalog: Record<string, number>, key: string) {
+  return catalog[key] ?? PENALTY_DEFAULTS[key] ?? 0;
 }
 
 function cleanSheetBonus(role: PlayerRole, stat: PlayerStat | undefined, voto: number | null, definition: RulesetDefinition) {
@@ -113,18 +121,18 @@ export function filedPlayerScore(
   if (voto === null) return { voto: null, bonus: null, malus: null, fantavoto: null };
   const catalog = definition.bonus_malus ?? {};
   const bonus = political ? 0 : round2(
-    (stat?.goals ?? 0) * amount(catalog, "goal")
-    + (stat?.assists ?? 0) * amount(catalog, "assist")
-    + (stat?.penaltiesScored ?? 0) * amount(catalog, "penalty_scored")
-    + (stat?.penaltiesSaved ?? 0) * amount(catalog, "penalty_saved")
+    (stat?.goals ?? 0) * bonusAmount(catalog, "goal")
+    + (stat?.assists ?? 0) * bonusAmount(catalog, "assist")
+    + (stat?.penaltiesScored ?? 0) * bonusAmount(catalog, "penalty_scored")
+    + (stat?.penaltiesSaved ?? 0) * bonusAmount(catalog, "penalty_saved")
     + cleanSheetBonus(role, stat, voto, definition),
   );
   const baseMalus = political ? 0 : round2(
-    (stat?.yellowCards ?? 0) * amount(catalog, "yellow_card")
-    + (stat?.redCards ?? 0) * amount(catalog, "red_card")
-    + (stat?.penaltiesMissed ?? 0) * amount(catalog, "penalty_missed")
-    + (stat?.ownGoals ?? 0) * amount(catalog, "own_goal")
-    + (role === "GK" ? (stat?.goalsConceded ?? 0) * amount(catalog, "goal_conceded") : 0),
+    (stat?.yellowCards ?? 0) * bonusAmount(catalog, "yellow_card")
+    + (stat?.redCards ?? 0) * bonusAmount(catalog, "red_card")
+    + (stat?.penaltiesMissed ?? 0) * bonusAmount(catalog, "penalty_missed")
+    + (stat?.ownGoals ?? 0) * bonusAmount(catalog, "own_goal")
+    + (role === "GK" ? (stat?.goalsConceded ?? 0) * bonusAmount(catalog, "goal_conceded") : 0),
   );
   const malus = round2(baseMalus * malusFactor);
   return { voto, bonus, malus, fantavoto: round2(voto + bonus + malus) };
@@ -273,18 +281,18 @@ export function scoreLineup(
     const political = stat?.voto == null && Boolean(stat?.postponed) && definition.postponement === "political_six";
     const voto = political ? 6 : (stat?.voto ?? null);
     const bonus = voto === null || political ? 0 : round2(
-      (stat?.goals ?? 0) * amount(catalog, "goal")
-      + (stat?.assists ?? 0) * amount(catalog, "assist")
-      + (stat?.penaltiesScored ?? 0) * amount(catalog, "penalty_scored")
-      + (stat?.penaltiesSaved ?? 0) * amount(catalog, "penalty_saved")
+      (stat?.goals ?? 0) * bonusAmount(catalog, "goal")
+      + (stat?.assists ?? 0) * bonusAmount(catalog, "assist")
+      + (stat?.penaltiesScored ?? 0) * bonusAmount(catalog, "penalty_scored")
+      + (stat?.penaltiesSaved ?? 0) * bonusAmount(catalog, "penalty_saved")
       + cleanSheetBonus(role, stat, voto, definition),
     );
     const malus = voto === null || political ? 0 : round2(
-      (stat?.yellowCards ?? 0) * amount(catalog, "yellow_card")
-      + (stat?.redCards ?? 0) * amount(catalog, "red_card")
-      + (stat?.penaltiesMissed ?? 0) * amount(catalog, "penalty_missed")
-      + (stat?.ownGoals ?? 0) * amount(catalog, "own_goal")
-      + (role === "GK" ? (stat?.goalsConceded ?? 0) * amount(catalog, "goal_conceded") : 0),
+      (stat?.yellowCards ?? 0) * bonusAmount(catalog, "yellow_card")
+      + (stat?.redCards ?? 0) * bonusAmount(catalog, "red_card")
+      + (stat?.penaltiesMissed ?? 0) * bonusAmount(catalog, "penalty_missed")
+      + (stat?.ownGoals ?? 0) * bonusAmount(catalog, "own_goal")
+      + (role === "GK" ? (stat?.goalsConceded ?? 0) * bonusAmount(catalog, "goal_conceded") : 0),
     );
     return {
       playerId: slot.playerId,

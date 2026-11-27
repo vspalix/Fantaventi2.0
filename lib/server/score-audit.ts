@@ -2,7 +2,7 @@ import { explainScore, type ScoreAudit } from "@/lib/engine/score-audit";
 import { compactFromAudit, type CompactPlayer } from "@/lib/lineups/compact-sheet";
 import { weekScoreMode } from "@/lib/league-rules";
 import { projectLiveScore, scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
-import { overlayPublishedVotes } from "@/lib/server/live-projection";
+import { loadProvisionalVotes, withProvisionalVotes } from "@/lib/server/provisional-votes";
 import type { PlayerRole } from "@/lib/types";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { definitionForLeague } from "@/lib/server/league-settings";
@@ -158,13 +158,9 @@ async function openWeekAudit(
     if (finishedClubs.has(clubId)) matchFinished.add(playerId);
   }
 
-  let auditStats = stats;
-  if (!official) {
-    const seasonCode = await admin.from("seasons").select("code").eq("id", league.seasonId).maybeSingle();
-    if (!seasonCode.error && seasonCode.data?.code) {
-      auditStats = await overlayPublishedVotes(stats, String(seasonCode.data.code), gameweekNumber, roles);
-    }
-  }
+  const auditStats = official
+    ? stats
+    : withProvisionalVotes(stats, await loadProvisionalVotes(gameweekId), matchFinished, roles);
 
   const slotsOf = (lineupId: string): LineupSlotInput[] => (slotsByLineup.get(lineupId) ?? []).map((slot) => ({
     playerId: slot.player_id,

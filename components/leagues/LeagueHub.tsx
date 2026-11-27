@@ -47,6 +47,11 @@ async function readJson<T>(response: Response): Promise<T> {
   return readAction<T>(response);
 }
 
+/** Chiusa la formazione vale solo quella salvata: proposte e modifiche in sospeso non contano. */
+function savedPick(hub: LeagueHubData): LeagueHubData["lineup"] {
+  return hub.lineupOrigin === "saved" ? hub.lineup : { playerIds: [], benchIds: [], captainId: null, viceId: null };
+}
+
 function formatPoints(value: number | null) {
   if (value === null) return "—";
   return value.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -363,6 +368,8 @@ export function LeagueHub({
   const flight = useRef(false);
   const picks = useTapGuard();
   const [now, setNow] = useState(() => Date.now());
+  const [closedNote, setClosedNote] = useState<string | null>(null);
+  const closedWeek = useRef<string | null>(null);
 
   useEffect(() => {
     void fetch("/api/active-league", {
@@ -375,6 +382,7 @@ export function LeagueHub({
   useEffect(() => {
     setHub(initial);
     setSquads(initial.squads);
+    if (!initial.editable) showPick(savedPick(initial), initial.roster);
   }, [initial]);
 
   const selected = hub.gameweeks.find((gameweek) => gameweek.id === hub.selectedGameweekId) ?? null;
@@ -443,18 +451,65 @@ export function LeagueHub({
     const remaining = new Date(hub.home.deadlineAt).getTime() - Date.now();
     if (remaining <= 0) return;
     const timer = window.setTimeout(() => setNow(Date.now()), remaining + 250);
-    return () => window.clearTimeout(timer);
+    // Sul telefono il conto alla rovescia si ferma in background: al rientro si ricontrolla l'ora.
+    const wake = () => setNow(Date.now());
+    document.addEventListener("visibilitychange", wake);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", wake);
+    };
   }, [hub.home.phase, hub.home.deadlineAt]);
+
+  const timeUp = hub.editable
+    && Boolean(hub.home.deadlineAt)
+    && new Date(hub.home.deadlineAt ?? 0).getTime() <= now;
+
+  // Aspetta un eventuale salvataggio in corso, poi mostra quello che il server ha davvero.
+  useEffect(() => {
+    if (!timeUp || pending || closedWeek.current === hub.selectedGameweekId) return;
+    closedWeek.current = hub.selectedGameweekId;
+    void showSavedLineup(hub);
+  }, [timeUp, pending, hub.selectedGameweekId]);
+
+  function showPick(pick: LeagueHubData["lineup"], roster: CatalogPlayer[]) {
+    setPlayerIds(pick.playerIds);
+    setBenchIds(pick.benchIds);
+    setPickerRole(null);
+    setReplacingId(null);
+    setFormationId(inferFormation(countRoles(roster, pick.playerIds)).id);
+    setCaptainId(pick.captainId);
+    setViceId(pick.viceId);
+  }
 
   function applyHub(nextHub: LeagueHubData) {
     setHub(nextHub);
-    setPlayerIds(nextHub.lineup.playerIds);
-    setBenchIds(nextHub.lineup.benchIds);
-    setPickerRole(null);
-    setReplacingId(null);
-    setFormationId(inferFormation(countRoles(nextHub.roster, nextHub.lineup.playerIds)).id);
-    setCaptainId(nextHub.lineup.captainId);
-    setViceId(nextHub.lineup.viceId);
+    setClosedNote(null);
+    showPick(nextHub.editable ? nextHub.lineup : savedPick(nextHub), nextHub.roster);
+  }
+
+  async function showSavedLineup(source: LeagueHubData) {
+    const shown = JSON.stringify([playerIds, benchIds, captainId, viceId]);
+    showPick(savedPick(source), source.roster);
+    setError(null);
+    setMessage(null);
+    let latest = source;
+    try {
+      const body = await readJson<{ hub: LeagueHubData }>(
+        await fetch(`/api/leagues/${source.league.id}/hub?gameweek=${source.selectedGameweekId}`),
+      );
+      latest = body.hub;
+      applyHub(latest);
+    } catch {
+      // Senza rete resta l'ultima formazione salvata già ricevuta.
+    }
+    const saved = savedPick(latest);
+    showPick(saved, latest.roster);
+    const same = shown === JSON.stringify([saved.playerIds, saved.benchIds, saved.captainId, saved.viceId]);
+    setClosedNote(latest.lineupOrigin !== "saved"
+      ? "Tempo scaduto: per questa giornata non risulta una formazione salvata."
+      : same
+        ? "Tempo scaduto: questa è la formazione salvata."
+        : "Tempo scaduto: le modifiche non salvate non valgono. Questa è la formazione salvata.");
   }
 
   async function openGameweek(gameweekId: string, stay?: HubTab) {
@@ -629,8 +684,12 @@ export function LeagueHub({
       void triggerHaptic();
     } catch (reason) {
       const text = readableError(reason, "Salvataggio non riuscito. La formazione non è cambiata: riprova da questa schermata.");
-      setError(text);
       pushToast("err", text);
+      if (/bloccata/i.test(text)) {
+        closedWeek.current = selected.id;
+        await showSavedLineup(hub);
+      }
+      setError(text);
     } finally {
       flight.current = false;
       setPending(false);
@@ -832,10 +891,11 @@ export function LeagueHub({
           {selected && selectedStarted ? (
             <p className="lock-badge">Formazione bloccata - Giornata in corso</p>
           ) : null}
+          {closedNote ? <p className="banner" role="status">{closedNote}</p> : null}
           {selected && !canEdit && !selectedStarted ? (
             <p className="banner">
               {hub.liveSheet
-                ? `Giornata ${selected.number} in corso. Il fantavoto è voto + bonus + malus, appena il voto è pubblicato.`
+                ? `Giornata ${selected.number} in corso. Il fantavoto è voto + bonus + malus. I voti arrivano a fine primo tempo e a fine partita.`
                 : hub.home.phase === "live" || (hub.home.phase === "countdown" && !countdownOpen)
                   ? `Giornata ${hub.home.gameweekNumber ?? selected.number} in corso. La formazione si consulta. Il countdown della prossima parte a giornata finita.`
                   : hub.home.phase === "countdown" && next

@@ -4,6 +4,7 @@ import { ACTION_LABEL } from "@/lib/admin-audit-labels";
 import { listAdminAudit } from "@/lib/server/audit";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { reportIfTechnical } from "@/lib/server/error-report";
+import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { ADMIN_LEAGUE_COOKIE } from "@/lib/admin-area";
 
@@ -193,7 +194,7 @@ export async function loadAdminOverview(week: Week | null): Promise<AdminOvervie
       : Promise.resolve({ data: [], error: null }),
     week ? countRows("player_gameweek_stats", { column: "gameweek_id", op: "eq", value: week.id }) : Promise.resolve(0),
     week
-      ? admin.from("vote_imports").select("imported_at").eq("gameweek_id", week.id).order("imported_at", { ascending: false }).limit(1)
+      ? admin.from("vote_imports").select("imported_at").eq("gameweek_id", week.id).neq("source", PROVISIONAL_SOURCE).order("imported_at", { ascending: false }).limit(1)
       : Promise.resolve({ data: [], error: null }),
     admin.from("vote_reads").select("kind, outcome, started_at, finished_at").order("started_at", { ascending: false }).limit(6),
     countRows("profiles"),

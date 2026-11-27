@@ -1,6 +1,7 @@
 import { schemaHint, scoreOfficialGameweek } from "@/lib/server/live-score";
 import { SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
+import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export const APPEAL_MS = 24 * 60 * 60 * 1000;
@@ -78,7 +79,8 @@ export async function processGameweekLifecycle(now = new Date(), options?: { fin
     const imports = await admin
       .from("vote_imports")
       .select("id", { count: "exact", head: true })
-      .eq("gameweek_id", gameweek.id);
+      .eq("gameweek_id", gameweek.id)
+      .neq("source", PROVISIONAL_SOURCE);
     if (imports.error) throw new Error(imports.error.message);
     if ((imports.count ?? 0) === 0) {
       skipped.push({ number: gameweek.number, reason: "Import voti non ancora presente." });

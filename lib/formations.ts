@@ -157,6 +157,112 @@ export function alphabeticalOfficeLineup(roster: { id: string; role: PlayerRole;
   };
 }
 
+export type CarriedLineup = {
+  playerIds: string[];
+  benchIds: string[];
+  captainId: string | null;
+  viceId: string | null;
+};
+
+/**
+ * L'ultima formazione riportata sulla rosa di oggi. Chi non è più in rosa esce,
+ * il nuovo acquisto prende il suo posto (se il ruolo lo permette) oppure va in panchina,
+ * e il risultato è sempre un modulo ammesso con ogni calciatore della rosa una volta sola.
+ * `formerRoles` serve a sapere che ruolo aveva chi è uscito.
+ */
+export function carryLineup(
+  roster: RosterPlayer[],
+  previous: CarriedLineup,
+  formerRoles: ReadonlyMap<string, PlayerRole> = new Map(),
+): CarriedLineup | null {
+  const roleOf = new Map(roster.map((player) => [player.id, player.role]));
+  const before = [...new Set(previous.playerIds)];
+  const beforeBench = [...new Set(previous.benchIds)].filter((id) => !before.includes(id));
+  if (roleOf.size === 0 || before.length === 0) return null;
+
+  const target = Math.min(before.length, 11);
+  const listed = new Set([...before, ...beforeBench]);
+  const incoming = [...roleOf.keys()].filter((id) => !listed.has(id)).sort((left, right) => left.localeCompare(right));
+  const bench = beforeBench.filter((id) => roleOf.has(id));
+  const everyone = [...new Set([...bench, ...incoming, ...before.filter((id) => roleOf.has(id))])];
+
+  const attempt = (formation: Formation) => {
+    const used: RoleCounts = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+    const taken = new Set<string>();
+    const slots: (string | null)[] = Array.from({ length: target }, () => null);
+    const fits = (id: string) => {
+      const role = roleOf.get(id);
+      return Boolean(role) && !taken.has(id) && used[role as PlayerRole] < roleCap(formation, role as PlayerRole);
+    };
+    const place = (index: number, id: string) => {
+      slots[index] = id;
+      taken.add(id);
+      used[roleOf.get(id) as PlayerRole] += 1;
+    };
+
+    let kept = 0;
+    before.slice(0, target).forEach((id, index) => {
+      if (!fits(id)) return;
+      place(index, id);
+      kept += 1;
+    });
+    // Prima il cambio alla pari: il nuovo acquisto, poi la panchina nel suo ordine.
+    let sameRole = 0;
+    slots.forEach((slot, index) => {
+      if (slot) return;
+      const wanted = roleOf.get(before[index]) ?? formerRoles.get(before[index]);
+      const heir = [...incoming, ...bench].find((id) => roleOf.get(id) === wanted && fits(id));
+      if (!heir) return;
+      place(index, heir);
+      sameRole += 1;
+    });
+    slots.forEach((slot, index) => {
+      if (slot) return;
+      const filler = everyone.find((id) => fits(id));
+      if (filler) place(index, filler);
+    });
+
+    const starters = slots.filter((id): id is string => Boolean(id));
+    return { formation, starters, kept, sameRole };
+  };
+
+  const survivors = countRoles(roster, before.filter((id) => roleOf.has(id)));
+  const usual = inferFormation(survivors).id;
+  const best = FORMATIONS.map(attempt).sort((left, right) => (
+    right.starters.length - left.starters.length
+    || right.kept - left.kept
+    || right.sameRole - left.sameRole
+    || Number(right.formation.id === usual) - Number(left.formation.id === usual)
+  ))[0];
+  if (!best || best.starters.length === 0) return null;
+
+  const onPitch = new Set(best.starters);
+  const waiting = incoming.filter((id) => !onPitch.has(id));
+  const nextBench: string[] = [];
+  for (const id of beforeBench) {
+    if (roleOf.has(id)) {
+      if (!onPitch.has(id)) nextBench.push(id);
+      continue;
+    }
+    // Il posto in panchina di chi è uscito passa al nuovo acquisto.
+    const sameRole = waiting.findIndex((candidate) => roleOf.get(candidate) === formerRoles.get(id));
+    const [heir] = waiting.splice(Math.max(sameRole, 0), 1);
+    if (heir) nextBench.push(heir);
+  }
+  for (const id of [...before, ...waiting, ...roleOf.keys()]) {
+    if (roleOf.has(id) && !onPitch.has(id) && !nextBench.includes(id)) nextBench.push(id);
+  }
+
+  const onField = (id: string | null) => (id && onPitch.has(id) ? id : null);
+  const captainId = onField(previous.captainId) ?? onField(previous.viceId) ?? best.starters[0];
+  const oldVice = onField(previous.viceId);
+  const viceId = oldVice && oldVice !== captainId
+    ? oldVice
+    : best.starters.find((id) => id !== captainId) ?? null;
+
+  return { playerIds: best.starters, benchIds: nextBench, captainId, viceId };
+}
+
 export function formationIssue(roster: RosterPlayer[], playerIds: string[]) {
   const unique = [...new Set(playerIds)];
   if (unique.length === 0) return "Schiera almeno un titolare.";

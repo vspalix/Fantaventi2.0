@@ -55,6 +55,7 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
           </div>
           <PushOptIn />
         </header>
+        {live?.phase === "live" ? <p className="small muted">I voti arrivano a fine primo tempo e a fine partita.</p> : null}
         {error ? <p className="banner">{error}</p> : null}
         {live?.mine ? (
           <div className="stadium">

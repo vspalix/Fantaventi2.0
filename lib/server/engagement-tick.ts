@@ -1,12 +1,10 @@
 import { awardBadges, bonusWeight, h2hFlips, heavyMalus, overtakes, pitchEvents } from "@/lib/engagement/live-board";
 import { parseLeagueRules, weekScoreMode } from "@/lib/league-rules";
 import { writeLeagueFeed } from "@/lib/server/league-feed";
-import { overlayPublishedVotes } from "@/lib/server/live-projection";
 import { previewProvisional } from "@/lib/server/live-score";
 import { sendPushToUsers } from "@/lib/server/web-push";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
-import type { PlayerRole } from "@/lib/types";
 
 type Template = { title: string; body: string; enabled: boolean };
 
@@ -100,12 +98,10 @@ async function warnDeadlines(now: Date, template: Template) {
 async function notifyBonuses(template: Template) {
   if (!template.enabled) return 0;
   const admin = createAdminSupabase();
-  const weeks = await admin.from("gameweeks").select("id, number, season_id, status").in("status", ["open", "locked"]).limit(4);
+  const weeks = await admin.from("gameweeks").select("id, number, status").in("status", ["open", "locked"]).limit(4);
   if (weeks.error) return 0;
   let sent = 0;
   for (const week of weeks.data ?? []) {
-    const season = await admin.from("seasons").select("code").eq("id", week.season_id as string).maybeSingle();
-    if (season.error || !season.data) continue;
     let preview: Awaited<ReturnType<typeof previewProvisional>>;
     try {
       preview = await previewProvisional(week.id as string);
@@ -113,11 +109,7 @@ async function notifyBonuses(template: Template) {
       void reportError("Notifiche di giornata", error);
       continue;
     }
-    const roles = new Map<string, PlayerRole>();
-    for (const lineup of preview.lineups) {
-      for (const slot of lineup.slots) if (slot.role) roles.set(slot.playerId, slot.role);
-    }
-    const stats = await overlayPublishedVotes(preview.stats, season.data.code as string, Number(week.number), roles);
+    const stats = preview.stats;
     const teamIds = preview.lineups.map((lineup) => lineup.fantasyTeamId);
     const owners = teamIds.length
       ? await admin.from("fantasy_teams").select("id, user_id").in("id", teamIds)

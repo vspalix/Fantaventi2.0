@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { alphabeticalOfficeLineup } from "@/lib/formations";
+import { alphabeticalOfficeLineup, carryLineup, type CarriedLineup } from "@/lib/formations";
 import { officeLineupMode } from "@/lib/league-rules";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
+
+type RosterRow = { id: string; role: PlayerRole; name: string };
 
 type SlotCopy = {
   player_id: string;
@@ -72,9 +74,9 @@ export async function fileForgottenLineups(gameweekId: string, onlyTeamIds?: str
     const source = (previous.data ?? [])
       .filter((row) => row.fantasy_team_id === teamId)
       .sort((left, right) => (numberByWeek.get(right.gameweek_id as string) ?? 0) - (numberByWeek.get(left.gameweek_id as string) ?? 0))[0];
-    const slots = source
-      ? await slotsOf(source.id as string)
-      : await alphabeticalSlots(seasonId, number, teamId);
+    const roster = await rosterOfWeek(seasonId, number, teamId);
+    const carried = source ? await carriedSlots(seasonId, number, roster, source.id as string) : null;
+    const slots = carried ?? alphabeticalSlots(roster);
     if (slots.length === 0) continue;
     const copied = await copyLineup(teamId, gameweekId, slots);
     if (copied) filedCount += 1;
@@ -95,7 +97,60 @@ async function slotsOf(lineupId: string): Promise<SlotCopy[]> {
   return (plain.data ?? []) as SlotCopy[];
 }
 
-async function alphabeticalSlots(seasonId: string, gameweek: number, teamId: string): Promise<SlotCopy[]> {
+/** L'ultima formazione, riportata sui calciatori che sono in rosa in questa giornata. */
+async function carriedSlots(
+  seasonId: string,
+  gameweek: number,
+  roster: RosterRow[],
+  lineupId: string,
+): Promise<SlotCopy[] | null> {
+  const ordered = (await slotsOf(lineupId))
+    .sort((left, right) => Number(left.slot_order ?? 0) - Number(right.slot_order ?? 0));
+  const previous: CarriedLineup = {
+    playerIds: ordered.filter((slot) => slot.is_starter !== false).map((slot) => slot.player_id),
+    benchIds: ordered.filter((slot) => slot.is_starter === false).map((slot) => slot.player_id),
+    captainId: ordered.find((slot) => slot.is_captain)?.player_id ?? null,
+    viceId: ordered.find((slot) => slot.is_vice_captain)?.player_id ?? null,
+  };
+  const present = new Set(roster.map((player) => player.id));
+  const gone = ordered.map((slot) => slot.player_id).filter((id) => !present.has(id));
+  const formerRoles = gone.length > 0 ? await rolesOf(seasonId, gameweek, gone) : new Map<string, PlayerRole>();
+  const picked = carryLineup(roster, previous, formerRoles);
+  return picked ? toSlots(picked.playerIds, picked.benchIds, picked.captainId, picked.viceId) : null;
+}
+
+function toSlots(starterIds: string[], benchIds: string[], captainId: string | null, viceId: string | null): SlotCopy[] {
+  const slot = (playerId: string, index: number, starter: boolean) => ({
+    player_id: playerId,
+    is_captain: starter && playerId === captainId,
+    is_vice_captain: starter && playerId === viceId,
+    is_starter: starter,
+    slot_order: index + 1,
+  });
+  return [
+    ...starterIds.map((playerId, index) => slot(playerId, index, true)),
+    ...benchIds.map((playerId, index) => slot(playerId, index, false)),
+  ];
+}
+
+async function rolesOf(seasonId: string, gameweek: number, playerIds: string[]) {
+  const registrations = await createAdminSupabase()
+    .from("player_registrations")
+    .select("player_id, role, effective_from_gameweek, effective_to_gameweek")
+    .eq("season_id", seasonId)
+    .in("player_id", playerIds)
+    .order("effective_from_gameweek", { ascending: true });
+  if (registrations.error) throw new Error(registrations.error.message);
+  const roles = new Map<string, PlayerRole>();
+  for (const row of registrations.data ?? []) {
+    // Chi è uscito dal listone tiene l'ultimo ruolo avuto fino a questa giornata.
+    if (Number(row.effective_from_gameweek) > gameweek) continue;
+    roles.set(row.player_id as string, row.role as PlayerRole);
+  }
+  return roles;
+}
+
+async function rosterOfWeek(seasonId: string, gameweek: number, teamId: string): Promise<RosterRow[]> {
   const admin = createAdminSupabase();
   const stints = await admin
     .from("roster_stints")
@@ -126,28 +181,16 @@ async function alphabeticalSlots(seasonId: string, gameweek: number, teamId: str
     roleOf.set(row.player_id as string, row.role as PlayerRole);
   }
   const names = new Map((people.data ?? []).map((row) => [row.id as string, row.full_name as string]));
-  const roster = playerIds.flatMap((playerId) => {
+  return playerIds.flatMap((playerId) => {
     const role = roleOf.get(playerId);
     if (!role) return [];
     return [{ id: playerId, role, name: names.get(playerId) ?? "" }];
   });
+}
+
+function alphabeticalSlots(roster: RosterRow[]): SlotCopy[] {
   const picked = alphabeticalOfficeLineup(roster);
-  if (!picked) return [];
-  const starters = picked.starterIds.map((playerId, index) => ({
-    player_id: playerId,
-    is_captain: playerId === picked.captainId,
-    is_vice_captain: playerId === picked.viceId,
-    is_starter: true,
-    slot_order: index + 1,
-  }));
-  const bench = picked.benchIds.map((playerId, index) => ({
-    player_id: playerId,
-    is_captain: false,
-    is_vice_captain: false,
-    is_starter: false,
-    slot_order: index + 1,
-  }));
-  return [...starters, ...bench];
+  return picked ? toSlots(picked.starterIds, picked.benchIds, picked.captainId, picked.viceId) : [];
 }
 
 async function copyLineup(teamId: string, gameweekId: string, slots: SlotCopy[]) {

@@ -2,6 +2,7 @@ import { getCurrentSeason } from "@/lib/server/catalog";
 import { refreshSerieAKickoffs } from "@/lib/server/kickoff-refresh";
 import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 import { syncDueMatchVotes } from "@/lib/server/sync-match-votes";
+import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type LiveDiagnostics = {
@@ -62,6 +63,7 @@ export async function readLiveDiagnostics(leagueId?: string | null): Promise<Liv
       .from("vote_imports")
       .select("id, gameweek_id, source, imported_at")
       .in("gameweek_id", weekIds)
+      .neq("source", PROVISIONAL_SOURCE)
       .order("imported_at", { ascending: false })
       .limit(1);
   const importRow = imports.error ? null : imports.data?.[0];

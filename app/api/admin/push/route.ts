@@ -4,8 +4,8 @@ import { assertServiceEnv } from "@/lib/server/catalog";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 import { sendPushToEveryone, vapidPublicKey, webPushReady } from "@/lib/server/web-push";
 import { createAdminSupabase } from "@/lib/supabase/admin";
+import { completeTemplates, NOTIFICATION_KINDS } from "@/lib/notification-templates";
 
-const KINDS = ["deadline", "bonus", "overtake"] as const;
 
 export async function GET() {
   try {
@@ -14,14 +14,14 @@ export async function GET() {
     const admin = createAdminSupabase();
     const templates = await admin.from("notification_templates").select("kind, title, body, enabled").order("kind");
     if (templates.error && /notification_templates|schema cache|could not find|relation/i.test(templates.error.message)) {
-      return NextResponse.json({ ready: false, publicKey: vapidPublicKey(), templates: [], subscribers: 0 });
+      return NextResponse.json({ ready: false, publicKey: vapidPublicKey(), templates: completeTemplates([]), subscribers: 0 });
     }
     if (templates.error) throw new Error(templates.error.message);
     const subscribers = await admin.from("push_subscriptions").select("endpoint", { count: "exact", head: true });
     return NextResponse.json({
       ready: true,
       publicKey: vapidPublicKey(),
-      templates: templates.data ?? [],
+      templates: completeTemplates(templates.data ?? []),
       subscribers: subscribers.count ?? 0,
     });
   } catch (error) {
@@ -40,7 +40,10 @@ export async function POST(request: Request) {
     };
     const admin = createAdminSupabase();
     if (body.templates) {
-      const rows = body.templates.filter((item) => KINDS.includes(item.kind as (typeof KINDS)[number]));
+      const rows = body.templates.filter((item) => (NOTIFICATION_KINDS as string[]).includes(item.kind));
+      if (rows.some((item) => item.title.trim().length < 2 || item.body.trim().length < 2)) {
+        return NextResponse.json({ error: "Ogni avviso deve avere titolo e testo." }, { status: 400 });
+      }
       const saved = await admin.from("notification_templates").upsert(rows.map((item) => ({
         kind: item.kind,
         title: item.title.trim(),
@@ -49,7 +52,7 @@ export async function POST(request: Request) {
       })));
       if (saved.error) {
         if (/notification_templates|schema cache|could not find|relation/i.test(saved.error.message)) {
-          return NextResponse.json({ error: "Esegui engagement.sql nell'editor SQL di Supabase." }, { status: 409 });
+          return NextResponse.json({ error: "Gli avvisi automatici non si possono salvare: manca la tabella nel database." }, { status: 409 });
         }
         throw new Error(saved.error.message);
       }

@@ -2,7 +2,6 @@ import { checkAdminPage } from "@/components/admin/AdminGate";
 import { SandboxDesk } from "@/components/admin/SandboxDesk";
 import { ChaosDesk } from "@/components/admin/ChaosDesk";
 import { MaintenanceSwitch } from "@/components/admin/MaintenanceSwitch";
-import { PushBroadcast } from "@/components/admin/PushBroadcast";
 import { TestLab } from "@/components/admin/TestLab";
 import { SetupNotice } from "@/components/SetupNotice";
 import { loadTestLab } from "@/lib/server/test-lab";
@@ -27,7 +26,6 @@ export default async function LabPage() {
         </header>
         <SandboxDesk />
         <MaintenanceSwitch />
-        <PushBroadcast />
         <ChaosDesk />
         <TestLab initial={lab} />
       </section>

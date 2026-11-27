@@ -879,6 +879,19 @@ export function LeagueHub({
   const missingBench = available.length > 0;
   /** Ciò che si invierebbe premendo «Salva»: serve anche a sapere se sullo schermo è cambiato qualcosa. */
   const lineupBody = JSON.stringify({ gameweekId: selected?.id ?? null, playerIds, benchIds, captainId, viceId });
+  /** Sullo schermo c'è esattamente la formazione registrata per questa giornata? */
+  const matchesSaved = shownAsSaved === lineupBody || (
+    hub.lineupOrigin === "saved"
+    && JSON.stringify([hub.lineup.playerIds, hub.lineup.benchIds, hub.lineup.captainId, hub.lineup.viceId])
+      === JSON.stringify([playerIds, benchIds, captainId, viceId])
+  );
+  const unsavedNote = !canEdit || !selected || matchesSaved || hub.roster.length === 0
+    ? null
+    : hub.lineupOrigin === "saved"
+      ? `Giornata ${selected.number}: modifiche non ancora salvate. Premi «Salva formazione» per confermarle.`
+      : hub.lineupOrigin === "previous" && hub.carriedFromMatchday
+        ? `Formazione proposta per la giornata ${selected.number}, presa dalla giornata ${hub.carriedFromMatchday}: non ancora salvata. Premi «Salva formazione» per confermarla.`
+        : `Giornata ${selected.number}: formazione non ancora salvata.`;
   const saveBlocked = missingCaptainOrVice || missingBench;
   const saveReason = [
     missingCaptainOrVice ? "manca capitano o vice" : "",
@@ -984,6 +997,11 @@ export function LeagueHub({
             <p className="lock-badge">Formazione bloccata - Giornata in corso</p>
           ) : null}
           {closedNote ? <p className="banner" role="status">{closedNote}</p> : null}
+          {unsavedNote ? (
+            <p className="lineup-status" role="status">
+              {unsavedNote}
+            </p>
+          ) : null}
           {selected && !canEdit && !selectedStarted ? (
             <p className="banner">
               {hub.liveSheet

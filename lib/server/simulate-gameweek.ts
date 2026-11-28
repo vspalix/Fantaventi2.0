@@ -130,7 +130,7 @@ export async function simulateLeagueGameweek(
   if (seasonError) throw new Error(seasonError.message);
   const ruleset = Array.isArray(season.rulesets) ? season.rulesets[0] : season.rulesets;
   const seasonDefinition = (ruleset?.definition ?? {}) as RulesetDefinition;
-  const { definition } = await definitionForLeague(admin, league.id, seasonDefinition);
+  const { definition } = await definitionForLeague(admin, league.id, seasonDefinition, gameweek.number);
 
   const roster = await loadRegistrations(admin, league.seasonId, gameweek.number);
   const generated = roster.map((player) => mockStat(`${gameweek.id}:${randomUUID()}`, player.playerId, player.role));

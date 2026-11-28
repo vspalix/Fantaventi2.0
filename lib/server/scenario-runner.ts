@@ -490,7 +490,8 @@ const handlers: Record<string, Handler> = {
     if (step.params.postponement != null) rules.postponement = text(step.params.postponement) as LeagueRules["postponement"];
     if (step.params.exclusiveRosters != null) rules.exclusiveRosters = step.params.exclusiveRosters === true;
     if (step.params.goalBands != null) rules.goalBands = bandsOf(step.params.goalBands);
-    await updateLeague(owner.id, league.id, { rules });
+    // Negli scenari di prova la modifica vale per tutte le giornate.
+    await updateLeague(owner.id, league.id, { rules, scoringApply: "all" });
     return `Regole di ${league.alias} aggiornate.`;
   },
 

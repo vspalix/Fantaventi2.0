@@ -11,6 +11,7 @@ import {
   type LeaguePhase,
   type LeagueRules,
 } from "@/lib/league-rules";
+import { scoringHistoryLines } from "@/lib/scoring-history";
 import { BusyLabel } from "@/components/BusyLabel";
 import { CopyInviteLink, ShareJoinCode } from "@/components/leagues/CopyInviteLink";
 import type { LeagueDetail } from "@/lib/types";
@@ -30,7 +31,7 @@ export function LeagueAdminPanel({
     startMatchday: number;
     endMatchday: number;
     regenerateCode?: boolean;
-    rules: LeagueRules;
+    rules?: LeagueRules;
   }) => Promise<void>;
   onRemove: (fantasyTeamId: string) => Promise<void>;
   onGrant: (userId: string) => Promise<void>;
@@ -66,6 +67,14 @@ export function LeagueAdminPanel({
     }));
   }
 
+  function setEnrollment(enrollment: LeagueRules["enrollment"]) {
+    setRules((current) => ({
+      ...current,
+      enrollment,
+      maxMembers: enrollment === "closed" ? current.maxMembers ?? Math.max(8, league.participants.length) : null,
+    }));
+  }
+
   function setPhase(index: number, patch: Partial<LeaguePhase>) {
     setRules((current) => ({
       ...current,
@@ -98,7 +107,7 @@ export function LeagueAdminPanel({
         <div className="row">
           <CopyInviteLink code={league.joinCode} />
           <ShareJoinCode code={league.joinCode} />
-          <button className="ghost" type="button" disabled={pending} onClick={() => void onSave({ name, startMatchday, endMatchday, regenerateCode: true, rules })}>
+          <button className="ghost" type="button" disabled={pending} onClick={() => void onSave({ name: league.name, startMatchday: league.startMatchday, endMatchday: league.endMatchday, regenerateCode: true })}>
             Genera un nuovo codice
           </button>
         </div>
@@ -187,6 +196,44 @@ export function LeagueAdminPanel({
           </select>
         </label>
         <p className="small muted">{format.detail}</p>
+        <label>
+          Visibilità
+          <select
+            value={rules.visibility}
+            onChange={(event) => setRules((current) => ({ ...current, visibility: event.target.value === "public" ? "public" : "private" }))}
+          >
+            <option value="private">Privata: si entra con il codice invito</option>
+            <option value="public">Pubblica: compare tra le leghe pubbliche</option>
+          </select>
+        </label>
+        <label>
+          Iscrizioni
+          <select
+            value={rules.enrollment}
+            onChange={(event) => setEnrollment(event.target.value === "closed" ? "closed" : "open")}
+          >
+            <option value="open">Aperte, con ingresso in media</option>
+            <option value="closed">Numero chiuso</option>
+          </select>
+        </label>
+        {rules.enrollment === "closed" ? (
+          <label>
+            Posti
+            <input
+              type="number"
+              min={Math.max(2, league.participants.length)}
+              value={rules.maxMembers ?? 8}
+              onChange={(event) => setRules((current) => ({ ...current, maxMembers: Number(event.target.value) }))}
+            />
+          </label>
+        ) : null}
+        {league.rules.enrollment !== "closed" && rules.enrollment === "closed" ? (
+          <p className="small muted">Con il numero chiuso non c&apos;è la media di ingresso: chi è entrato a lega iniziata perde quei punti.</p>
+        ) : null}
+        <p className="small muted">
+          Bonus e malus, imbattibilità, capitano e modificatore difesa: a lega iniziata, quando salvi ti chiedo se valgono da ora o per tutte le giornate.
+          Le altre regole valgono per tutta la lega, anche per le giornate già giocate.
+        </p>
         <label className="row">
           <input
             type="checkbox"
@@ -313,6 +360,14 @@ export function LeagueAdminPanel({
             </label>
           ))}
         </div>
+        {league.rules.scoringHistory.length > 0 ? (
+          <div className="stack">
+            <h3>Valori delle giornate passate</h3>
+            <ul className="list">
+              {scoringHistoryLines(league.rules.scoringHistory).map((line) => <li className="small muted" key={line}>{line}</li>)}
+            </ul>
+          </div>
+        ) : null}
         {rules.format === "hybrid" ? (
           <div className="stack">
             <h3>Fasi</h3>

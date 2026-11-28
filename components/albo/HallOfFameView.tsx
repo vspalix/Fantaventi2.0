@@ -50,13 +50,14 @@ function League({ league }: { league: LeagueArchive }) {
       ) : (
         // In pagina il primo sta al centro; in lettura l'ordine resta 1, 2, 3.
         <ol className="al-podium">
-          {league.podium.map((place) => (
-            <li key={place.rank} data-rank={place.rank}>
+          {league.podium.map((place, index) => (
+            <li key={place.teamId} data-place={index + 1} data-rank={place.rank}>
               <div className="al-who">
                 {place.rank === 1 ? <span className="al-cup"><Cup /></span> : null}
                 <strong>{place.teamName}</strong>
                 {place.displayName ? <small>{place.displayName}</small> : null}
                 <b>{points.format(place.points)}</b>
+                <small>{place.points === 1 && league.unit === "punti" ? "punto" : league.unit}</small>
               </div>
               <span className="al-step" aria-label={`${place.rank}° posto`}>{place.rank}°</span>
             </li>

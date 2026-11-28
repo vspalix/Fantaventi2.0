@@ -109,7 +109,7 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
     return { ...empty, phase, gameweekNumber: number, gameweekId: liveWeek.id as string, mode };
   }
   const stats = preview.stats;
-  const { definition, rules } = await definitionForLeague(admin, league.id, preview.definition);
+  const { definition, rules } = await definitionForLeague(admin, league.id, preview.definition, preview.gameweekNumber);
   const leagueLineups = preview.lineups.filter((lineup) => teamIds.includes(lineup.fantasyTeamId));
   const scores = new Map(leagueLineups.map((lineup) => [
     lineup.fantasyTeamId,

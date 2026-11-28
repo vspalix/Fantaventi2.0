@@ -1,4 +1,5 @@
 import type { RulesetDefinition } from "@/lib/engine/calculator";
+import { parseScoringHistory, type ScoringChange } from "@/lib/scoring-history";
 
 export const BONUS_FIELDS = [
   { key: "goal", label: "Gol", fallback: 3 },
@@ -69,6 +70,8 @@ export type LeagueRules = {
   postponement: "political_six" | "wait_recovery";
   goalBands: GoalBand[];
   phases: LeaguePhase[];
+  /** Bonus e malus diversi nelle giornate passate. Lo scrive solo il server (`lib/scoring-history.ts`). */
+  scoringHistory: ScoringChange[];
 };
 
 /** `from` e `to` sono le giornate della lega: nelle fasi la coppa prende le ultime. */
@@ -126,6 +129,7 @@ export const DEFAULT_LEAGUE_RULES: LeagueRules = {
   checkpoints: [],
   postponement: "wait_recovery",
   goalBands: DEFAULT_GOAL_BANDS.map((band) => ({ ...band })),
+  scoringHistory: [],
 };
 
 function captainMultiplierOf(value: unknown): 1 | 1.5 | 2 {
@@ -268,6 +272,7 @@ export function parseLeagueRules(value: unknown, formatOverride?: unknown): Leag
     postponement: source.postponement === "political_six" ? "political_six" : "wait_recovery",
     goalBands: goalBandsOf(source.goalBands),
     phases: phasesOf(format, source.phases),
+    scoringHistory: parseScoringHistory(source.scoringHistory),
   };
 }
 

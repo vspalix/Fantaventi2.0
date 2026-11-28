@@ -7,7 +7,7 @@ import { carryLineup, lineupSaveIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
 import { entryCredit } from "@/lib/late-entry";
-import { fantasyPointsForLeague, waitingEntries } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, waitingEntries, type ScoreParts } from "@/lib/server/league-scores";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { loadWeekMatchState, weekUnderway } from "@/lib/server/roster";
@@ -39,7 +39,7 @@ function teamOf(userId: string, participants: { userId: string; fantasyTeamId: s
 
 const CLOSED = new Set(["locked", "scored", "final"]);
 
-type GameweekRow = {
+export type GameweekRow = {
   id: string;
   number: number;
   deadline_at: string;
@@ -665,7 +665,7 @@ async function squadsFor(
 async function loadPreview(gameweekId: string, leagueId: string) {
   try {
     const preview = await previewProvisional(gameweekId);
-    const { definition, rules } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition);
+    const { definition, rules } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition, preview.gameweekNumber);
     const stats = preview.stats;
     return {
       definition,
@@ -955,13 +955,15 @@ type StandingOptions = {
   heldGameweekIds: Set<string>;
 };
 
-async function standingsFor(
+/** La classifica di una lega. La usano la schermata della lega e l'Albo d'oro: il calcolo è uno solo. */
+export async function standingsFor(
   admin: ReturnType<typeof createAdminSupabase>,
   league: { id: string; seasonId: string; startMatchday: number },
   participants: LeagueHubData["league"]["participants"],
   gameweeks: GameweekRow[],
   now: number,
   inPlay: Set<number>,
+  parts?: Map<string, ScoreParts>,
 ): Promise<{ rows: StandingRow[]; weekPoints: Map<string, number> | null }> {
   const settings = await readLeagueSettings(admin, league.id);
   if (!settings.ready) {
@@ -977,6 +979,7 @@ async function standingsFor(
         league.seasonId,
         participants.map((participant) => participant.fantasyTeamId),
         closed.map((gameweek) => ({ id: gameweek.id, number: gameweek.number })),
+        parts,
       );
     } catch (error) {
       void reportError("Lega: punti in classifica", error);

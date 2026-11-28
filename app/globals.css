@@ -2757,9 +2757,11 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .card p.al-empty { margin: 0; text-align: center; }
 .al-podium { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: end; margin: 0; padding: 0; list-style: none; }
 .al-podium li { --medal: var(--accent); display: grid; gap: 8px; min-width: 0; text-align: center; }
-.al-podium li[data-rank="1"] { order: 2; }
-.al-podium li[data-rank="2"] { order: 1; --medal: #c9ced6; }
-.al-podium li[data-rank="3"] { order: 3; --medal: #c98a5b; }
+.al-podium li[data-place="1"] { order: 2; }
+.al-podium li[data-place="2"] { order: 1; }
+.al-podium li[data-place="3"] { order: 3; }
+.al-podium li[data-rank="2"] { --medal: #c9ced6; }
+.al-podium li[data-rank="3"] { --medal: #c98a5b; }
 .al-who { display: grid; justify-items: center; gap: 2px; min-width: 0; line-height: 1.25; }
 .al-who strong { max-width: 100%; overflow-wrap: anywhere; font-size: 14px; font-weight: 600; }
 .al-who small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11px; }

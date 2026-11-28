@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import Link from "next/link";
 import { pendingInvitePath, safeJoinPath, writeInviteCookie } from "@/lib/invite";
-import { createBrowserSupabase } from "@/lib/supabase/browser";
+import { createBrowserSupabase, createRecoverySupabase } from "@/lib/supabase/browser";
 import { LegalLinks } from "@/components/LegalLinks";
 import { readableError } from "@/lib/feedback";
 
@@ -109,7 +109,7 @@ export function AuthForm() {
     setError(null);
     setNotice(null);
     try {
-      const supabase = createBrowserSupabase();
+      const supabase = createRecoverySupabase();
       const redirectTo = `${window.location.origin}/accesso/nuova-password`;
       const result = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
       if (result.error) {

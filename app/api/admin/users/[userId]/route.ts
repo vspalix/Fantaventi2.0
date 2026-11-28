@@ -1,17 +1,19 @@
 import { NextResponse } from "next/server";
 import { apiError } from "@/lib/server/api-error";
 import { writeAdminAudit } from "@/lib/server/audit";
-import { deletePlatformUser, requirePasswordReset, setPlatformRole } from "@/lib/server/platform-users";
+import { createPasswordToken, deletePlatformUser, requirePasswordReset, setPlatformRole } from "@/lib/server/platform-users";
 import { requireSuperAdmin } from "@/lib/server/platform-role";
 
 type RouteContext = { params: Promise<{ userId: string }> };
 
 export async function POST(_request: Request, context: RouteContext) {
   try {
-    await requireSuperAdmin();
+    const admin = await requireSuperAdmin();
     const { userId } = await context.params;
+    const tokenHash = await createPasswordToken(userId);
     await requirePasswordReset(userId);
-    return NextResponse.json({ ok: true });
+    await writeAdminAudit(admin.id, { action: "user.password-link", targetType: "user", targetId: userId });
+    return NextResponse.json({ ok: true, tokenHash }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     return apiError("API /api/admin/users/[userId] (POST)", error);
   }

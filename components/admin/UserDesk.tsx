@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import { BusyLabel } from "@/components/BusyLabel";
 import { useShown } from "@/components/ShowMore";
+import { adminRecoveryLink } from "@/lib/password-recovery";
 import type { PlatformUserRow } from "@/lib/server/platform-users";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -16,6 +17,7 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
   const [error, setError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const flight = useRef(false);
+  const [reset, setReset] = useState<{ label: string; link: string; copied: boolean } | null>(null);
   const roleMissing = users.length > 0 && users.every((user) => user.platformRole === "unknown");
   const [search, setSearch] = useState("");
   const needle = search.trim().toLowerCase();
@@ -34,14 +36,30 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
     flight.current = true;
     setPendingId(user.id);
     setError(null);
+    setReset(null);
     try {
-      await readJson(await fetch(`/api/admin/users/${user.id}`, { method: "POST" }));
+      const body = await readJson<{ tokenHash: string }>(await fetch(`/api/admin/users/${user.id}`, { method: "POST" }));
+      setReset({
+        label: user.email || user.displayName || user.id,
+        link: adminRecoveryLink(window.location.origin, body.tokenHash),
+        copied: false,
+      });
       await reload();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Reset non riuscito.");
     } finally {
       flight.current = false;
       setPendingId(null);
+    }
+  }
+
+  async function copyLink() {
+    if (!reset) return;
+    try {
+      await navigator.clipboard.writeText(reset.link);
+      setReset({ ...reset, copied: true });
+    } catch {
+      setError("Copia non riuscita: tieni premuto sul link e copialo a mano.");
     }
   }
 
@@ -100,6 +118,17 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
     <div className="stack">
       {roleMissing ? <p className="banner">Per nominare un super admin esegui platform_access.sql nell&apos;editor SQL.</p> : null}
       {error ? <p className="banner">{error}</p> : null}
+      {reset ? (
+        <div className="card stack" role="status">
+          <p><strong>Link per {reset.label}</strong></p>
+          <p className="small muted">Mandalo solo a questa persona: apre la pagina per scegliere la nuova password. Vale una volta sola e scade.</p>
+          <input readOnly aria-label="Link per la nuova password" value={reset.link} onFocus={(event) => event.target.select()} />
+          <div className="row">
+            <button className="primary" type="button" onClick={() => void copyLink()}>{reset.copied ? "Link copiato" : "Copia il link"}</button>
+            <button className="ghost" type="button" onClick={() => setReset(null)}>Chiudi</button>
+          </div>
+        </div>
+      ) : null}
       {users.length > 20 ? (
         <input type="search" aria-label="Cerca un utente" placeholder="Cerca per nome o email" value={search} onChange={(event) => setSearch(event.target.value)} />
       ) : null}

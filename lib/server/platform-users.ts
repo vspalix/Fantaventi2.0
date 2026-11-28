@@ -111,6 +111,18 @@ export async function requirePasswordReset(userId: string) {
   }
 }
 
+/** Crea il codice per scegliere una nuova password. Non invia nessuna email. */
+export async function createPasswordToken(userId: string) {
+  const admin = createAdminSupabase();
+  const found = await admin.auth.admin.getUserById(userId);
+  if (found.error) throw new Error(found.error.message);
+  const email = found.data.user?.email;
+  if (!email) throw fail("Questo account non ha un'email.", 409);
+  const link = await admin.auth.admin.generateLink({ type: "recovery", email });
+  if (link.error) throw new Error(link.error.message);
+  return link.data.properties.hashed_token;
+}
+
 async function teamIdsOf(admin: SupabaseClient, userId: string) {
   const teams = await admin.from("fantasy_teams").select("id").eq("user_id", userId);
   if (teams.error) {

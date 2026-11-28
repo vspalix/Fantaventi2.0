@@ -143,6 +143,10 @@ async function main() {
   console.log(`Niente invii veri in locale: ${outbound.failures.length === 0 ? "PASSED" : "FAILED"} ${outbound.passed}/${outbound.total}`);
   for (const failure of outbound.failures) console.log(`- ${failure}`);
 
+  const recovery = runIsolated("test-password-recovery.ts");
+  console.log(`Recupero password: ${recovery.failures.length === 0 ? "PASSED" : "FAILED"} ${recovery.passed}/${recovery.total}`);
+  for (const failure of recovery.failures) console.log(`- ${failure}`);
+
   const hallOfFame = runIsolated("test-hall-of-fame.ts");
   console.log(`Albo d'oro: ${hallOfFame.failures.length === 0 ? "PASSED" : "FAILED"} ${hallOfFame.passed}/${hallOfFame.total}`);
   for (const failure of hallOfFame.failures) console.log(`- ${failure}`);
@@ -159,11 +163,11 @@ async function main() {
   console.log(`Dashboard admin: ${dashboard.failures.length === 0 ? "PASSED" : "FAILED"} ${dashboard.passed}/${dashboard.total}`);
   for (const failure of dashboard.failures) console.log(`- ${failure}`);
 
-  const total = dashboard.total + largeSite.total + largeLeague.total + hallOfFame.total + report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + titles.total + history.total + rivals.total;
-  const passed = dashboard.passed + largeSite.passed + largeLeague.passed + hallOfFame.passed + report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + titles.passed + history.passed + rivals.passed;
+  const total = recovery.total + dashboard.total + largeSite.total + largeLeague.total + hallOfFame.total + report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + titles.total + history.total + rivals.total;
+  const passed = recovery.passed + dashboard.passed + largeSite.passed + largeLeague.passed + hallOfFame.passed + report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + titles.passed + history.passed + rivals.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || titles.failures.length > 0 || history.failures.length > 0 || hallOfFame.failures.length > 0 || largeLeague.failures.length > 0 || largeSite.failures.length > 0 || rivals.failures.length > 0 || dashboard.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || titles.failures.length > 0 || history.failures.length > 0 || hallOfFame.failures.length > 0 || largeLeague.failures.length > 0 || largeSite.failures.length > 0 || rivals.failures.length > 0 || recovery.failures.length > 0 || dashboard.failures.length > 0 || total < 100) process.exit(1);
 }
 
 /**

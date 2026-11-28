@@ -2735,6 +2735,11 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .cs-player[data-bench] { border-color: transparent; color: var(--muted); font-weight: 500; }
 .cs-player[data-bench] .role-chip { border-color: var(--line); background: transparent; color: var(--muted); }
 .cs-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Il più scelto dagli avversari: piccolo e in grigio, per non coprire i propri calciatori. */
+.cs-rival { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; color: var(--muted); font-size: 11px; }
+.cs-rival-share { font-variant-numeric: tabular-nums; font-weight: 600; }
+.cs-rival svg, .cs-legend svg { flex: none; width: 12px; height: 12px; opacity: 0.8; }
+.cs-head .cs-legend { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); }
 @media (min-width: 900px) {
   .cs-day ul { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }

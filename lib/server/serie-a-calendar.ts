@@ -1,13 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import type { CalendarRivals } from "@/lib/calendar-rivals";
 import { getCurrentSeason, loadCatalog } from "@/lib/server/catalog";
 import { reportError } from "@/lib/server/error-report";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { schemaHint } from "@/lib/server/live-score";
+import { inChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
-import type { PlayerRole } from "@/lib/types";
+import type { CatalogPlayer, PlayerRole } from "@/lib/types";
 
 export type CalendarFixture = {
   home: string;
@@ -400,6 +402,8 @@ export type MyCalendarPlayers = {
   players: { id: string; name: string; role: PlayerRole; clubId: string; from: number; until: number | null }[];
   /** Per giornata, i titolari della formazione salvata. Senza formazione la giornata non c'è. */
   starters: Record<number, string[]>;
+  /** Le rose degli avversari nella stessa lega. Null se non ce ne sono o non si leggono. */
+  rivals: CalendarRivals | null;
 };
 
 /**
@@ -413,13 +417,15 @@ export async function loadMyCalendarPlayers(userId: string, focusLeagueId: strin
     if (!league?.teamId) return null;
     const admin = createAdminSupabase();
     const season = await getCurrentSeason(admin);
-    const [catalog, stints, starters] = await Promise.all([
-      loadCatalog(season.id),
+    const catalogRead = loadCatalog(season.id);
+    const [catalog, stints, starters, rivals] = await Promise.all([
+      catalogRead,
       admin
         .from("roster_stints")
         .select("player_id, active_from_gameweek, active_until_gameweek")
         .eq("fantasy_team_id", league.teamId),
       loadStartersByRound(season.id, league.teamId),
+      loadRivalRosters(league.id, league.teamId, catalogRead.then((loaded) => loaded.players)),
     ]);
     if (stints.error) throw new Error(stints.error.message);
     const byId = new Map(catalog.players.map((player) => [player.id, player]));
@@ -435,9 +441,56 @@ export async function loadMyCalendarPlayers(userId: string, focusLeagueId: strin
         until: stint.active_until_gameweek == null ? null : Number(stint.active_until_gameweek),
       }];
     });
-    return { leagueName: league.name, players, starters };
+    return { leagueName: league.name, players, starters, rivals };
   } catch (error) {
     void reportError("Schermata Calendario: calciatori della squadra", error);
+    return null;
+  }
+}
+
+/**
+ * Le rose delle altre squadre della lega, senza dire di chi sono: servono per il più scelto.
+ * Chi chiama deve aver già controllato che la propria squadra sia nella lega.
+ */
+export async function loadRivalRosters(
+  leagueId: string,
+  myTeamId: string,
+  catalogPlayers: Promise<CatalogPlayer[]>,
+): Promise<CalendarRivals | null> {
+  try {
+    const admin = createAdminSupabase();
+    const [members, listed] = await Promise.all([
+      admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", leagueId),
+      catalogPlayers,
+    ]);
+    if (members.error) throw new Error(members.error.message);
+    const teamIds = (members.data ?? []).map((row) => row.fantasy_team_id as string).filter((id) => id !== myTeamId);
+    if (teamIds.length === 0) return null;
+    const numbers = new Map(teamIds.map((id, index) => [id, index]));
+    const reads = await Promise.all(inChunks(teamIds).map((chunk) => readAllRows((from, to) => admin
+      .from("roster_stints")
+      .select("fantasy_team_id, player_id, active_from_gameweek, active_until_gameweek")
+      .in("fantasy_team_id", chunk)
+      .order("id")
+      .range(from, to))));
+    const failed = reads.find((read) => read.error);
+    if (failed?.error) throw new Error(failed.error.message);
+    const byId = new Map(listed.map((player) => [player.id, player]));
+    const players = new Map<string, CalendarRivals["players"][number]>();
+    const stints = reads.flatMap((read) => read.data).flatMap((row) => {
+      const player = byId.get(row.player_id as string);
+      if (!player) return [];
+      players.set(player.id, { id: player.id, name: player.fullName, clubId: player.clubId });
+      return [{
+        team: numbers.get(row.fantasy_team_id as string) as number,
+        playerId: player.id,
+        from: Number(row.active_from_gameweek),
+        until: row.active_until_gameweek == null ? null : Number(row.active_until_gameweek),
+      }];
+    });
+    return { players: [...players.values()], stints };
+  } catch (error) {
+    void reportError("Schermata Calendario: rose degli avversari", error);
     return null;
   }
 }

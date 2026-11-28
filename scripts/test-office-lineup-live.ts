@@ -212,7 +212,7 @@ export async function runOfficeLineupLiveChecks() {
     const row = (playerId: string, voto: number | null, waiting: boolean) => ({
       playerId, fullName: playerId, role: "MID" as const, clubShort: "X", isCaptain: false, isVice: false,
       voto, bonus: voto === null ? null : 0, malus: voto === null ? null : 0, fantavoto: voto, formula: null, waiting,
-      events: playerId === "p1" ? [{ kind: "clean" as const, count: 1 }] : [],
+      events: playerId === "p1" ? [{ kind: "clean" as const, count: 1, unit: 1, points: 1 }] : [],
     });
     const shown = compactFromLive({
       starters: [row("t1", 6, false), row("t2", null, false), row("t3", null, true)],

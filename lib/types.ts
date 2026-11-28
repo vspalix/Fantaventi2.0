@@ -1,4 +1,4 @@
-import type { LineEvent } from "@/lib/lineups/compact-sheet";
+import type { LineMark } from "@/lib/lineups/compact-sheet";
 import type { LeagueRules } from "@/lib/league-rules";
 
 export type CheckpointSnapshot = {
@@ -195,7 +195,7 @@ export type LivePlayerRow = {
   /** Il voto della sua squadra non è ancora arrivato: non è un «senza voto». */
   waiting: boolean;
   /** Bonus e malus presi finora, per le icone. */
-  events: { kind: LineEvent; count: number }[];
+  events: LineMark[];
 };
 
 export type LiveLineupSheet = {

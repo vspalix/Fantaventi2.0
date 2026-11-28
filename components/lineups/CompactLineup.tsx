@@ -1,8 +1,9 @@
 "use client";
 
 import { TeamBadge } from "@/components/TeamBadge";
+import { LegendBox } from "@/components/scores/LegendBox";
 import { ScoreIcon } from "@/components/scores/ScoreIcons";
-import { type CompactPlayer, type LineBonuses, type LineEvent } from "@/lib/lineups/compact-sheet";
+import { type CompactPlayer, type LineBonuses, type LineEvent, type LineMark } from "@/lib/lineups/compact-sheet";
 import type { PlayerRole } from "@/lib/types";
 
 export type { CompactPlayer, LineBonuses, LineEvent } from "@/lib/lineups/compact-sheet";
@@ -27,6 +28,8 @@ const EVENT_LABEL: Record<LineEvent, string> = {
   save: "Rigore parato",
   conceded: "Gol subito",
   clean: "Porta inviolata",
+  double: "Malus capitano raddoppiato",
+  political: "6 politico",
 };
 
 function voteText(value: number | null, empty: string) {
@@ -56,6 +59,31 @@ export function EventMarks({ events }: { events: CompactPlayer["events"] }) {
         </span>
       ))}
     </span>
+  );
+}
+
+/** Quanto vale una voce: «+3», «−0,5», «0». */
+function unitText(value: number) {
+  const text = Math.abs(value).toLocaleString("it-IT", { maximumFractionDigits: 2 });
+  return value > 0 ? `+${text}` : value < 0 ? `−${text}` : "0";
+}
+
+/** Sul telefono non c'è il suggerimento al passaggio: sotto la formazione ogni icona dice cosa vale. */
+export function EventLegend({ events }: { events: LineMark[] }) {
+  const seen = new Map<LineEvent, string>();
+  for (const { kind, unit } of events) {
+    const fixed = kind === "double" || kind === "political";
+    if (!seen.has(kind)) seen.set(kind, fixed ? EVENT_LABEL[kind] : `${EVENT_LABEL[kind]} ${unitText(unit)}`);
+  }
+  if (seen.size === 0) return null;
+  return (
+    <LegendBox>
+      <ul className="xi-legend">
+        {[...seen].map(([kind, text]) => (
+          <li key={kind}><span className={`xi-badge ${kind}`} aria-hidden="true"><ScoreIcon kind={kind} /></span>{text}</li>
+        ))}
+      </ul>
+    </LegendBox>
   );
 }
 
@@ -121,6 +149,7 @@ export function CompactLineup({
         <Row key={player.id} player={player} empty={empty} />
       ))}
       {bonuses ? <BonusBar bonuses={bonuses} /> : null}
+      <EventLegend events={[...starters, ...bench].flatMap((player) => player.events)} />
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
-import { EventMarks } from "@/components/lineups/CompactLineup";
+import { EventLegend, EventMarks } from "@/components/lineups/CompactLineup";
 import type { LiveCenter } from "@/lib/server/live-center";
 import { readableError } from "@/lib/feedback";
 
@@ -88,6 +88,7 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
             </div>
           </div>
         ) : null}
+        {live?.mine ? <EventLegend events={[...live.mine.starters, ...live.mine.bench].flatMap((player) => player.events)} /> : null}
       </section>
       {live?.opponent ? (
         <section className="card stack">

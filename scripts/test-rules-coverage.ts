@@ -1,7 +1,7 @@
 import { parseFantacalcioIndisponibili } from "@/lib/availability-providers/fantacalcio";
 import { scoreLineup, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
-import { compactFromAudit, eventsFromAudit } from "@/lib/lineups/compact-sheet";
-import { explainScore, type AuditPlayer } from "@/lib/engine/score-audit";
+import { compactFromAudit, eventsFromAudit, eventsFromLines } from "@/lib/lineups/compact-sheet";
+import { eventLines, explainScore, type AuditPlayer } from "@/lib/engine/score-audit";
 import {
   availabilitySummaryKind,
   availabilityWriteKind,
@@ -74,9 +74,9 @@ function row(id: string, role: PlayerRole, extra: Partial<PlayerStat> = {}): Pla
     assists: extra.assists ?? 0,
     yellowCards: extra.yellowCards ?? 0,
     redCards: extra.redCards ?? 0,
-    penaltiesScored: 0,
+    penaltiesScored: extra.penaltiesScored ?? 0,
     penaltiesMissed: extra.penaltiesMissed ?? 0,
-    penaltiesSaved: 0,
+    penaltiesSaved: extra.penaltiesSaved ?? 0,
     ownGoals: extra.ownGoals ?? 0,
     goalsConceded: extra.goalsConceded ?? 0,
     postponed: extra.postponed,
@@ -332,6 +332,14 @@ export function runRulesCoverage() {
       && sheet.bench[0]?.played === false,
     `titolari ${sheet.starters.map((item) => item.id).join(",")} panchina ${sheet.bench.map((item) => `${item.id}:${item.entered}`).join(",")}`,
   );
+
+  const liveMarks = (id: string, role: PlayerRole, extra: Partial<PlayerStat>, rules: RulesetDefinition = RULES) => (
+    eventsFromLines(eventLines(row(id, role, extra), role, rules, false)).map((item) => `${item.kind}:${item.count}`).join()
+  );
+  add("In diretta il portiere imbattuto ha la sua icona", liveMarks("gk", "GK", { voto: 7 }) === "clean:1", liveMarks("gk", "GK", { voto: 7 }));
+  add("Con l'imbattibilità spenta niente icona", liveMarks("gk", "GK", { voto: 7 }, { ...RULES, clean_sheet: { enabled: false, points: 1 } }) === "", "icona presente");
+  add("Senza voto nessuna icona", liveMarks("gk", "GK", { voto: null }) === "", liveMarks("gk", "GK", { voto: null }));
+  add("Rigore segnato, parato e gol subiti hanno icone distinte", liveMarks("f1", "FWD", { voto: 6, penaltiesScored: 1 }) === "penalty:1" && liveMarks("gk", "GK", { voto: 6, penaltiesSaved: 1, goalsConceded: 2 }) === "save:1,conceded:2", `${liveMarks("f1", "FWD", { voto: 6, penaltiesScored: 1 })} / ${liveMarks("gk", "GK", { voto: 6, penaltiesSaved: 1, goalsConceded: 2 })}`);
 
   const marksOf = (captainVote: number | null, mode: "official" | "provisional") => {
     const stats = new Map(SHAPE.map(([id, role]) => [id, row(id, role, id === "m1" ? { voto: captainVote } : {})]));

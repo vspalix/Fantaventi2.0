@@ -1,7 +1,7 @@
-import type { AuditPlayer } from "@/lib/engine/score-audit";
+import type { AuditLine, AuditPlayer } from "@/lib/engine/score-audit";
 import type { LiveLineupSheet, PlayerRole } from "@/lib/types";
 
-export type LineEvent = "goal" | "assist" | "yellow" | "red" | "own" | "miss" | "save" | "conceded" | "clean";
+export type LineEvent = "goal" | "penalty" | "assist" | "yellow" | "red" | "own" | "miss" | "save" | "conceded" | "clean";
 
 export type CompactPlayer = {
   id: string;
@@ -36,18 +36,23 @@ function kindOf(label: string): LineEvent | null {
   if (text.includes("parato")) return "save";
   if (text.includes("subito")) return "conceded";
   if (text.includes("imbattib")) return "clean";
-  if (text.startsWith("gol") || text.startsWith("rigore segnato")) return "goal";
+  if (text.startsWith("rigore segnato")) return "penalty";
+  if (text.startsWith("gol")) return "goal";
   return null;
 }
 
-export function eventsFromAudit(player: AuditPlayer): CompactPlayer["events"] {
+export function eventsFromLines(lines: readonly AuditLine[]): CompactPlayer["events"] {
   const events: CompactPlayer["events"] = [];
-  for (const line of player.lines) {
+  for (const line of lines) {
     const kind = kindOf(line.label);
     if (!kind || line.count === 0) continue;
     events.push({ kind, count: Math.max(1, line.count) });
   }
   return events;
+}
+
+export function eventsFromAudit(player: AuditPlayer) {
+  return eventsFromLines(player.lines);
 }
 
 export const LIVE_NOTE = "In diretta contano solo i titolari con voto. La panchina entra al calcolo della giornata, se un titolare resta senza voto. S.V. vuol dire senza voto, il trattino che il voto non è ancora arrivato.";
@@ -75,7 +80,7 @@ export function compactFromLive(sheet: LiveLineupSheet) {
     emptyText: row.waiting ? "—" : "S.V.",
     played: !benched && row.voto != null,
     entered: false,
-    events: [],
+    events: row.events,
   });
   return { starters: sheet.starters.map(map(false)), bench: sheet.bench.map(map(true)) };
 }

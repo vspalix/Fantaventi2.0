@@ -212,6 +212,7 @@ export async function runOfficeLineupLiveChecks() {
     const row = (playerId: string, voto: number | null, waiting: boolean) => ({
       playerId, fullName: playerId, role: "MID" as const, clubShort: "X", isCaptain: false, isVice: false,
       voto, bonus: voto === null ? null : 0, malus: voto === null ? null : 0, fantavoto: voto, formula: null, waiting,
+      events: playerId === "p1" ? [{ kind: "clean" as const, count: 1 }] : [],
     });
     const shown = compactFromLive({
       starters: [row("t1", 6, false), row("t2", null, false), row("t3", null, true)],
@@ -221,6 +222,7 @@ export async function runOfficeLineupLiveChecks() {
     check("Diretta: il senza voto è «S.V.», quello in attesa un trattino", shown.starters[1].emptyText === "S.V." && shown.starters[2].emptyText === "—");
     check("Diretta: in evidenza solo il titolare con voto", shown.starters.map((player) => player.played).join() === "true,false,false");
     check("Diretta: la panchina mostra il voto ma resta in secondo piano", shown.bench[0].vote === 7 && shown.bench[0].played === false);
+    check("Diretta: le icone arrivano fino alla riga, panchina compresa", shown.bench[0].events[0]?.kind === "clean" && shown.starters[0].events.length === 0);
 
     check("Anteprima: nessuna formazione scritta", tables.lineups.length === lineupsBefore && tables.lineup_slots.length === slotsBefore, `${tables.lineups.length} formazioni`);
     check("Anteprima: nessuna scrittura nel database", fake.writes().length === writesBefore, fake.writes().slice(writesBefore).map((call) => `${call.method} ${call.table}`).join());
@@ -239,6 +241,10 @@ export async function runOfficeLineupLiveChecks() {
     const penaltyLeague = league("league-penalty", ["B", "D", "E"], parseLeagueRules({ missedLineup: "penalty", missedLineupPenalty: PENALTY, defenseEnabled: false, captainEnabled: false, cleanSheetEnabled: false }));
     const centerB = await loadLiveCenter(carryLeague, "user-B", AFTER);
     check("Live: B vede la sua formazione d'ufficio", centerB.mine?.office === true && (centerB.mine?.starters.length ?? 0) === 11, JSON.stringify(centerB.mine?.office));
+    const cards = [...(centerB.mine?.starters ?? []), ...(centerB.mine?.bench ?? [])];
+    const scorers = cards.filter((card) => card.id.endsWith("FWD2"));
+    check("Live: chi ha segnato ha l'icona del gol", scorers.length > 0 && scorers.every((card) => card.events.some((event) => event.kind === "goal")), JSON.stringify(scorers.map((card) => card.events)));
+    check("Live: la panchina ha le sue icone", (centerB.mine?.bench ?? []).some((card) => card.events.length > 0));
     check("Live: B vede i suoi punti parziali", centerB.mine?.total === score("team-B")?.provisionalTotal, `${centerB.mine?.total} / ${score("team-B")?.provisionalTotal}`);
     const centerPenalty = await loadLiveCenter(penaltyLeague, "user-B", AFTER);
     const livePenalty = new Map(centerPenalty.table.map((row) => [row.teamName, row.live]));

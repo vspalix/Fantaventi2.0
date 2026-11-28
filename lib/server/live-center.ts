@@ -1,4 +1,6 @@
 import { projectLiveScore, type PlayerStat } from "@/lib/engine/calculator";
+import { eventLines } from "@/lib/engine/score-audit";
+import { eventsFromLines, type CompactPlayer } from "@/lib/lineups/compact-sheet";
 import { entryPolicy, weekGain } from "@/lib/late-entry";
 import { fantapuntiToGoals, headToHeadPairings, headToHeadPoints, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
 import { pitchEvents } from "@/lib/engagement/live-board";
@@ -11,6 +13,16 @@ import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { LeagueDetail } from "@/lib/types";
 import type { PlayerRole } from "@/lib/types";
 
+type LiveCard = {
+  id: string;
+  name: string;
+  role: PlayerRole;
+  voto: number | null;
+  bonus: number;
+  malus: number;
+  events: CompactPlayer["events"];
+};
+
 export type LiveCenter = {
   phase: "live" | "countdown" | "none";
   gameweekNumber: number | null;
@@ -22,8 +34,8 @@ export type LiveCenter = {
     total: number;
     /** Formazione d'ufficio: non salvata in tempo, vale quella che registrerà il calcolo. */
     office?: boolean;
-    starters: { id: string; name: string; role: PlayerRole; voto: number | null; bonus: number; malus: number }[];
-    bench: { id: string; name: string; role: PlayerRole; voto: number | null; bonus: number; malus: number }[];
+    starters: LiveCard[];
+    bench: LiveCard[];
   } | null;
   opponent: { teamName: string; total: number; goalsFor: number; goalsAgainst: number } | null;
   table: { teamName: string; points: number; live: number }[];
@@ -173,10 +185,12 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   const cardOf = (playerId: string, starter: boolean) => {
     const player = viewerScore?.players.find((item) => item.playerId === playerId);
     const stat = stats.get(playerId);
+    const role = player?.role ?? stat?.role ?? "MID";
     return {
       id: playerId,
       name: playerName.get(playerId) ?? "Calciatore",
-      role: player?.role ?? stat?.role ?? "MID",
+      role,
+      events: eventsFromLines(eventLines(stat, role, definition, false)),
       voto: starter ? player?.voto ?? stat?.voto ?? null : stat?.voto ?? null,
       bonus: starter ? player?.bonusPoints ?? 0 : 0,
       malus: starter ? player?.malusPoints ?? 0 : 0,

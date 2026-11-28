@@ -1605,7 +1605,7 @@ button.shirt-empty:disabled { cursor: default; }
 .xi-row[data-out="true"] { color: var(--muted); }
 .xi-row[data-out="true"] .xi-fanta { color: var(--muted); font-weight: 600; }
 .xi-row[data-in="true"] { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
-.xi-who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.xi-who { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
 .xi-who strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .xi-cap { font-style: normal; color: var(--accent); font-size: var(--fs-xs); font-weight: 700; }
 .xi-in {
@@ -1649,12 +1649,13 @@ button.shirt-empty:disabled { cursor: default; }
   color: var(--text);
 }
 .xi-badge svg { width: 16px; height: 16px; display: block; flex: none; }
-.xi-badge b, .xi-letter { font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; font-weight: 700; line-height: 1; }
-.xi-badge.goal { color: var(--accent); }
+.xi-badge b { font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; font-weight: 700; line-height: 1; }
+.xi-badge.goal, .xi-badge.penalty { color: var(--accent); }
 .xi-badge.assist { color: #d7ecff; }
 .xi-badge.yellow { color: var(--gold); }
 .xi-badge.red, .xi-badge.own, .xi-badge.miss, .xi-badge.conceded { color: var(--danger); }
 .xi-badge.clean, .xi-badge.save { color: var(--ok); }
+.stadium-player .xi-events { justify-content: center; flex-wrap: wrap; }
 .xi-bonus {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));

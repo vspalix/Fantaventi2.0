@@ -9,6 +9,7 @@ import { readLeagueSettings } from "@/lib/server/league-settings";
 import { changedScoring, nextScoringHistory, scoringLabel } from "@/lib/scoring-history";
 import type { LeagueDetail, LeagueSummary, RosterImportSource, ScoringChoice } from "@/lib/types";
 import { createDedicatedTeam, ensureProfile, getCurrentSeason, listSeasonTeams, teamInLeague } from "@/lib/server/catalog";
+import { readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 
@@ -573,10 +574,12 @@ export const getLeagueDetail = cache(async (userId: string, leagueId: string): P
     seasonRoundCount(admin, league.season_id as string),
     delegateUserIds(admin, leagueId),
     isSuperAdmin(userId),
-    admin
+    readAllRows((from, to) => admin
       .from("private_league_members")
       .select("fantasy_team_id, fantasy_teams(id, name, user_id)")
-      .eq("private_league_id", leagueId),
+      .eq("private_league_id", leagueId)
+      .order("fantasy_team_id")
+      .range(from, to)),
     seasonCode(admin, league.season_id as string),
     readLeagueSettings(admin, league.id),
   ]);
@@ -598,18 +601,21 @@ export const getLeagueDetail = cache(async (userId: string, leagueId: string): P
   const isManager = actor.isManager;
 
   if (members.error) throw new Error(members.error.message);
-  const teams = (members.data ?? []).flatMap((row) => {
+  const teams = members.data.flatMap((row) => {
     const fantasy = one(row.fantasy_teams as FantasyRow | FantasyRow[] | null);
     return fantasy ? [fantasy] : [];
   });
 
   const userIds = [...new Set([...teams.map((row) => row.user_id), ...delegateIds])];
-  const { data: profiles, error: profilesError } = userIds.length
-    ? await admin.from("profiles").select("id, display_name").in("id", userIds)
-    : { data: [], error: null };
+  const { data: profiles, error: profilesError } = await readAllChunks(userIds, (ids, from, to) => admin
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", ids)
+    .order("id")
+    .range(from, to));
   if (profilesError) throw new Error(profilesError.message);
 
-  const names = new Map((profiles ?? []).map((profile) => [profile.id as string, publicHandle(profile.display_name as string)]));
+  const names = new Map(profiles.map((profile) => [profile.id as string, publicHandle(profile.display_name as string)]));
   const participants = teams.map((row) => {
     const userId = row.user_id;
     const role = userId === league.owner_user_id ? "owner" : delegateIds.includes(userId) ? "admin" : "member";

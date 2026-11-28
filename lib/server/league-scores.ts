@@ -3,7 +3,7 @@ import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { waitingWeek } from "@/lib/late-entry";
 import { leagueDefinitions } from "@/lib/server/league-settings";
-import { inChunks, readAllRows } from "@/lib/server/read-all";
+import { readAllChunks, readAllRows } from "@/lib/server/read-all";
 import type { PlayerRole } from "@/lib/types";
 
 type SlotRow = {
@@ -22,10 +22,10 @@ export async function leagueEntries(teamIds: string[], gameweeks: { id: string; 
   if (teamIds.length === 0 || gameweeks.length === 0) return { entryByTeam, fielded };
   const admin = createAdminSupabase();
   const numberById = new Map(gameweeks.map((week) => [week.id, week.number]));
-  const { data, error } = await readAllRows((from, to) => admin
+  const { data, error } = await readAllChunks(teamIds, (ids, from, to) => admin
     .from("lineups")
     .select("fantasy_team_id, gameweek_id")
-    .in("fantasy_team_id", teamIds)
+    .in("fantasy_team_id", ids)
     .in("gameweek_id", [...numberById.keys()])
     .order("id")
     .range(from, to));
@@ -52,10 +52,10 @@ export async function waitingEntries(
   const waiting = new Map<string, number>();
   const missing = teamIds.filter((teamId) => !entryByTeam.has(teamId));
   if (missing.length === 0 || gameweeks.length === 0) return waiting;
-  const { data, error } = await readAllRows((from, to) => createAdminSupabase()
+  const { data, error } = await readAllChunks(missing, (ids, from, to) => createAdminSupabase()
     .from("roster_stints")
     .select("fantasy_team_id, active_from_gameweek, active_until_gameweek")
-    .in("fantasy_team_id", missing)
+    .in("fantasy_team_id", ids)
     .order("id")
     .range(from, to));
   if (error) throw new Error(error.message);
@@ -99,10 +99,10 @@ export async function fantasyPointsForLeague(
   const gameweekIds = gameweeks.map((week) => week.id);
   const numberById = new Map(gameweeks.map((week) => [week.id, week.number]));
   // Le formazioni, le loro righe e i voti di una stagione superano il limite di una sola richiesta.
-  const lineupsWith = (columns: string) => readAllRows<{ id: string; fantasy_team_id: string; gameweek_id: string; origin?: string }>((from, to) => admin
+  const lineupsWith = (columns: string) => readAllChunks<{ id: string; fantasy_team_id: string; gameweek_id: string; origin?: string }>(teamIds, (ids, from, to) => admin
     .from("lineups")
     .select(columns)
-    .in("fantasy_team_id", teamIds)
+    .in("fantasy_team_id", ids)
     .in("gameweek_id", gameweekIds)
     .order("id")
     .range(from, to)
@@ -115,17 +115,14 @@ export async function fantasyPointsForLeague(
   const lineupRows = lineupQuery.data;
 
   const lineupIds = (lineupRows ?? []).map((row) => row.id as string);
-  const slotsWith = async (columns: string) => {
-    const parts = await Promise.all(inChunks(lineupIds).map((ids) => readAllRows<SlotRow>((from, to) => admin
-      .from("lineup_slots")
-      .select(columns)
-      .in("lineup_id", ids)
-      .order("lineup_id")
-      .order("player_id")
-      .range(from, to)
-      .returns<SlotRow[]>())));
-    return { data: parts.flatMap((part) => part.data), error: parts.find((part) => part.error)?.error ?? null };
-  };
+  const slotsWith = (columns: string) => readAllChunks<SlotRow>(lineupIds, (ids, from, to) => admin
+    .from("lineup_slots")
+    .select(columns)
+    .in("lineup_id", ids)
+    .order("lineup_id")
+    .order("player_id")
+    .range(from, to)
+    .returns<SlotRow[]>());
   const extended = await slotsWith("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order");
   const slotsQuery = extended.error && /is_starter|slot_order/i.test(extended.error.message)
     ? await slotsWith("lineup_id, player_id, is_captain, is_vice_captain")

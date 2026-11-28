@@ -17,6 +17,11 @@ const RELATIONS: Record<string, Record<string, Relation>> = {
   private_league_members: { fantasy_teams: { table: "fantasy_teams", kind: "one", local: "fantasy_team_id", foreign: "id" } },
 };
 
+/** Come il database vero: una lettura restituisce al massimo 1000 righe e taglia il resto senza errori. */
+const MAX_ROWS = 1000;
+/** Oltre questa lunghezza la richiesta viene rifiutata, come fa un server vero con un indirizzo troppo lungo. */
+const MAX_URL = 16 * 1024;
+
 /** Vincoli di unicità come nel database vero. */
 const UNIQUE: Record<string, string[][]> = {
   lineups: [["id"], ["fantasy_team_id", "gameweek_id"]],
@@ -49,6 +54,14 @@ function listValues(text: string) {
   return splitTop(text).map((value) => value.replace(/^"(.*)"$/, "$1"));
 }
 
+/** L'elenco di un filtro `in` si legge una volta sola, non a ogni riga. */
+let lastList = { raw: "", values: new Set<string>() };
+
+function listSet(raw: string) {
+  if (lastList.raw !== raw) lastList = { raw, values: new Set(listValues(raw.replace(/^\((.*)\)$/, "$1"))) };
+  return lastList.values;
+}
+
 /** Numeri come numeri; il resto, date comprese, come testo. */
 function order(value: unknown, raw: string) {
   const left = Number(value);
@@ -67,7 +80,7 @@ function matches(row: Row, column: string, filter: string) {
     case "eq": return text === raw;
     case "neq": return text !== raw;
     case "is": return raw === "null" ? value == null : text === raw;
-    case "in": return text !== null && listValues(raw.replace(/^\((.*)\)$/, "$1")).includes(text);
+    case "in": return text !== null && listSet(raw).has(text);
     case "lt": return value != null && order(value, raw) < 0;
     case "lte": return value != null && order(value, raw) <= 0;
     case "gt": return value != null && order(value, raw) > 0;
@@ -86,7 +99,8 @@ export class FakeSupabase {
   }
 
   async start() {
-    this.server = createServer((request, response) => {
+    // Il limite di Node resta largo: l'indirizzo troppo lungo lo rifiuta `handle`, con un messaggio.
+    this.server = createServer({ maxHeaderSize: 1024 * 1024 }, (request, response) => {
       void this.handle(request).then(({ status, body, count }) => {
         response.writeHead(status, {
           "content-type": "application/json",
@@ -149,6 +163,7 @@ export class FakeSupabase {
     const method = request.method ?? "GET";
     this.calls.push({ method, table: table ?? "", query: url.search });
     if (rest !== "rest" || !table) return { status: 404, body: { message: "Servizio non previsto", code: "PGRST000" } };
+    if ((request.url ?? "").length > MAX_URL) return { status: 414, body: { message: "URI too long", code: "PGRST000" } };
     if (!(table in this.tables)) {
       return { status: 404, body: { message: `Could not find the table 'public.${table}' in the schema cache`, code: "PGRST205" } };
     }
@@ -169,18 +184,20 @@ export class FakeSupabase {
       if (method === "HEAD") return { status: 200, count: this.filtered(table, params).length };
       if (method === "GET") {
         let rows = this.filtered(table, params);
-        const order = params.get("order");
-        if (order) {
-          const [column, direction] = order.split(".");
+        const sorts = (params.get("order") ?? "").split(",").filter(Boolean).map((part) => part.split("."));
+        if (sorts.length > 0) {
           rows.sort((left, right) => {
-            const a = left[column] as number | string;
-            const b = right[column] as number | string;
-            return (a < b ? -1 : a > b ? 1 : 0) * (direction === "desc" ? -1 : 1);
+            for (const [column, direction] of sorts) {
+              const a = left[column] as number | string;
+              const b = right[column] as number | string;
+              if (a !== b) return (a < b ? -1 : 1) * (direction === "desc" ? -1 : 1);
+            }
+            return 0;
           });
         }
-        const limit = params.get("limit");
-        if (limit) rows = rows.slice(0, Number(limit));
-        return respond(rows);
+        const offset = Number(params.get("offset") ?? 0);
+        const limit = Math.min(Number(params.get("limit") ?? MAX_ROWS), MAX_ROWS);
+        return respond(rows.slice(offset, offset + limit));
       }
       if (method === "POST") {
         const incoming = (Array.isArray(payload) ? payload : [payload ?? {}]).map((row) => ({ ...row }));

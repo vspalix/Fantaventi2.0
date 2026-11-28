@@ -38,7 +38,7 @@ App fantasy football gratuita. Testi UI in italiano. Tema scuro in `app/globals.
 - Ogni lega conta solo le sue giornate (`start_matchday`–`end_matchday`): schermate, premi e formazioni d'ufficio non creano e non sommano niente fuori da quelle.
 - Ingresso in corsa (`lib/late-entry.ts`, unico calcolo per lega, home, centro partite e finestre di mercato): per ogni giornata saltata, media delle squadre già in gioco, senza la propria.
 - Chi si iscrive a una lega già iniziata entra «nuovo»: `ensureLeagueTeam` non riusa squadre con formazioni o rosa nelle giornate chiuse di quella lega (ne crea una e copia la rosa); finché non schiera, `waitingEntries` gli dà già la media.
-- Supabase taglia ogni lettura a 1000 righe senza errore: letture su più giornate o più squadre con `readAllRows` (`lib/server/read-all.ts`), con ordine stabile.
+- Supabase taglia ogni lettura a 1000 righe senza errore: letture su più giornate o più squadre con `readAllRows` (`lib/server/read-all.ts`), con ordine stabile. Se si filtra per un elenco lungo di codici (squadre, utenti, calciatori) usa `readAllChunks`: tutti insieme l'indirizzo della richiesta è troppo lungo. Prova: `scripts/test-large-league.ts`.
 - Calendario: una volta al giorno alle 08:00, solo orari. `refreshSerieAKickoffs` non segna mai partite finite e non scrive risultati.
 - Sveglia esterna (`Europe/Rome`): `0,30 8 * * *` e `0,5,15,20,30,35,45,50 13-23 * * *`.
 - Indisponibili: se la giornata aperta ha deadline passata e non è ancora calcolata, skip senza chiamata API-Sports.

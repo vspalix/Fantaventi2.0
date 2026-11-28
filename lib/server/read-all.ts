@@ -20,3 +20,9 @@ export async function readAllRows<T>(page: (from: number, to: number) => Page<T>
 export function inChunks<T>(items: T[], size = 100) {
   return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 }
+
+/** Una lettura filtrata per un elenco lungo di codici: a blocchi, e ogni blocco a pagine. */
+export async function readAllChunks<T>(ids: string[], page: (chunk: string[], from: number, to: number) => Page<T>) {
+  const parts = await Promise.all(inChunks(ids).map((chunk) => readAllRows<T>((from, to) => page(chunk, from, to))));
+  return { data: parts.flatMap((part) => part.data), error: parts.find((part) => part.error)?.error ?? null };
+}

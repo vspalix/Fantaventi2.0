@@ -1,8 +1,9 @@
 import { entryCredit } from "@/lib/late-entry";
 import { headToHeadPoints, weekScoreMode, type LeagueRules, type MarketCheckpoint } from "@/lib/league-rules";
 import { isHeldMatch } from "@/lib/server/held-lineup";
-import { fantasyPointsForLeague } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, leagueEntries } from "@/lib/server/league-scores";
 import { reportError } from "@/lib/server/error-report";
+import { readAllChunks } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { CheckpointHistory } from "@/lib/types";
 
@@ -58,13 +59,16 @@ export async function loadCheckpointHistory(input: {
 
   const stored = new Map<string, number>();
   if (weeks.length > 0) {
-    const totals = await admin
+    const totals = await readAllChunks(teamIds, (ids, from, to) => admin
       .from("team_gameweek_scores")
       .select("fantasy_team_id, gameweek_id, total")
-      .in("fantasy_team_id", teamIds)
-      .in("gameweek_id", weeks.map((week) => week.id));
+      .in("fantasy_team_id", ids)
+      .in("gameweek_id", weeks.map((week) => week.id))
+      .order("fantasy_team_id")
+      .order("gameweek_id")
+      .range(from, to));
     if (!totals.error) {
-      for (const row of totals.data ?? []) {
+      for (const row of totals.data) {
         stored.set(`${row.fantasy_team_id as string}:${row.gameweek_id as string}`, Number(row.total ?? 0));
       }
     }
@@ -73,26 +77,10 @@ export async function loadCheckpointHistory(input: {
   const held = input.rules.postponement === "wait_recovery"
     ? await heldWeekIds(weeks.map((week) => week.id))
     : new Set<string>();
-  const entryByTeam = new Map<string, number>();
-  const fielded = new Set<string>();
-  if (weeks.length > 0) {
-    const lineups = await admin
-      .from("lineups")
-      .select("fantasy_team_id, gameweek_id")
-      .in("fantasy_team_id", teamIds)
-      .in("gameweek_id", horizon.map((week) => week.id));
-    if (!lineups.error) {
-      const numberById = new Map(horizon.map((week) => [week.id, week.number]));
-      for (const row of lineups.data ?? []) {
-        const number = numberById.get(row.gameweek_id as string);
-        if (number === undefined) continue;
-        const teamId = row.fantasy_team_id as string;
-        fielded.add(`${teamId}:${row.gameweek_id as string}`);
-        const current = entryByTeam.get(teamId);
-        if (current === undefined || number < current) entryByTeam.set(teamId, number);
-      }
-    }
-  }
+  const { entryByTeam, fielded } = await leagueEntries(teamIds, weeks.length > 0 ? horizon : []).catch((error: unknown) => {
+    void reportError("Lega: formazioni nello storico dei checkpoint", error);
+    return { entryByTeam: new Map<string, number>(), fielded: new Set<string>() };
+  });
 
   const marks = new Map<string, { bonus: number; malus: number }>();
   if (weeks.length > 0) {

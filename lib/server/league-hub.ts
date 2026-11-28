@@ -7,7 +7,8 @@ import { carryLineup, lineupSaveIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
 import { entryCredit } from "@/lib/late-entry";
-import { fantasyPointsForLeague, waitingEntries, type ScoreParts } from "@/lib/server/league-scores";
+import { fantasyPointsForLeague, leagueEntries, waitingEntries, type ScoreParts } from "@/lib/server/league-scores";
+import { readAllChunks } from "@/lib/server/read-all";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { loadWeekMatchState, weekUnderway } from "@/lib/server/roster";
@@ -484,18 +485,27 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
   const playerIds = [...new Set(lineupRows.flatMap((item) => slotsOf(item).map((slot) => slot.player_id)))];
   const byId = new Map<string, CatalogPlayer>();
   if (playerIds.length > 0) {
+    // In una lega grande i calciatori schierati sono troppi per un solo indirizzo.
     const [players, regs] = await Promise.all([
-      admin.from("players").select("id, full_name").in("id", playerIds),
-      admin.from("player_registrations")
+      readAllChunks(playerIds, (ids, from, to) => admin
+        .from("players")
+        .select("id, full_name")
+        .in("id", ids)
+        .order("id")
+        .range(from, to)),
+      readAllChunks(playerIds, (ids, from, to) => admin
+        .from("player_registrations")
         .select("player_id, role, club_id, effective_from_gameweek, effective_to_gameweek")
         .eq("season_id", league.seasonId)
-        .in("player_id", playerIds),
+        .in("player_id", ids)
+        .order("id")
+        .range(from, to)),
     ]);
     if (players.error) throw new Error(players.error.message);
     if (regs.error) throw new Error(regs.error.message);
-    const names = new Map((players.data ?? []).map((item) => [item.id as string, item.full_name as string]));
+    const names = new Map(players.data.map((item) => [item.id as string, item.full_name as string]));
     const chosen = new Map<string, { role: PlayerRole; clubId: string; from: number }>();
-    for (const item of regs.data ?? []) {
+    for (const item of regs.data) {
       const from = Number(item.effective_from_gameweek);
       const until = item.effective_to_gameweek == null ? null : Number(item.effective_to_gameweek);
       if (from > row.number || (until !== null && until < row.number)) continue;
@@ -626,14 +636,16 @@ async function squadsFor(
 ): Promise<LeagueSquad[]> {
   const teamIds = participants.map((participant) => participant.fantasyTeamId);
   if (teamIds.length === 0) return [];
-  const { data, error } = await admin
+  const { data, error } = await readAllChunks(teamIds, (ids, from, to) => admin
     .from("roster_stints")
     .select("fantasy_team_id, player_id, active_from_gameweek, active_until_gameweek")
-    .in("fantasy_team_id", teamIds);
+    .in("fantasy_team_id", ids)
+    .order("id")
+    .range(from, to));
   if (error) throw new Error(error.message);
 
   return participants.map((participant) => {
-    const players = (data ?? [])
+    const players = data
       .filter((stint) => {
         if (stint.fantasy_team_id !== participant.fantasyTeamId) return false;
         const from = stint.active_from_gameweek as number;
@@ -811,20 +823,20 @@ async function partialStandings(
   const scores = new Map<string, { points: number; live: boolean }>();
   const teamIds = participants.map((participant) => participant.fantasyTeamId);
   if (gameweekId && teamIds.length > 0) {
-    const extended = await admin
+    const scoresWith = (columns: string) => readAllChunks(teamIds, (ids, from, to) => admin
       .from("team_gameweek_scores")
-      .select("fantasy_team_id, total, provisional_total, is_live")
+      .select(columns)
       .eq("gameweek_id", gameweekId)
-      .in("fantasy_team_id", teamIds);
+      .in("fantasy_team_id", ids)
+      .order("fantasy_team_id")
+      .range(from, to)
+      .returns<Record<string, unknown>[]>());
+    const extended = await scoresWith("fantasy_team_id, total, provisional_total, is_live");
     const rows = extended.error && /provisional_total|is_live/i.test(extended.error.message)
-      ? await admin
-        .from("team_gameweek_scores")
-        .select("fantasy_team_id, total")
-        .eq("gameweek_id", gameweekId)
-        .in("fantasy_team_id", teamIds)
+      ? await scoresWith("fantasy_team_id, total")
       : extended;
     if (rows.error) throw new Error(rows.error.message);
-    for (const row of rows.data ?? []) {
+    for (const row of rows.data) {
       const record = row as unknown as {
         fantasy_team_id: string;
         total: number | string | null;
@@ -902,48 +914,47 @@ async function lineupsFor(
   gameweekId: string,
   teamIds: string[],
 ) {
-  const { data, error } = await admin
+  const { data, error } = await readAllChunks(teamIds, (ids, from, to) => admin
     .from("lineups")
     .select("id, fantasy_team_id")
     .eq("gameweek_id", gameweekId)
-    .in("fantasy_team_id", teamIds);
+    .in("fantasy_team_id", ids)
+    .order("id")
+    .range(from, to));
   if (error) throw new Error(error.message);
 
-  const lineupIds = (data ?? []).map((row) => row.id as string);
-  const extended = lineupIds.length
-    ? await admin
-      .from("lineup_slots")
-      .select("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order")
-      .in("lineup_id", lineupIds)
-    : { data: [], error: null };
+  const lineupIds = data.map((row) => row.id as string);
+  // Venti righe per formazione: bastano cinquanta squadre per superare una richiesta.
+  const slotsWith = (columns: string) => readAllChunks<SlotRow & { lineup_id: string }>(lineupIds, (ids, from, to) => admin
+    .from("lineup_slots")
+    .select(columns)
+    .in("lineup_id", ids)
+    .order("lineup_id")
+    .order("player_id")
+    .range(from, to)
+    .returns<(SlotRow & { lineup_id: string })[]>());
+  const extended = await slotsWith("lineup_id, player_id, is_captain, is_vice_captain, is_starter, slot_order");
   const plain = extended.error && /is_starter|slot_order/i.test(extended.error.message)
-    ? await admin
-      .from("lineup_slots")
-      .select("lineup_id, player_id, is_captain, is_vice_captain")
-      .in("lineup_id", lineupIds)
+    ? await slotsWith("lineup_id, player_id, is_captain, is_vice_captain")
     : extended;
   if (plain.error) throw new Error(plain.error.message);
 
-  return (data ?? []).map((row) => ({
+  const slotsByLineup = new Map<string, Required<SlotRow>[]>();
+  for (const slot of plain.data) {
+    const list = slotsByLineup.get(slot.lineup_id) ?? [];
+    list.push({
+      player_id: slot.player_id,
+      is_captain: Boolean(slot.is_captain),
+      is_vice_captain: Boolean(slot.is_vice_captain),
+      is_starter: slot.is_starter !== false,
+      slot_order: Number(slot.slot_order ?? 0),
+    });
+    slotsByLineup.set(slot.lineup_id, list);
+  }
+
+  return data.map((row) => ({
     fantasy_team_id: row.fantasy_team_id as string,
-    lineup_slots: (plain.data ?? [])
-      .filter((slot) => slot.lineup_id === row.id)
-      .map((slot) => {
-        const record = slot as unknown as {
-          player_id: string;
-          is_captain: boolean;
-          is_vice_captain: boolean;
-          is_starter?: boolean;
-          slot_order?: number;
-        };
-        return {
-          player_id: record.player_id,
-          is_captain: Boolean(record.is_captain),
-          is_vice_captain: Boolean(record.is_vice_captain),
-          is_starter: record.is_starter !== false,
-          slot_order: Number(record.slot_order ?? 0),
-        };
-      }),
+    lineup_slots: slotsByLineup.get(row.id as string) ?? [],
   }));
 }
 
@@ -1099,27 +1110,10 @@ async function standingsInApp(
   }
 
   const closed = gameweeks.filter((gameweek) => isLocked(gameweek, now, inPlay));
-  const allIds = gameweeks.map((gameweek) => gameweek.id);
   const scoreIds = (live ? gameweeks.filter((gameweek) => gameweek.status !== "final") : closed).map((gameweek) => gameweek.id);
   const numberById = new Map(gameweeks.map((gameweek) => [gameweek.id, gameweek.number]));
 
-  const { data: lineupRows, error: lineupError } = await admin
-    .from("lineups")
-    .select("fantasy_team_id, gameweek_id")
-    .in("fantasy_team_id", teamIds)
-    .in("gameweek_id", allIds);
-  if (lineupError) throw new Error(lineupError.message);
-
-  const fielded = new Set<string>();
-  const entryByTeam = new Map<string, number>();
-  for (const row of lineupRows ?? []) {
-    const teamId = row.fantasy_team_id as string;
-    const number = numberById.get(row.gameweek_id as string);
-    if (number === undefined) continue;
-    fielded.add(`${teamId}:${row.gameweek_id as string}`);
-    const current = entryByTeam.get(teamId);
-    if (current === undefined || number < current) entryByTeam.set(teamId, number);
-  }
+  const { entryByTeam, fielded } = await leagueEntries(teamIds, gameweeks);
 
   type ScoreCell = { points: number; rated: number | null; onPitch: number | null; live: boolean };
   const scores = new Map<string, ScoreCell>();
@@ -1127,18 +1121,23 @@ async function standingsInApp(
     const columns = live
       ? "fantasy_team_id, gameweek_id, total, provisional_total, is_live, rated_players_count, on_pitch_count"
       : "fantasy_team_id, gameweek_id, total";
-    const { data, error } = await admin
+    // Una stagione intera supera le righe di una sola richiesta.
+    const { data, error } = await readAllChunks(teamIds, (ids, from, to) => admin
       .from("team_gameweek_scores")
       .select(columns)
-      .in("fantasy_team_id", teamIds)
-      .in("gameweek_id", scoreIds);
+      .in("fantasy_team_id", ids)
+      .in("gameweek_id", scoreIds)
+      .order("fantasy_team_id")
+      .order("gameweek_id")
+      .range(from, to)
+      .returns<Record<string, unknown>[]>());
     if (error) {
       if (live && /provisional_total|is_live|on_pitch_count|rated_players_count/i.test(error.message)) {
         throw new MissingLiveColumns(error.message);
       }
       throw new Error(error.message);
     }
-    for (const row of data ?? []) {
+    for (const row of data) {
       const record = row as unknown as {
         fantasy_team_id: string;
         gameweek_id: string;

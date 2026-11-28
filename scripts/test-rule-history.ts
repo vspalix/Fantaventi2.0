@@ -158,6 +158,59 @@ export async function runRuleHistoryChecks() {
     const crowded = await save({ rules: { enrollment: "closed", maxMembers: 2 } });
     check("Mai meno posti delle squadre iscritte", crowded === null ? false : crowded.status === 409, crowded?.message ?? "salvata");
 
+    // --- Numero chiuso: chi è già dentro conserva la media, e si entra solo prima dell'inizio
+    const { loadLiveCenter } = await import("../lib/server/live-center");
+    const { getLeagueDetail, joinLeague } = await import("../lib/server/leagues");
+    // La squadra C schiera per la prima volta alla giornata 3: è entrata in corsa.
+    tables.lineups.push({ id: "lineup-late", fantasy_team_id: "team-C", gameweek_id: "gw-3", status: "locked", origin: "user" });
+    tables.lineup_slots.push(...tables.lineup_slots.filter((slot) => slot.lineup_id === "lineup-3").map((slot) => ({ ...slot, lineup_id: "lineup-late" })));
+    const lateTotal = async () => {
+      const detail = await getLeagueDetail(OWNER, LEAGUE);
+      const league = { ...detail, rules: stored() };
+      const center = await loadLiveCenter(league, OWNER);
+      return center.table.find((row) => row.teamName === "Squadra C")?.points ?? null;
+    };
+    const open = await lateTotal();
+    check("Aperta: chi entra in corsa riceve la media", Number(open) > 0, String(open));
+
+    const forgedKept = await save({ rules: { visibility: "private", lateEntryKept: ["team-X"] } });
+    check("Le medie conservate le scrive solo il server", forgedKept === null && stored().lateEntryKept.length === 0, JSON.stringify(stored().lateEntryKept));
+    const closing = await save({ rules: { enrollment: "closed", maxMembers: 8 } });
+    check("Chiusura a lega iniziata: salvata senza domande", closing === null, closing?.message);
+    check("Chi è già dentro è segnato", same([...stored().lateEntryKept].sort(), ["team-A", "team-B", "team-C"]), JSON.stringify(stored().lateEntryKept));
+    const kept = await lateTotal();
+    check("Chiusa dopo: la media resta uguale", kept === open, `${open} / ${kept}`);
+    const again = await save({ rules: { maxMembers: 9 } });
+    check("Salvare ancora non perde le medie", again === null && stored().lateEntryKept.length === 3, again?.message);
+    check("Il regolamento lo spiega", buildOfficialRegulation("Lega", stored()).includes("Chi era già dentro conserva la media"));
+    tables.private_leagues[0].settings = { ...stored(), lateEntryKept: [] };
+    check("Lega nata chiusa: nessuna media di ingresso", (await lateTotal()) !== open);
+
+    const newcomer = "user-N";
+    const join = async () => {
+      try {
+        await joinLeague(newcomer, "nuovo@esempio.test", "AAAA1111");
+        return null;
+      } catch (error) {
+        return error as Error & { status?: number };
+      }
+    };
+    const membersBefore = tables.private_league_members.length;
+    const refused = await join();
+    check("Chiusa e già iniziata: non si entra", refused?.status === 409 && /già iniziata/.test(refused.message) && tables.private_league_members.length === membersBefore, refused?.message ?? "entrato");
+    tables.private_leagues[0].start_matchday = 4;
+    tables.private_leagues[0].settings = { ...stored(), maxMembers: 3 };
+    const full = await join();
+    check("Chiusa senza posti: non si entra", /slot occupati/.test(full?.message ?? ""), full?.message ?? "entrato");
+    tables.private_leagues[0].settings = { ...stored(), maxMembers: 8 };
+    const welcomed = await join();
+    check("Chiusa che parte più avanti, a campionato iniziato: si entra", welcomed === null && tables.private_league_members.length === membersBefore + 1, welcomed?.message);
+    tables.private_league_members.pop();
+
+    const early2 = await save({ rules: { enrollment: "open" } });
+    const closeEarly = await save({ rules: { enrollment: "closed", maxMembers: 8, lateEntryKept: [] } });
+    check("Chiusura prima dell'inizio: nessuna media da conservare in più", early2 === null && closeEarly === null && stored().lateEntryKept.length === 0, JSON.stringify(stored().lateEntryKept));
+
     tables.private_leagues[0].start_matchday = 4;
     const early = await save({ rules: { bonusMalus: { ...stored().bonusMalus, goal: 6 } } });
     check("Lega non ancora iniziata: nessuna domanda", early === null && stored().bonusMalus.goal === 6 && !stored().scoringHistory.some((item) => item.key === "goal"), early?.message);

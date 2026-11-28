@@ -1,4 +1,4 @@
-import { entryCredit } from "@/lib/late-entry";
+import { entryCredit, entryPolicy } from "@/lib/late-entry";
 import { headToHeadPoints, weekScoreMode, type LeagueRules, type MarketCheckpoint } from "@/lib/league-rules";
 import { isHeldMatch } from "@/lib/server/held-lineup";
 import { fantasyPointsForLeague } from "@/lib/server/league-scores";
@@ -151,7 +151,7 @@ export async function loadCheckpointHistory(input: {
         teamIds,
         entryByTeam,
         startMatchday: input.startMatchday,
-        allowed: input.rules.enrollment !== "closed",
+        ...entryPolicy(input.rules),
       };
       const ranked = input.participants.map((person) => {
         const credit = entryCredit(entryContext, person.fantasyTeamId, base, pointsOf);

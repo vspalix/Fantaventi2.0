@@ -324,8 +324,8 @@ export async function createLeague(
   if (trimmed.length < 2 || trimmed.length > 40) {
     throw new Error("Il nome della lega deve avere tra 2 e 40 caratteri.");
   }
-  // Una lega nuova non ha giornate passate con regole diverse.
-  const rules = { ...parseLeagueRules(rulesInput), scoringHistory: [] };
+  // Una lega nuova non ha giornate passate con regole diverse, né medie da conservare.
+  const rules = { ...parseLeagueRules(rulesInput), scoringHistory: [], lateEntryKept: [] };
 
   const admin = createAdminSupabase();
   await ensureProfile(admin, userId, email);
@@ -655,7 +655,7 @@ async function assertCanJoin(
   leagueId: string,
   seasonId: string,
 ) {
-  const { rules, ready } = await readLeagueSettings(admin, leagueId);
+  const { rules, ready, range } = await readLeagueSettings(admin, leagueId);
   if (!ready || rules.enrollment !== "closed") return;
   const { count, error } = await admin
     .from("private_league_members")
@@ -670,13 +670,14 @@ async function assertCanJoin(
     .select("number, status, deadline_at")
     .eq("season_id", seasonId);
   if (weekError) throw new Error(weekError.message);
-  const started = (weeks ?? []).some((week) => (
+  // Conta l'inizio della lega, non quello del campionato: le giornate precedenti non la riguardano.
+  const started = (weeks ?? []).some((week) => Number(week.number) >= range.from && (
     week.status === "locked"
     || week.status === "scored"
     || week.status === "final"
     || new Date(week.deadline_at as string).getTime() <= Date.now()
   ));
-  if (started) throw httpError("Questa lega è a numero chiuso e non accetta ingressi a campionato iniziato.", 409);
+  if (started) throw httpError("Questa lega è a numero chiuso ed è già iniziata: non accetta nuovi ingressi.", 409);
 }
 
 /** `own`: le leghe dell'utente, se chi chiama le sta già leggendo (evita di calcolarle due volte). */
@@ -826,15 +827,21 @@ export async function updateLeague(
     checkpoints: input.rules.checkpoints ?? current.checkpoints,
   }, input.rules.format ?? current.format) : null;
   if (rules) {
-    // Lo storico dei bonus lo scrive solo il server: quello arrivato dalla richiesta non conta.
+    // Lo storico dei bonus e le medie conservate li scrive solo il server: quelli della richiesta non contano.
     rules.scoringHistory = current.scoringHistory;
+    rules.lateEntryKept = current.lateEntryKept;
     if (rules.enrollment === "closed" && detail.participants.length > (rules.maxMembers ?? 0)) {
       throw httpError(`Nella lega ci sono già ${detail.participants.length} squadre: i posti non possono essere di meno.`, 409);
     }
+    const start = patch.start_matchday ?? detail.startMatchday;
+    const closing = current.enrollment !== "closed" && rules.enrollment === "closed";
     const changed = changedScoring(current, rules);
+    const from = closing || changed.length > 0 ? await firstOpenMatchday(admin, detail.seasonId) : start;
+    // Chiudendo le iscrizioni a lega iniziata, chi è già dentro conserva la media di ingresso.
+    if (closing && from > start) {
+      rules.lateEntryKept = [...new Set([...current.lateEntryKept, ...detail.participants.map((team) => team.fantasyTeamId)])];
+    }
     if (changed.length > 0) {
-      const start = patch.start_matchday ?? detail.startMatchday;
-      const from = await firstOpenMatchday(admin, detail.seasonId);
       const apply = input.scoringApply === "from-now" || input.scoringApply === "all" ? input.scoringApply : null;
       // Senza giornate già iniziate non c'è niente da scegliere.
       if (from > start && !apply) {

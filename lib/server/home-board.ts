@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { lateEntryOf, presentAverage, weekGain } from "@/lib/late-entry";
+import { entryPolicy, lateEntryOf, presentAverage, weekGain } from "@/lib/late-entry";
 import { headToHeadPairings, headToHeadPoints, weekScoreMode, inLeagueRange } from "@/lib/league-rules";
 import { LEAGUE_FOCUS_COOKIE } from "@/lib/league-focus";
 import { getCurrentSeason } from "@/lib/server/catalog";
@@ -214,7 +214,7 @@ async function leagueCard(
       teamIds,
       entryByTeam: entries.entryByTeam,
       startMatchday: settings.range.from,
-      allowed: settings.rules.enrollment !== "closed",
+      ...entryPolicy(settings.rules),
       waiting: await waitingEntries(
         teamIds,
         entries.entryByTeam,

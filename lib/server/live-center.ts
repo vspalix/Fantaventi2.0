@@ -1,5 +1,5 @@
 import { projectLiveScore, type PlayerStat } from "@/lib/engine/calculator";
-import { weekGain } from "@/lib/late-entry";
+import { entryPolicy, weekGain } from "@/lib/late-entry";
 import { fantapuntiToGoals, headToHeadPairings, headToHeadPoints, inLeagueRange, weekScoreMode } from "@/lib/league-rules";
 import { pitchEvents } from "@/lib/engagement/live-board";
 import { teamWeekPoints } from "@/lib/office-lineup";
@@ -81,7 +81,7 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
         teamIds,
         entryByTeam: entries.entryByTeam,
         startMatchday: league.startMatchday,
-        allowed: league.rules.enrollment !== "closed",
+        ...entryPolicy(league.rules),
         waiting: await waitingEntries(
           teamIds,
           entries.entryByTeam,

@@ -213,7 +213,7 @@ export function LeagueAdminPanel({
             onChange={(event) => setEnrollment(event.target.value === "closed" ? "closed" : "open")}
           >
             <option value="open">Aperte, con ingresso in media</option>
-            <option value="closed">Numero chiuso</option>
+            <option value="closed">Numero chiuso: si entra solo prima dell&apos;inizio</option>
           </select>
         </label>
         {rules.enrollment === "closed" ? (
@@ -228,7 +228,7 @@ export function LeagueAdminPanel({
           </label>
         ) : null}
         {league.rules.enrollment !== "closed" && rules.enrollment === "closed" ? (
-          <p className="small muted">Con il numero chiuso non c&apos;è la media di ingresso: chi è entrato a lega iniziata perde quei punti.</p>
+          <p className="small muted">Chi è già nella lega conserva la sua media di ingresso. A lega iniziata non entra più nessuno, anche se restano posti.</p>
         ) : null}
         <p className="small muted">
           Bonus e malus, imbattibilità, capitano e modificatore difesa: a lega iniziata, quando salvi ti chiedo se valgono da ora o per tutte le giornate.

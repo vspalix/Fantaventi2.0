@@ -54,7 +54,9 @@ export function buildOfficialRegulation(leagueName: string, rules: LeagueRules) 
       .map((item) => `- Dopo la giornata **${item.afterMatchday}**: massimo **${item.changes}** cambi, fino alla chiusura della giornata successiva.`)
       .join("\n");
   const late = rules.enrollment === "closed"
-    ? "La lega è a iscrizioni chiuse: non c'è ingresso in media."
+    ? rules.lateEntryKept.length > 0
+      ? "La lega ha chiuso le iscrizioni dopo l'inizio: non entra più nessuno. Chi era già dentro conserva la media di ingresso delle giornate saltate."
+      : "La lega è a numero chiuso: si entra solo prima della giornata di inizio e non c'è ingresso in media."
     : "La lega è aperta. Chi entra dopo la prima giornata riceve, per ogni giornata già chiusa prima del suo ingresso, la media delle squadre che in quella giornata erano già in gioco: la sua non conta. Chi era in gioco e non ha fatto punti conta zero. Dalla sua prima formazione in poi somma solo i propri punti.";
 
   return `# Regolamento ufficiale

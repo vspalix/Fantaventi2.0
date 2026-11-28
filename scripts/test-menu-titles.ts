@@ -2,7 +2,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { ADMIN_GROUPS, ADMIN_HOME } from "../lib/admin-area";
+import { ADMIN_GROUPS, ADMIN_HOME, ADMIN_MENU, ADMIN_TABS } from "../lib/admin-area";
 
 type Case = { name: string; pass: boolean; detail: string };
 
@@ -32,7 +32,12 @@ export function runMenuTitleChecks() {
   const cases: Case[] = [];
   const add = (name: string, pass: boolean, detail: string) => cases.push({ name, pass, detail });
 
-  for (const section of [ADMIN_HOME, ...ADMIN_GROUPS.flatMap((group) => group.sections)]) {
+  const sections = [ADMIN_HOME, ADMIN_MENU, ...ADMIN_GROUPS.flatMap((group) => group.sections)];
+  for (const tab of ADMIN_TABS) {
+    const target = sections.find((section) => section.href === tab.href);
+    add(`Barra admin «${tab.label}»: stesso nome della pagina`, target?.label === tab.label, target?.label ?? "pagina non trovata");
+  }
+  for (const section of sections) {
     const file = TITLE_ELSEWHERE[section.href] ?? `app${section.href}/page.tsx`;
     const found = headings(read(file));
     add(

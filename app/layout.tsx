@@ -98,7 +98,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
     readBrand(),
     cookies(),
   ]);
-  const { platformAdmin, canSwitch, hostMode } = access;
+  const { platformAdmin, canSwitch } = access;
   if (user && service && needsReset && !path.startsWith("/accesso/nuova-password")) {
     const code = normalizeInviteCode(jar.get(INVITE_COOKIE)?.value);
     redirect(code ? `/accesso/nuova-password?next=${encodeURIComponent(joinHref(code))}` : "/accesso/nuova-password");
@@ -162,8 +162,6 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             activeSeasonId={activeSeasonId}
             squads={squads}
             activeLeagueId={activeLeagueId}
-            platformAdmin={platformAdmin}
-            hostMode={hostMode}
             canSwitch={canSwitch}
           />
         </Suspense>

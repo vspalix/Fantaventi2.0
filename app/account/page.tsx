@@ -3,8 +3,10 @@ import { DeleteAccount } from "@/components/account/DeleteAccount";
 import { PublicName } from "@/components/account/PublicName";
 import { LegalLinks } from "@/components/LegalLinks";
 import { NotificationToggle } from "@/components/notifications/NotificationToggle";
+import { ViewSwitch } from "@/components/ViewSwitch";
 import { reportError } from "@/lib/server/error-report";
 import { getSessionUser } from "@/lib/server/session";
+import { hostAccess } from "@/lib/server/view-mode";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { hasPublicSupabaseEnv } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
@@ -35,6 +37,7 @@ export default async function AccountPage() {
   }
 
   const shown = username || user.email || "";
+  const { canSwitch } = hasServiceSupabaseEnv() ? await hostAccess(user.id) : { canSwitch: false };
   return (
     <section className="ac">
       <h1 className="section-title">Account</h1>
@@ -49,6 +52,7 @@ export default async function AccountPage() {
           <small>Email, nome e telefono li vedi solo tu.</small>
         </div>
       </article>
+      {canSwitch ? <ViewSwitch to="host" className="view-switch-wide" /> : null}
       <PublicName current={username} />
       <ChangePassword />
       <NotificationToggle />

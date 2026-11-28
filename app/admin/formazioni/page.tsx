@@ -1,5 +1,4 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
-import { ScopeChip } from "@/components/admin/AdminShell";
 import { SetupNotice } from "@/components/SetupNotice";
 import { PagedList, PagedTable } from "@/components/ShowMore";
 import { publicError } from "@/lib/server/api-error";
@@ -29,7 +28,6 @@ export default async function AdminLineupsPage() {
               {week ? `Giornata ${week.number} · scadenza ${deadline}${data.locked ? " (chiusa)" : ""}` : "Nessuna giornata in calendario"} · {selected ? selected.name : "Tutte le leghe"}
             </p>
           </div>
-          <ScopeChip scope="league" />
         </header>
 
         {selected ? (

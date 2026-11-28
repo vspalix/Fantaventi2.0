@@ -1,10 +1,6 @@
 import { cache } from "react";
 import { cookies } from "next/headers";
-import { ACTION_LABEL } from "@/lib/admin-audit-labels";
-import { listAdminAudit } from "@/lib/server/audit";
 import { getCurrentSeason } from "@/lib/server/catalog";
-import { reportIfTechnical } from "@/lib/server/error-report";
-import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
 import { leagueTeamIds } from "@/lib/server/league-members";
 import { readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -29,10 +25,6 @@ export type AdminLeagues = {
   /** Formazioni chiuse: dopo la scadenza chi manca non può più consegnare. */
   locked: boolean;
 };
-
-const DAY = 24 * 60 * 60 * 1000;
-/** Fermo di sicurezza per l'elenco degli accessi: 200.000 persone. */
-const MAX_USER_PAGES = 1000;
 
 function pickCurrent(weeks: Week[]): Week | null {
   const lastClosed = weeks.reduce((max, week) => (
@@ -79,6 +71,7 @@ export const loadAdminLeagues = cache(async (): Promise<AdminLeagues> => {
   const teamsByLeague = new Map<string, string[]>();
   const filedTeams = new Set<string>();
   if (rows.length > 0) {
+    // Con tante squadre una sola richiesta non basta: si legge a blocchi, pochi alla volta, e a pagine.
     const members = await readAllChunks(rows.map((row) => row.id), (ids, from, to) => admin
       .from("private_league_members")
       .select("private_league_id, fantasy_team_id")
@@ -92,11 +85,13 @@ export const loadAdminLeagues = cache(async (): Promise<AdminLeagues> => {
       list.push(row.fantasy_team_id as string);
       teamsByLeague.set(row.private_league_id as string, list);
     }
-    if (week && teamsByLeague.size > 0) {
+    if (week) {
+      // Le formazioni d'ufficio non sono consegne. Si legge la giornata intera: meno richieste che a elenchi di squadre.
       const lineups = await readAllRows((from, to) => admin
         .from("lineups")
         .select("fantasy_team_id")
         .eq("gameweek_id", week.id)
+        .eq("origin", "user")
         .order("id")
         .range(from, to));
       if (lineups.error) throw new Error(lineups.error.message);
@@ -145,6 +140,7 @@ export async function loadLeagueLineups(leagueId: string, weekId: string | null)
       .from("lineups")
       .select("fantasy_team_id, saved_at")
       .eq("gameweek_id", weekId)
+      .eq("origin", "user")
       .in("fantasy_team_id", part)
       .order("id")
       .range(from, to));
@@ -159,92 +155,4 @@ export async function loadLeagueLineups(leagueId: string, weekId: string | null)
       savedAt: saved.get(row.id as string) ?? null,
     }))
     .sort((a, b) => Number(a.filed) - Number(b.filed) || a.name.localeCompare(b.name, "it"));
-}
-
-export type AdminOverview = {
-  matches: { total: number; finished: number; live: number; held: number; nextKickoffAt: string | null };
-  votes: { count: number; lastAt: string | null };
-  reads: { kind: string; outcome: string; startedAt: string; finishedAt: string | null }[];
-  people: { users: number; newThisWeek: number; activeThisWeek: number | null; pushDevices: number };
-  audit: { id: string; createdAt: string; label: string }[];
-};
-
-async function countRows(table: string, filter?: { column: string; op: "eq" | "gte"; value: string }) {
-  const admin = createAdminSupabase();
-  const base = admin.from(table).select("*", { count: "exact", head: true });
-  const query = !filter ? base : filter.op === "eq" ? base.eq(filter.column, filter.value) : base.gte(filter.column, filter.value);
-  const { count, error } = await query;
-  if (error) throw new Error(error.message);
-  return count ?? 0;
-}
-
-async function activeUsersThisWeek(): Promise<number | null> {
-  // L'ultimo accesso sta nel sistema di accesso di Supabase, non nelle tabelle dell'app.
-  try {
-    const admin = createAdminSupabase();
-    const since = Date.now() - 7 * DAY;
-    let active = 0;
-    for (let page = 1; page <= MAX_USER_PAGES; page += 1) {
-      const listed = await admin.auth.admin.listUsers({ page, perPage: 200 });
-      if (listed.error) throw new Error(listed.error.message);
-      active += listed.data.users.filter((user) => user.last_sign_in_at && new Date(user.last_sign_in_at).getTime() >= since).length;
-      if (listed.data.users.length < 200) break;
-    }
-    return active;
-  } catch (error) {
-    reportIfTechnical("Admin: panoramica, ultimi accessi", error);
-    return null;
-  }
-}
-
-export async function loadAdminOverview(week: Week | null): Promise<AdminOverview> {
-  const admin = createAdminSupabase();
-  const weekSince = new Date(Date.now() - 7 * DAY).toISOString();
-
-  const [matches, votes, lastImport, reads, users, newUsers, webPush, appPush, activeThisWeek, audit] = await Promise.all([
-    week
-      ? admin.from("real_matches").select("status, kickoff_at, postponed, hold_status").eq("gameweek_id", week.id)
-      : Promise.resolve({ data: [], error: null }),
-    week ? countRows("player_gameweek_stats", { column: "gameweek_id", op: "eq", value: week.id }) : Promise.resolve(0),
-    week
-      ? admin.from("vote_imports").select("imported_at").eq("gameweek_id", week.id).neq("source", PROVISIONAL_SOURCE).order("imported_at", { ascending: false }).limit(1)
-      : Promise.resolve({ data: [], error: null }),
-    admin.from("vote_reads").select("kind, outcome, started_at, finished_at").order("started_at", { ascending: false }).limit(6),
-    countRows("profiles"),
-    countRows("profiles", { column: "created_at", op: "gte", value: weekSince }),
-    countRows("push_subscriptions"),
-    countRows("device_push_tokens"),
-    activeUsersThisWeek(),
-    listAdminAudit(3),
-  ]);
-  if (matches.error) throw new Error(matches.error.message);
-  if (lastImport.error) throw new Error(lastImport.error.message);
-  if (reads.error) throw new Error(reads.error.message);
-
-  const now = Date.now();
-  const matchRows = (matches.data ?? []) as { status: string; kickoff_at: string; postponed: boolean; hold_status: string }[];
-  const held = (row: (typeof matchRows)[number]) => row.postponed || (row.hold_status && row.hold_status !== "none");
-  const upcoming = matchRows
-    .filter((row) => row.status === "scheduled" && !held(row) && new Date(row.kickoff_at).getTime() > now)
-    .map((row) => row.kickoff_at)
-    .sort();
-
-  return {
-    matches: {
-      total: matchRows.length,
-      finished: matchRows.filter((row) => row.status === "finished").length,
-      live: matchRows.filter((row) => row.status === "live" || row.status === "locked").length,
-      held: matchRows.filter(held).length,
-      nextKickoffAt: upcoming[0] ?? null,
-    },
-    votes: { count: votes, lastAt: (lastImport.data?.[0]?.imported_at as string | undefined) ?? null },
-    reads: (reads.data ?? []).map((row) => ({
-      kind: String(row.kind),
-      outcome: String(row.outcome),
-      startedAt: row.started_at as string,
-      finishedAt: (row.finished_at as string | null) ?? null,
-    })),
-    people: { users, newThisWeek: newUsers, activeThisWeek, pushDevices: webPush + appPush },
-    audit: audit.rows.map((row) => ({ id: row.id, createdAt: row.createdAt, label: ACTION_LABEL[row.action] ?? row.action })),
-  };
 }

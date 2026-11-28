@@ -1,7 +1,7 @@
 import type { User } from "@supabase/supabase-js";
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ModeSwitch } from "@/components/ModeSwitch";
+import { ViewSwitch } from "@/components/ViewSwitch";
 import { publicError } from "@/lib/server/api-error";
 import { isSuperAdmin } from "@/lib/server/platform-role";
 import { getSessionUser, SESSION_UNAVAILABLE, sessionUnavailable } from "@/lib/server/session";
@@ -64,10 +64,10 @@ export async function checkAdminPage(): Promise<AdminGate> {
       screen: (
         <section className="stack">
           <header>
-            <h1 className="section-title">Vista giocatore</h1>
-            <p className="lede">La vista admin resta chiusa finché non passi da Giocatore ad Admin.</p>
+            <h1 className="section-title">Area Admin</h1>
+            <p className="lede">Sei nel gioco. Per aprire questa pagina passa all&apos;area Admin.</p>
           </header>
-          <ModeSwitch mode="player" />
+          <ViewSwitch to="host" />
         </section>
       ),
     };

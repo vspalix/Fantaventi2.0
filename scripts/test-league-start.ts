@@ -55,7 +55,7 @@ export function runLeagueStartChecks() {
   // Ogni opzione della lega si sceglie creandola: una regola nuova senza il suo comando qui fa fallire la prova.
   const source = (path: string) => readFileSync(path, "utf8");
   const form = source("components/leagues/CreateLeagueForm.tsx");
-  const automatic = ["ranking", "budget", "phases", "scoringHistory"]; // seguono la modalità, il valore fisso, le giornate o il server
+  const automatic = ["ranking", "budget", "phases", "scoringHistory", "lateEntryKept"]; // seguono la modalità, il valore fisso, le giornate o il server
   const unasked = Object.keys(DEFAULT_LEAGUE_RULES)
     .filter((key) => !automatic.includes(key) && !new RegExp(String.raw`change\(\{[^}]*\b${key}\b`).test(form));
   check("Creando una lega si chiede ogni opzione", unasked.length === 0, unasked.join(", "));
@@ -71,7 +71,7 @@ export function runLeagueStartChecks() {
     goalBands: [{ min: 60, goals: 1 }], phases: hybrid,
   });
   const lost = (Object.keys(DEFAULT_LEAGUE_RULES) as (keyof typeof DEFAULT_LEAGUE_RULES)[])
-    .filter((key) => !["ranking", "budget", "scoringHistory"].includes(key) && same(custom[key], DEFAULT_LEAGUE_RULES[key]));
+    .filter((key) => !["ranking", "budget", "scoringHistory", "lateEntryKept"].includes(key) && same(custom[key], DEFAULT_LEAGUE_RULES[key]));
   check("Nessuna opzione scelta torna al valore di partenza", lost.length === 0, lost.join(", "));
 
   check("La coppa parte dove scelto", scoringPhase(chosen, 31).kind === "knockout" && scoringPhase(chosen, 13).kind === "regular");

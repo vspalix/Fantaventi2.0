@@ -6,7 +6,7 @@ import { filedPlayerScore, liveFormula, projectLiveScore, type LineupSlotInput }
 import { carryLineup, lineupSaveIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
-import { entryCredit } from "@/lib/late-entry";
+import { entryCredit, entryPolicy } from "@/lib/late-entry";
 import { fantasyPointsForLeague, leagueEntries, waitingEntries, type ScoreParts } from "@/lib/server/league-scores";
 import { readAllChunks } from "@/lib/server/read-all";
 import { definitionForLeague, readLeagueSettings } from "@/lib/server/league-settings";
@@ -959,7 +959,7 @@ async function lineupsFor(
 }
 
 type StandingOptions = {
-  allowLateEntry: boolean;
+  lateEntry: ReturnType<typeof entryPolicy>;
   phases: LeaguePhase[];
   goalBands: LeagueRules["goalBands"] | null;
   weekPoints: Map<string, number> | null;
@@ -998,7 +998,7 @@ export async function standingsFor(
     }
   }
   const rows = await standingsInApp(admin, league.startMatchday, participants, gameweeks, now, inPlay, {
-    allowLateEntry: settings.rules.enrollment !== "closed",
+    lateEntry: entryPolicy(settings.rules),
     phases: settings.rules.phases,
     goalBands: settings.rules.goalBands,
     weekPoints,
@@ -1210,7 +1210,7 @@ async function standingsInApp(
     startMatchday,
     now,
   );
-  const entryContext = { teamIds, entryByTeam, startMatchday, allowed: options.allowLateEntry, waiting };
+  const entryContext = { teamIds, entryByTeam, startMatchday, ...options.lateEntry, waiting };
 
   return rankStandings(participants.map((participant) => {
     const credit = entryCredit(entryContext, participant.fantasyTeamId, seasonBase, pointsOf);

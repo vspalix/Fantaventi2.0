@@ -9,6 +9,8 @@ export type EntryContext = {
   startMatchday: number;
   /** false nelle leghe a numero chiuso. */
   allowed: boolean;
+  /** Squadre già dentro quando le iscrizioni sono state chiuse: conservano la media. */
+  kept?: ReadonlySet<string>;
   /**
    * Chi è iscritto ma non ha ancora schierato: la giornata da cui può giocare. Vale per dargli
    * subito la media; non lo fa contare nella media degli altri.
@@ -18,10 +20,16 @@ export type EntryContext = {
 
 type Week = { id: string; number: number };
 
+/** Chi ha diritto alla media di ingresso, secondo le regole della lega. Da usare in ogni calcolo. */
+export function entryPolicy(rules: { enrollment: "open" | "closed"; lateEntryKept: readonly string[] }) {
+  return { allowed: rules.enrollment !== "closed", kept: new Set(rules.lateEntryKept) };
+}
+
 /** La giornata di ingresso di chi è arrivato in corsa, altrimenti null. */
 export function lateEntryOf(context: EntryContext, teamId: string) {
   const entry = context.entryByTeam.get(teamId) ?? context.waiting?.get(teamId);
-  return context.allowed && entry !== undefined && entry > context.startMatchday ? entry : null;
+  const entitled = context.allowed || Boolean(context.kept?.has(teamId));
+  return entitled && entry !== undefined && entry > context.startMatchday ? entry : null;
 }
 
 /**

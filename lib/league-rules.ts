@@ -72,6 +72,8 @@ export type LeagueRules = {
   phases: LeaguePhase[];
   /** Bonus e malus diversi nelle giornate passate. Lo scrive solo il server (`lib/scoring-history.ts`). */
   scoringHistory: ScoringChange[];
+  /** Squadre già dentro quando le iscrizioni sono state chiuse a lega iniziata. Lo scrive solo il server. */
+  lateEntryKept: string[];
 };
 
 /** `from` e `to` sono le giornate della lega: nelle fasi la coppa prende le ultime. */
@@ -130,6 +132,7 @@ export const DEFAULT_LEAGUE_RULES: LeagueRules = {
   postponement: "wait_recovery",
   goalBands: DEFAULT_GOAL_BANDS.map((band) => ({ ...band })),
   scoringHistory: [],
+  lateEntryKept: [],
 };
 
 function captainMultiplierOf(value: unknown): 1 | 1.5 | 2 {
@@ -273,6 +276,9 @@ export function parseLeagueRules(value: unknown, formatOverride?: unknown): Leag
     goalBands: goalBandsOf(source.goalBands),
     phases: phasesOf(format, source.phases),
     scoringHistory: parseScoringHistory(source.scoringHistory),
+    lateEntryKept: Array.isArray(source.lateEntryKept)
+      ? [...new Set(source.lateEntryKept.filter((item): item is string => typeof item === "string"))]
+      : [],
   };
 }
 

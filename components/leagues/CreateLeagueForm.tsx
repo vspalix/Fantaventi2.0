@@ -295,7 +295,7 @@ export function CreateLeagueForm({ pending, calendar, onCreate }: {
             value={rules.enrollment}
             options={[
               { id: "open", label: "Aperta", detail: "Con ingresso in media." },
-              { id: "closed", label: "Numero chiuso", detail: "Decidi quanti posti ci sono." },
+              { id: "closed", label: "Numero chiuso", detail: "Decidi quanti posti ci sono. Si entra solo prima dell'inizio." },
             ]}
             onChange={(enrollment) => change({ enrollment, maxMembers: enrollment === "closed" ? (rules.maxMembers ?? 8) : null })}
           />

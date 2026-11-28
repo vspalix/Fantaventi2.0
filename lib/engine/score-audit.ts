@@ -121,7 +121,8 @@ function roleLabel(role: PlayerRole | null) {
   return "giocatore";
 }
 
-function eventLines(stat: PlayerStat | undefined, role: PlayerRole, definition: RulesetDefinition, political: boolean) {
+/** Le voci di bonus e malus di un voto: servono al dettaglio calcolato e alle icone in diretta. */
+export function eventLines(stat: PlayerStat | undefined, role: PlayerRole, definition: RulesetDefinition, political: boolean) {
   if (political) return [{ label: "6 politico, senza bonus né malus", count: 1, unit: 0, points: 0 }];
   if (!stat || stat.voto == null) return [];
   const catalog = definition.bonus_malus ?? {};

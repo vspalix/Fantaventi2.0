@@ -71,6 +71,7 @@ function Row({ player, counts, replaced = false }: { player: AuditPlayer; counts
         {replaced ? (
           <span className="td-mark" data-kind="out" title="Senza voto: sostituito" aria-label="Senza voto: sostituito"><ScoreIcon kind="out" /></span>
         ) : null}
+        {player.held ? <small>partita rinviata</small> : null}
         {player.club ? (
           <span className="td-club"><TeamBadge teamName={player.club} size={11} />{player.club.slice(0, 3).toUpperCase()}</span>
         ) : null}

@@ -10,6 +10,7 @@ import {
   type TeamScore,
   bonusAmount,
 } from "@/lib/engine/calculator";
+import { holeIdsKeepingHeldPlayers } from "@/lib/server/held-lineup";
 import { BONUS_FIELDS, fantapuntiToGoals, headToHeadPairings, type GoalBand, type LeagueRules } from "@/lib/league-rules";
 import type { PlayerRole } from "@/lib/types";
 
@@ -32,6 +33,8 @@ export type AuditPlayer = {
   captain: boolean;
   /** Il vice scelto in formazione, finché non è lui a fare il capitano. */
   vice: boolean;
+  /** Partita rinviata o sospesa: senza voto ma non sostituito. */
+  held: boolean;
   source: "starter" | "substitute" | "bench";
   slotKind: "starter" | "bench";
   slotOrder: number;
@@ -186,12 +189,13 @@ export function explainScore(input: {
   const { slots, stats, definition } = input;
   const projection = input.mode === "provisional";
   const plain = new Map([...stats].map(([id, stat]) => [id, { ...stat, postponed: false }]));
-  const holeIds = projection ? new Set<string>() : undefined;
+  // Nel calcolo ufficiale chi ha la partita rinviata resta in campo: come in classifica.
+  const holeIds = projection ? new Set<string>() : holeIdsKeepingHeldPlayers(slots, stats, definition.lineup_size ?? 11);
   const slotsForScore = projection ? slots.map((slot) => ({ ...slot, isCaptain: false, isVice: false })) : slots;
   const played = playingEleven(slotsForScore, projection ? plain : stats, definition.lineup_size ?? 11, holeIds);
   const score: TeamScore = projection
     ? projectLiveScore(input.fantasyTeamId, "audit", slots, stats, definition)
-    : scoreLineup(input.fantasyTeamId, slots, stats, definition);
+    : scoreLineup(input.fantasyTeamId, slots, stats, definition, holeIds);
   const byPlayed = new Map(score.players.map((player) => [player.playerId, player]));
   const replacedBy = new Map<string, string>();
   for (const step of played.trace) {
@@ -230,6 +234,7 @@ export function explainScore(input: {
       fantavoto: scored?.playerPoints ?? null,
       captain: Boolean(scored?.isEffectiveCaptain),
       vice: !projection && slot.isVice && !scored?.isEffectiveCaptain,
+      held: !projection && Boolean(stat?.postponed) && stat?.voto == null,
       source: replacedId ? "substitute" : "starter",
       ...placement(slot.playerId),
       replacedId,
@@ -252,6 +257,7 @@ export function explainScore(input: {
       fantavoto: null,
       captain: false,
       vice: !projection && Boolean(slot.isVice),
+      held: !projection && Boolean(stat?.postponed) && stat?.voto == null,
       source: "bench",
       ...placement(slot.playerId),
       replacedId: null,

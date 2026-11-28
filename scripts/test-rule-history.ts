@@ -211,6 +211,31 @@ export async function runRuleHistoryChecks() {
     const closeEarly = await save({ rules: { enrollment: "closed", maxMembers: 8, lateEntryKept: [] } });
     check("Chiusura prima dell'inizio: nessuna media da conservare in più", early2 === null && closeEarly === null && stored().lateEntryKept.length === 0, JSON.stringify(stored().lateEntryKept));
 
+    // --- Partita rinviata: il dettaglio di squadra coincide con la classifica
+    tables.player_registrations.find((row) => row.player_id === "FWD1")!.club_id = "club-z";
+    tables.players.push({ id: "FWD3", full_name: "FWD3" });
+    tables.player_registrations.push({ player_id: "FWD3", season_id: SEASON, role: "FWD", club_id: "club-x", effective_from_gameweek: 1, effective_to_gameweek: null });
+    tables.lineup_slots.push({ lineup_id: "lineup-1", player_id: "FWD3", is_captain: false, is_vice_captain: false, is_starter: false, slot_order: 1 });
+    tables.player_gameweek_stats.push({ ...tables.player_gameweek_stats.find((row) => row.gameweek_id === "gw-1" && row.player_id === "FWD2")!, id: "gw-1-FWD3", player_id: "FWD3", voto: 8 });
+    tables.real_matches.push({ id: "held", gameweek_id: "gw-1", home_club_id: "club-z", away_club_id: "club-w", status: "scheduled", postponed: true, hold_status: "postponed" });
+    for (const postponement of ["political_six", "wait_recovery"] as const) {
+      const label = postponement === "political_six" ? "6 politico" : "Attesa del recupero";
+      tables.private_leagues[0].settings = { ...stored(), postponement };
+      const ranking = (await fantasyPointsForLeague(LEAGUE, SEASON, ["team-A"], [{ id: "gw-1", number: 1 }])).get("team-A:gw-1");
+      const detail = await loadScoreAudit(OWNER, LEAGUE, "gw-1", "team-A");
+      const heldPlayer = detail.players.find((player) => player.playerId === "FWD1");
+      check(`${label}: dettaglio e classifica hanno lo stesso totale`, detail.sum.total === ranking, `${detail.sum.total} / ${ranking}`);
+      check(`${label}: il calciatore rinviato resta in campo`, heldPlayer?.source === "starter" && heldPlayer.held && detail.substitutions.every((step) => !step.entrantId), JSON.stringify(heldPlayer));
+      check(
+        `${label}: voto e segno giusti`,
+        postponement === "political_six"
+          ? heldPlayer?.fantavoto === 6 && heldPlayer.lines.some((line) => line.label.startsWith("6 politico"))
+          : heldPlayer?.baseVote === null && heldPlayer.lines.length === 0,
+        JSON.stringify(heldPlayer),
+      );
+    }
+    tables.real_matches.pop();
+
     tables.private_leagues[0].start_matchday = 4;
     const early = await save({ rules: { bonusMalus: { ...stored().bonusMalus, goal: 6 } } });
     check("Lega non ancora iniziata: nessuna domanda", early === null && stored().bonusMalus.goal === 6 && !stored().scoringHistory.some((item) => item.key === "goal"), early?.message);

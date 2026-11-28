@@ -127,6 +127,7 @@ function audit(input: Partial<AuditPlayer> & Pick<AuditPlayer, "playerId" | "rol
     fantavoto: input.fantavoto ?? input.baseVote ?? 6,
     captain: false,
     vice: false,
+    held: false,
     replacedId: null,
     replacedName: null,
     ...input,

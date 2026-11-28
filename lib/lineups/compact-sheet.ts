@@ -100,6 +100,8 @@ export function compactFromAudit(players: AuditPlayer[]) {
     fanta: player.fantavoto,
     captain: player.captain,
     vice: player.vice,
+    // Rinviata e senza 6 politico: si dice perché il voto manca.
+    emptyText: player.held && player.baseVote == null ? "Rinv." : undefined,
     played: player.baseVote != null,
     entered: player.source === "substitute",
     events: eventsFromAudit(player),

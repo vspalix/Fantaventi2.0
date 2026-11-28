@@ -6,6 +6,8 @@ import { loadProvisionalVotes, withProvisionalVotes } from "@/lib/server/provisi
 import type { PlayerRole } from "@/lib/types";
 import { getLeagueDetail } from "@/lib/server/leagues";
 import { definitionForLeague } from "@/lib/server/league-settings";
+import { holdPlayers, holeIdsKeepingHeldPlayers } from "@/lib/server/held-lineup";
+import { heldClubsByWeek } from "@/lib/server/league-scores";
 import { readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
@@ -113,18 +115,14 @@ async function openWeekAudit(
     clubs.set(row.player_id as string, row.club_id as string);
   }
 
-  const statSelect = "player_id, voto, goals, assists, yellow_cards, red_cards, penalties_scored, penalties_missed, penalties_saved, own_goals, goals_conceded, postponed";
-  const statsWith = (columns: string) => readAllRows<Record<string, unknown>>((from, to) => admin
+  const statSelect = "player_id, voto, goals, assists, yellow_cards, red_cards, penalties_scored, penalties_missed, penalties_saved, own_goals, goals_conceded";
+  const plainStats = await readAllRows<Record<string, unknown>>((from, to) => admin
     .from("player_gameweek_stats")
-    .select(columns)
+    .select(statSelect)
     .eq("gameweek_id", gameweekId)
     .order("id")
     .range(from, to)
     .returns<Record<string, unknown>[]>());
-  const statsQuery = await statsWith(statSelect);
-  const plainStats = statsQuery.error && /postponed/i.test(statsQuery.error.message)
-    ? await statsWith(statSelect.replace(", postponed", ""))
-    : statsQuery;
   if (plainStats.error) throw new Error(plainStats.error.message);
 
   type StatRow = {
@@ -139,12 +137,10 @@ async function openWeekAudit(
     penalties_saved: number | null;
     own_goals: number | null;
     goals_conceded: number | null;
-    postponed?: boolean | null;
   };
   const stats = new Map<string, PlayerStat>();
   for (const row of plainStats.data as unknown as StatRow[]) {
     const playerId = row.player_id;
-    const postponed = Boolean(row.postponed);
     stats.set(playerId, {
       playerId,
       role: roles.get(playerId) ?? "MID",
@@ -158,7 +154,6 @@ async function openWeekAudit(
       penaltiesSaved: Number(row.penalties_saved ?? 0),
       ownGoals: Number(row.own_goals ?? 0),
       goalsConceded: Number(row.goals_conceded ?? 0),
-      postponed,
     });
   }
 
@@ -190,13 +185,18 @@ async function openWeekAudit(
 
   const lineupByTeam = new Map(lineupRows.map((row) => [row.fantasy_team_id as string, row.id as string]));
   const mode = official ? "official" as const : "provisional" as const;
+  // Partite rinviate o sospese: gli stessi calciatori fermi che usa la classifica.
+  if (official) {
+    const held = (await heldClubsByWeek([gameweekId])).get(gameweekId);
+    holdPlayers(stats, [...lineupByTeam.values()].flatMap(slotsOf), clubs, held);
+  }
   const totalOf = (teamId: string) => {
     const lineupId = lineupByTeam.get(teamId);
     if (!lineupId) return 0;
     const slots = slotsOf(lineupId);
     const score = mode === "provisional"
       ? projectLiveScore(teamId, gameweekId, slots, auditStats, definition)
-      : scoreLineup(teamId, slots, stats, definition);
+      : scoreLineup(teamId, slots, stats, definition, holeIdsKeepingHeldPlayers(slots, stats, definition.lineup_size ?? 11));
     return score.total;
   };
   const totals = teamIds.map((teamId) => ({

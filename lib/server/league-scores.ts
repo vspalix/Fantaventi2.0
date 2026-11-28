@@ -1,5 +1,5 @@
 import { scoreLineup, type LineupSlotInput, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
-import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
+import { holdPlayers, holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { waitingWeek } from "@/lib/late-entry";
 import { leagueDefinitions } from "@/lib/server/league-settings";
@@ -237,28 +237,7 @@ export async function fantasyPointsForLeague(
       benchOrder: slot.is_starter === false ? Number(slot.slot_order ?? 0) : undefined,
     }));
     const held = heldByWeek.get(gameweekId);
-    if (held && held.size > 0) {
-      for (const slot of slots) {
-        const clubId = clubByPlayer.get(slot.playerId);
-        if (!clubId || !held.has(clubId)) continue;
-        const current = stats.get(slot.playerId);
-        stats.set(slot.playerId, {
-          playerId: slot.playerId,
-          role: slot.role ?? current?.role ?? "MID",
-          voto: null,
-          goals: 0,
-          assists: 0,
-          yellowCards: 0,
-          redCards: 0,
-          penaltiesScored: 0,
-          penaltiesMissed: 0,
-          penaltiesSaved: 0,
-          ownGoals: 0,
-          goalsConceded: 0,
-          postponed: true,
-        });
-      }
-    }
+    holdPlayers(stats, slots, clubByPlayer, held);
     const score = scoreLineup(
       lineup.fantasy_team_id as string,
       slots,
@@ -283,7 +262,7 @@ export async function fantasyPointsForLeague(
   return points;
 }
 
-async function heldClubsByWeek(gameweekIds: string[]) {
+export async function heldClubsByWeek(gameweekIds: string[]) {
   const map = new Map<string, Set<string>>();
   if (gameweekIds.length === 0) return map;
   const admin = createAdminSupabase();

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
 import { useShown } from "@/components/ShowMore";
+import { EventLegend, EventMarks } from "@/components/lineups/CompactLineup";
 import type { LiveCenter } from "@/lib/server/live-center";
 import { readableError } from "@/lib/feedback";
 
@@ -67,6 +68,7 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
                     <strong>{player.name}</strong>
                     <span className="vote-badge">{player.voto == null ? "—" : player.voto.toLocaleString("it-IT")}</span>
                     <span className="small">{chip(player.bonus, player.malus)}</span>
+                    <EventMarks events={player.events} />
                   </article>
                 ))}
               </div>
@@ -84,11 +86,12 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
             <h3>Panchina</h3>
             <div className="row">
               {live.mine.bench.map((player) => (
-                <span className="chip" key={player.id}>{player.name} {player.voto == null ? "" : player.voto.toLocaleString("it-IT")}</span>
+                <span className="chip" key={player.id}>{player.name} {player.voto == null ? "" : player.voto.toLocaleString("it-IT")} <EventMarks events={player.events} /></span>
               ))}
             </div>
           </div>
         ) : null}
+        {live?.mine ? <EventLegend events={[...live.mine.starters, ...live.mine.bench].flatMap((player) => player.events)} /> : null}
       </section>
       {live?.opponent ? (
         <section className="card stack">

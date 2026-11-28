@@ -4,6 +4,8 @@ import { getLeagueDetail } from "@/lib/server/leagues";
 import { loadCheckpointHistory } from "@/lib/server/checkpoint-history";
 import { filedPlayerScore, liveFormula, projectLiveScore, type LineupSlotInput } from "@/lib/engine/calculator";
 import { carryLineup, lineupSaveIssue } from "@/lib/formations";
+import { eventLines } from "@/lib/engine/score-audit";
+import { eventsFromLines } from "@/lib/lineups/compact-sheet";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
 import { awaitingVotes } from "@/lib/lineups/compact-sheet";
@@ -798,6 +800,7 @@ function lineupSheet(
 ): LiveLineupSheet {
   const score = preview.scores.find((item) => item.fantasyTeamId === fantasyTeamId);
   const played = new Map((score?.players ?? []).map((player) => [player.playerId, player]));
+  const eventsOf = (playerId: string, role: PlayerRole) => eventsFromLines(eventLines(preview.stats.get(playerId), role, preview.definition, false));
   const rowFor = (playerId: string, isCaptain: boolean, isVice: boolean): LivePlayerRow | null => {
     const player = byId.get(playerId);
     const rated = played.get(playerId);
@@ -815,6 +818,7 @@ function lineupSheet(
       fantavoto: rated.fantavoto,
       formula: liveFormula(rated.voto, rated.bonusPoints, rated.malusPoints),
       waiting: rated.voto === null && !preview.votesRead.has(playerId),
+      events: eventsOf(playerId, player.role),
     };
   };
   const onField = score?.players ?? [];
@@ -843,6 +847,7 @@ function lineupSheet(
         fantavoto: rated.fantavoto,
         formula: liveFormula(rated.voto, rated.bonus ?? 0, rated.malus ?? 0),
         waiting: rated.voto === null && !preview.votesRead.has(playerId),
+        events: eventsOf(playerId, player.role),
       }];
     }),
     partialTotal: partialTotalOf(preview, fantasyTeamId),

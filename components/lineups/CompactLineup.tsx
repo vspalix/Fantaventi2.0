@@ -1,7 +1,9 @@
 "use client";
 
 import { TeamBadge } from "@/components/TeamBadge";
-import { type CompactPlayer, type LineBonuses, type LineEvent } from "@/lib/lineups/compact-sheet";
+import { LegendBox } from "@/components/scores/LegendBox";
+import { ScoreIcon } from "@/components/scores/ScoreIcons";
+import { type CompactPlayer, type LineBonuses, type LineEvent, type LineMark } from "@/lib/lineups/compact-sheet";
 import type { PlayerRole } from "@/lib/types";
 
 export type { CompactPlayer, LineBonuses, LineEvent } from "@/lib/lineups/compact-sheet";
@@ -17,6 +19,7 @@ const ROLE_NAME: Record<PlayerRole, string> = {
 
 const EVENT_LABEL: Record<LineEvent, string> = {
   goal: "Gol",
+  penalty: "Rigore segnato",
   assist: "Assist",
   yellow: "Ammonizione",
   red: "Espulsione",
@@ -25,6 +28,8 @@ const EVENT_LABEL: Record<LineEvent, string> = {
   save: "Rigore parato",
   conceded: "Gol subito",
   clean: "Porta inviolata",
+  double: "Malus capitano raddoppiato",
+  political: "6 politico",
 };
 
 function voteText(value: number | null, empty: string) {
@@ -42,48 +47,43 @@ function eventLabel(kind: LineEvent, count: number) {
   return count > 1 ? `${count} ${name.toLowerCase()}` : name;
 }
 
-function EventIcon({ kind }: { kind: LineEvent }) {
-  if (kind === "goal") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <circle cx="8" cy="8" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.4" />
-        <path d="M8 1.8 6.2 5.2 8 6.4 9.8 5.2zM3.2 6.2 6.2 5.2 5.4 8.2 3.2 8.6zM12.8 6.2 9.8 5.2 10.6 8.2 12.8 8.6zM5.2 10.2 8 8.8 10.8 10.2 9.6 13.4H6.4z" fill="currentColor" />
-      </svg>
-    );
-  }
-  if (kind === "assist") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M2 11.5 8 3.5l6 8" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-        <path d="M5.2 11.5h5.6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (kind === "yellow" || kind === "red") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <rect x="4.2" y="2" width="7.6" height="12" rx="1.2" fill="currentColor" />
-      </svg>
-    );
-  }
-  if (kind === "clean") {
-    return (
-      <svg viewBox="0 0 16 16" aria-hidden="true">
-        <path d="M8 1.6 13 3.6v4.2c0 3.2-2.1 5.2-5 6.6-2.9-1.4-5-3.4-5-6.6V3.6z" fill="none" stroke="currentColor" strokeWidth="1.4" />
-        <path d="M5.4 8.1 7.2 9.8 10.7 6.2" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  const letter = kind === "own" ? "AG" : kind === "miss" ? "R" : kind === "save" ? "P" : "GS";
-  return <b className="xi-letter">{letter}</b>;
+/** Le icone di bonus e malus, le stesse del dettaglio di una giornata calcolata. */
+export function EventMarks({ events }: { events: CompactPlayer["events"] }) {
+  if (events.length === 0) return null;
+  return (
+    <span className="xi-events">
+      {events.map(({ kind, count }) => (
+        <span className={`xi-badge ${kind}`} key={kind} title={eventLabel(kind, count)} aria-label={eventLabel(kind, count)}>
+          <ScoreIcon kind={kind} />
+          {count > 1 ? <b>{count}</b> : null}
+        </span>
+      ))}
+    </span>
+  );
 }
 
-function EventMark({ kind, count }: { kind: LineEvent; count: number }) {
+/** Quanto vale una voce: «+3», «−0,5», «0». */
+function unitText(value: number) {
+  const text = Math.abs(value).toLocaleString("it-IT", { maximumFractionDigits: 2 });
+  return value > 0 ? `+${text}` : value < 0 ? `−${text}` : "0";
+}
+
+/** Sul telefono non c'è il suggerimento al passaggio: sotto la formazione ogni icona dice cosa vale. */
+export function EventLegend({ events }: { events: LineMark[] }) {
+  const seen = new Map<LineEvent, string>();
+  for (const { kind, unit } of events) {
+    const fixed = kind === "double" || kind === "political";
+    if (!seen.has(kind)) seen.set(kind, fixed ? EVENT_LABEL[kind] : `${EVENT_LABEL[kind]} ${unitText(unit)}`);
+  }
+  if (seen.size === 0) return null;
   return (
-    <span className={`xi-badge ${kind}`} title={eventLabel(kind, count)} aria-label={eventLabel(kind, count)}>
-      <EventIcon kind={kind} />
-      {count > 1 ? <b>{count}</b> : null}
-    </span>
+    <LegendBox>
+      <ul className="xi-legend">
+        {[...seen].map(([kind, text]) => (
+          <li key={kind}><span className={`xi-badge ${kind}`} aria-hidden="true"><ScoreIcon kind={kind} /></span>{text}</li>
+        ))}
+      </ul>
+    </LegendBox>
   );
 }
 
@@ -97,13 +97,7 @@ function Row({ player, empty }: { player: CompactPlayer; empty: string }) {
         {player.captain ? <em className="xi-cap" title="Capitano" aria-label="Capitano">C</em> : null}
         {player.vice ? <em className="xi-cap" title="Vice capitano" aria-label="Vice capitano">V</em> : null}
         {player.entered ? <em className="xi-in">IN</em> : null}
-        {player.events.length > 0 ? (
-          <span className="xi-events">
-            {player.events.map((event) => (
-              <EventMark key={`${player.id}-${event.kind}`} kind={event.kind} count={event.count} />
-            ))}
-          </span>
-        ) : null}
+        <EventMarks events={player.events} />
       </span>
       <span className="xi-vote">{voteText(player.vote, player.emptyText ?? empty)}</span>
       <span className="xi-fanta">{voteText(player.fanta, player.emptyText ?? empty)}</span>
@@ -155,6 +149,7 @@ export function CompactLineup({
         <Row key={player.id} player={player} empty={empty} />
       ))}
       {bonuses ? <BonusBar bonuses={bonuses} /> : null}
+      <EventLegend events={[...starters, ...bench].flatMap((player) => player.events)} />
     </div>
   );
 }

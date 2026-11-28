@@ -1,4 +1,5 @@
 import { TeamBadge } from "@/components/TeamBadge";
+import { LegendBox } from "@/components/scores/LegendBox";
 import { ScoreIcon, type ScoreIconKind } from "@/components/scores/ScoreIcons";
 import type { AuditLine, AuditPlayer, ScoreAudit } from "@/lib/engine/score-audit";
 import type { PlayerRole } from "@/lib/types";
@@ -189,11 +190,13 @@ export function TeamDetail({ audit }: { audit: ScoreAudit }) {
       {sum.storedTotal != null && sum.delta !== 0 ? <p className="td-note">Totale salvato in classifica: {number(sum.storedTotal)}.</p> : null}
       {fixture.kind !== "sum" ? <p className="td-note">{italian(fixture.note)}</p> : null}
       {legend.size > 0 ? (
-        <ul className="td-legend" aria-label="Legenda delle icone">
-          {[...legend].map(([kind, text]) => (
-            <li key={kind}><span className="td-mark" data-kind={kind}><ScoreIcon kind={kind} /></span>{text}</li>
-          ))}
-        </ul>
+        <LegendBox>
+          <ul className="td-legend">
+            {[...legend].map(([kind, text]) => (
+              <li key={kind}><span className="td-mark" data-kind={kind}><ScoreIcon kind={kind} /></span>{text}</li>
+            ))}
+          </ul>
+        </LegendBox>
       ) : null}
     </div>
   );

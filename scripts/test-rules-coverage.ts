@@ -1,7 +1,7 @@
 import { parseFantacalcioIndisponibili } from "@/lib/availability-providers/fantacalcio";
 import { scoreLineup, type PlayerStat, type RulesetDefinition } from "@/lib/engine/calculator";
-import { compactFromAudit, eventsFromAudit } from "@/lib/lineups/compact-sheet";
-import { explainScore, type AuditPlayer } from "@/lib/engine/score-audit";
+import { compactFromAudit, eventsFromAudit, eventsFromLines } from "@/lib/lineups/compact-sheet";
+import { eventLines, explainScore, type AuditPlayer } from "@/lib/engine/score-audit";
 import {
   availabilitySummaryKind,
   availabilityWriteKind,
@@ -74,9 +74,9 @@ function row(id: string, role: PlayerRole, extra: Partial<PlayerStat> = {}): Pla
     assists: extra.assists ?? 0,
     yellowCards: extra.yellowCards ?? 0,
     redCards: extra.redCards ?? 0,
-    penaltiesScored: 0,
+    penaltiesScored: extra.penaltiesScored ?? 0,
     penaltiesMissed: extra.penaltiesMissed ?? 0,
-    penaltiesSaved: 0,
+    penaltiesSaved: extra.penaltiesSaved ?? 0,
     ownGoals: extra.ownGoals ?? 0,
     goalsConceded: extra.goalsConceded ?? 0,
     postponed: extra.postponed,
@@ -332,6 +332,45 @@ export function runRulesCoverage() {
       && sheet.bench[0]?.played === false,
     `titolari ${sheet.starters.map((item) => item.id).join(",")} panchina ${sheet.bench.map((item) => `${item.id}:${item.entered}`).join(",")}`,
   );
+
+  const liveMarks = (id: string, role: PlayerRole, extra: Partial<PlayerStat>, rules: RulesetDefinition = RULES) => (
+    eventsFromLines(eventLines(row(id, role, extra), role, rules, false)).map((item) => `${item.kind}:${item.count}`).join()
+  );
+  add("In diretta il portiere imbattuto ha la sua icona", liveMarks("gk", "GK", { voto: 7 }) === "clean:1", liveMarks("gk", "GK", { voto: 7 }));
+  add("Con l'imbattibilità spenta niente icona", liveMarks("gk", "GK", { voto: 7 }, { ...RULES, clean_sheet: { enabled: false, points: 1 } }) === "", "icona presente");
+  add("Senza voto nessuna icona", liveMarks("gk", "GK", { voto: null }) === "", liveMarks("gk", "GK", { voto: null }));
+  add("Rigore segnato, parato e gol subiti hanno icone distinte", liveMarks("f1", "FWD", { voto: 6, penaltiesScored: 1 }) === "penalty:1" && liveMarks("gk", "GK", { voto: 6, penaltiesSaved: 1, goalsConceded: 2 }) === "save:1,conceded:2", `${liveMarks("f1", "FWD", { voto: 6, penaltiesScored: 1 })} / ${liveMarks("gk", "GK", { voto: 6, penaltiesSaved: 1, goalsConceded: 2 })}`);
+
+  // In ogni riga la differenza tra voto e fantavoto deve essere spiegata dalle icone.
+  const loaded: Record<string, Partial<PlayerStat>> = {
+    gk: { penaltiesSaved: 1, goalsConceded: 2 },
+    d1: { yellowCards: 1, ownGoals: 1 },
+    m1: { goals: 2, assists: 1, yellowCards: 1, redCards: 1 },
+    f1: { penaltiesScored: 1, penaltiesMissed: 1 },
+  };
+  const full = explainScore({
+    fantasyTeamId: "rosa",
+    teamName: "Rosa",
+    gameweekNumber: 13,
+    slots: SHAPE.map(([id, role]) => ({ playerId: id, role, isCaptain: id === "m1", isVice: id === "m2" })),
+    stats: new Map(SHAPE.map(([id, role]) => [id, row(id, role, loaded[id] ?? {})])),
+    definition: RULES,
+    names: new Map(),
+    mode: "official",
+    matchFinished: new Set(),
+    ranking: "sum",
+    totals: [],
+    storedTotal: null,
+  });
+  const sheetOfAll = compactFromAudit(full.players);
+  const unexplained = [...sheetOfAll.starters, ...sheetOfAll.bench]
+    .filter((item) => item.vote !== null && item.fanta !== null)
+    .filter((item) => Math.abs((item.vote as number) + item.events.reduce((sum, mark) => sum + mark.points, 0) - (item.fanta as number)) > 0.001);
+  add("Ogni punto tra voto e fantavoto ha la sua icona", unexplained.length === 0, unexplained.map((item) => `${item.id} ${item.vote}/${item.fanta} ${item.events.map((mark) => mark.kind).join()}`).join("; "));
+  const kinds = new Set([...sheetOfAll.starters, ...sheetOfAll.bench].flatMap((item) => item.events.map((mark) => mark.kind)));
+  add("Nella scheda compatta compare il malus raddoppiato del capitano", kinds.has("double"), [...kinds].join());
+  const politicalMark = eventsFromLines([{ label: "6 politico, senza bonus né malus", count: 1, unit: 0, points: 0 }]);
+  add("Il 6 politico ha la sua icona", politicalMark.length === 1 && politicalMark[0]?.kind === "political", JSON.stringify(politicalMark));
 
   const marksOf = (captainVote: number | null, mode: "official" | "provisional") => {
     const stats = new Map(SHAPE.map(([id, role]) => [id, row(id, role, id === "m1" ? { voto: captainVote } : {})]));

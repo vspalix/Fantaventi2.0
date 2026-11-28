@@ -1610,7 +1610,7 @@ button.shirt-empty:disabled { cursor: default; }
 .xi-row[data-out="true"] { color: var(--muted); }
 .xi-row[data-out="true"] .xi-fanta { color: var(--muted); font-weight: 600; }
 .xi-row[data-in="true"] { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
-.xi-who { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.xi-who { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
 .xi-who strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .xi-cap { font-style: normal; color: var(--accent); font-size: var(--fs-xs); font-weight: 700; }
 .xi-in {
@@ -1654,12 +1654,22 @@ button.shirt-empty:disabled { cursor: default; }
   color: var(--text);
 }
 .xi-badge svg { width: 16px; height: 16px; display: block; flex: none; }
-.xi-badge b, .xi-letter { font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; font-weight: 700; line-height: 1; }
-.xi-badge.goal { color: var(--accent); }
+.xi-badge b { font-family: var(--font-mono), ui-monospace, monospace; font-size: 12px; font-weight: 700; line-height: 1; }
+.xi-badge.goal, .xi-badge.penalty { color: var(--accent); }
 .xi-badge.assist { color: #d7ecff; }
 .xi-badge.yellow { color: var(--gold); }
 .xi-badge.red, .xi-badge.own, .xi-badge.miss, .xi-badge.conceded { color: var(--danger); }
 .xi-badge.clean, .xi-badge.save { color: var(--ok); }
+.xi-badge.double { color: var(--danger); }
+.xi-badge.political { color: var(--accent); }
+ul.xi-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 4px 0 2px; list-style: none; }
+.legend-box { margin-top: 10px; }
+.legend-box summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 0 4px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; list-style: none; cursor: pointer; }
+.legend-box summary::-webkit-details-marker { display: none; }
+.legend-box summary::after { content: "›"; font-size: 18px; line-height: 1; transform: rotate(90deg); transition: transform 200ms ease; }
+.legend-box[open] summary::after { transform: rotate(-90deg); }
+.xi-legend li { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.stadium-player .xi-events { justify-content: center; flex-wrap: wrap; }
 .xi-bonus {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2702,7 +2712,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .td-total span { font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .td-total strong { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .td .td-note { margin: 8px 4px 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.5; }
-.td ul.td-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 4px 0; }
+.td ul.td-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 4px; padding: 6px 0 2px; }
 .td-legend li { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
 @media (max-width: 360px) {
   .card.gd-mine, .card.gd-ranking { padding-inline: 12px; }

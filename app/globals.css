@@ -1660,6 +1660,15 @@ button.shirt-empty:disabled { cursor: default; }
 .xi-badge.yellow { color: var(--gold); }
 .xi-badge.red, .xi-badge.own, .xi-badge.miss, .xi-badge.conceded { color: var(--danger); }
 .xi-badge.clean, .xi-badge.save { color: var(--ok); }
+.xi-badge.double { color: var(--danger); }
+.xi-badge.political { color: var(--accent); }
+ul.xi-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 4px 0 2px; list-style: none; }
+.legend-box { margin-top: 10px; }
+.legend-box summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; padding: 0 4px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; list-style: none; cursor: pointer; }
+.legend-box summary::-webkit-details-marker { display: none; }
+.legend-box summary::after { content: "›"; font-size: 18px; line-height: 1; transform: rotate(90deg); transition: transform 200ms ease; }
+.legend-box[open] summary::after { transform: rotate(-90deg); }
+.xi-legend li { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
 .stadium-player .xi-events { justify-content: center; flex-wrap: wrap; }
 .xi-bonus {
   display: grid;
@@ -2703,7 +2712,7 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .td-total span { font-size: var(--fs-sm); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .td-total strong { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .td .td-note { margin: 8px 4px 0; color: var(--muted); font-size: var(--fs-xs); line-height: 1.5; }
-.td ul.td-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 10px 4px 0; }
+.td ul.td-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0 4px; padding: 6px 0 2px; }
 .td-legend li { display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
 @media (max-width: 360px) {
   .card.gd-mine, .card.gd-ranking { padding-inline: 12px; }

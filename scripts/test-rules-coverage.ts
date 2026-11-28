@@ -341,6 +341,37 @@ export function runRulesCoverage() {
   add("Senza voto nessuna icona", liveMarks("gk", "GK", { voto: null }) === "", liveMarks("gk", "GK", { voto: null }));
   add("Rigore segnato, parato e gol subiti hanno icone distinte", liveMarks("f1", "FWD", { voto: 6, penaltiesScored: 1 }) === "penalty:1" && liveMarks("gk", "GK", { voto: 6, penaltiesSaved: 1, goalsConceded: 2 }) === "save:1,conceded:2", `${liveMarks("f1", "FWD", { voto: 6, penaltiesScored: 1 })} / ${liveMarks("gk", "GK", { voto: 6, penaltiesSaved: 1, goalsConceded: 2 })}`);
 
+  // In ogni riga la differenza tra voto e fantavoto deve essere spiegata dalle icone.
+  const loaded: Record<string, Partial<PlayerStat>> = {
+    gk: { penaltiesSaved: 1, goalsConceded: 2 },
+    d1: { yellowCards: 1, ownGoals: 1 },
+    m1: { goals: 2, assists: 1, yellowCards: 1, redCards: 1 },
+    f1: { penaltiesScored: 1, penaltiesMissed: 1 },
+  };
+  const full = explainScore({
+    fantasyTeamId: "rosa",
+    teamName: "Rosa",
+    gameweekNumber: 13,
+    slots: SHAPE.map(([id, role]) => ({ playerId: id, role, isCaptain: id === "m1", isVice: id === "m2" })),
+    stats: new Map(SHAPE.map(([id, role]) => [id, row(id, role, loaded[id] ?? {})])),
+    definition: RULES,
+    names: new Map(),
+    mode: "official",
+    matchFinished: new Set(),
+    ranking: "sum",
+    totals: [],
+    storedTotal: null,
+  });
+  const sheetOfAll = compactFromAudit(full.players);
+  const unexplained = [...sheetOfAll.starters, ...sheetOfAll.bench]
+    .filter((item) => item.vote !== null && item.fanta !== null)
+    .filter((item) => Math.abs((item.vote as number) + item.events.reduce((sum, mark) => sum + mark.points, 0) - (item.fanta as number)) > 0.001);
+  add("Ogni punto tra voto e fantavoto ha la sua icona", unexplained.length === 0, unexplained.map((item) => `${item.id} ${item.vote}/${item.fanta} ${item.events.map((mark) => mark.kind).join()}`).join("; "));
+  const kinds = new Set([...sheetOfAll.starters, ...sheetOfAll.bench].flatMap((item) => item.events.map((mark) => mark.kind)));
+  add("Nella scheda compatta compare il malus raddoppiato del capitano", kinds.has("double"), [...kinds].join());
+  const politicalMark = eventsFromLines([{ label: "6 politico, senza bonus né malus", count: 1, unit: 0, points: 0 }]);
+  add("Il 6 politico ha la sua icona", politicalMark.length === 1 && politicalMark[0]?.kind === "political", JSON.stringify(politicalMark));
+
   const marksOf = (captainVote: number | null, mode: "official" | "provisional") => {
     const stats = new Map(SHAPE.map(([id, role]) => [id, row(id, role, id === "m1" ? { voto: captainVote } : {})]));
     const explained = explainScore({

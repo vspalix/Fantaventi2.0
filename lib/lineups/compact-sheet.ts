@@ -1,7 +1,10 @@
 import type { AuditLine, AuditPlayer } from "@/lib/engine/score-audit";
 import type { LiveLineupSheet, PlayerRole } from "@/lib/types";
 
-export type LineEvent = "goal" | "penalty" | "assist" | "yellow" | "red" | "own" | "miss" | "save" | "conceded" | "clean";
+export type LineEvent = "goal" | "penalty" | "assist" | "yellow" | "red" | "own" | "miss" | "save" | "conceded" | "clean" | "double" | "political";
+
+/** Un'icona accanto al calciatore: quante volte, quanto vale una e quanto pesa sul fantavoto. */
+export type LineMark = { kind: LineEvent; count: number; unit: number; points: number };
 
 export type CompactPlayer = {
   id: string;
@@ -16,7 +19,7 @@ export type CompactPlayer = {
   emptyText?: string;
   played: boolean;
   entered: boolean;
-  events: { kind: LineEvent; count: number }[];
+  events: LineMark[];
 };
 
 export type LineBonuses = {
@@ -28,6 +31,8 @@ export type LineBonuses = {
 
 function kindOf(label: string): LineEvent | null {
   const text = label.toLowerCase();
+  if (text.startsWith("raddoppio")) return "double";
+  if (text.startsWith("6 politico")) return "political";
   if (text.startsWith("assist")) return "assist";
   if (text.startsWith("ammon")) return "yellow";
   if (text.startsWith("espuls")) return "red";
@@ -41,12 +46,12 @@ function kindOf(label: string): LineEvent | null {
   return null;
 }
 
-export function eventsFromLines(lines: readonly AuditLine[]): CompactPlayer["events"] {
-  const events: CompactPlayer["events"] = [];
+export function eventsFromLines(lines: readonly AuditLine[]) {
+  const events: LineMark[] = [];
   for (const line of lines) {
     const kind = kindOf(line.label);
     if (!kind || line.count === 0) continue;
-    events.push({ kind, count: Math.max(1, line.count) });
+    events.push({ kind, count: Math.max(1, line.count), unit: line.unit, points: line.points });
   }
   return events;
 }

@@ -8,6 +8,7 @@ import { TeamDetail } from "@/components/scores/TeamDetail";
 import type { ScoreAudit } from "@/lib/engine/score-audit";
 import type { LeagueHubData, OpponentLineup } from "@/lib/types";
 import { readableError } from "@/lib/feedback";
+import { fetchOpponent } from "@/components/leagues/fetch-opponent";
 
 /** Quante squadre alla volta: la classifica resta veloce anche con tantissimi iscritti. */
 const PAGE = 50;
@@ -16,6 +17,7 @@ type CalendarWeek = {
   selectedGameweekId: string;
   number: number;
   opponents: OpponentLineup[];
+  awaiting?: boolean;
   partial: LeagueHubData["partial"];
   selectedFixtures: LeagueHubData["home"]["selectedFixtures"];
 };
@@ -89,7 +91,11 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
   const opponents = week?.opponents ?? hub.opponents;
   const partial = week?.partial ?? hub.partial;
   const scored = current?.status === "scored" || current?.status === "final";
-  const waiting = !scored && awaitingVotes(opponents.map((team) => team.sheet));
+  // Nelle leghe grandi le schede degli altri non arrivano: il server dice se mancano i voti.
+  const awaiting = week ? week.awaiting : hub.awaiting;
+  const waiting = !scored && (awaiting ?? awaitingVotes(opponents.map((team) => team.sheet)));
+  /** Formazioni chieste una alla volta, per le leghe grandi. */
+  const [lineups, setLineups] = useState<Record<string, OpponentLineup | string>>({});
   // Prima dei voti nessuno ha ancora punti né posizione: gli zeri non sono una classifica.
   const pointsById = new Map(partial.map((row) => [row.fantasyTeamId, waiting ? { ...row, points: null } : row]));
   // Chi non ha punti va in fondo: il suo posto in classifica non esiste.
@@ -142,6 +148,7 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
     setOpenId(opening ? key : null);
     // Per chi non ha schierato non c’è nulla da chiedere.
     if (opening && scored && team.filed) void loadDetail(team.fantasyTeamId);
+    if (opening && !scored && team.deferred && team.filed && team.revealed) void loadLineup(team.fantasyTeamId);
   }
 
   function goToMine() {
@@ -152,15 +159,43 @@ export function MatchdayResults({ hub, arrival, onArrived }: { hub: LeagueHubDat
     }, 50);
   }
 
-  const detailFor = (team: OpponentLineup) => (
-    <TeamBlock
-      opponent={team}
-      scored={Boolean(scored)}
-      waiting={waiting}
-      detail={details[detailKey(team.fantasyTeamId)] ?? null}
-      onRetry={() => void loadDetail(team.fantasyTeamId)}
-    />
-  );
+  async function loadLineup(teamId: string) {
+    const key = detailKey(teamId);
+    if (asked.current.has(`lineup:${key}`)) return;
+    asked.current.add(`lineup:${key}`);
+    try {
+      const opponent = await fetchOpponent(hub.league.id, gameweekId, teamId);
+      setLineups((kept) => ({ ...kept, [key]: opponent }));
+    } catch (reason) {
+      asked.current.delete(`lineup:${key}`);
+      setLineups((kept) => ({ ...kept, [key]: readableError(reason, "Formazione non disponibile.") }));
+    }
+  }
+
+  const detailFor = (team: OpponentLineup) => {
+    const fetched = lineups[detailKey(team.fantasyTeamId)];
+    if (!scored && team.deferred && team.filed && team.revealed && typeof fetched !== "object") {
+      return fetched ? (
+        <div className="stack gd-loading">
+          <p className="banner">{fetched}</p>
+          <button className="ghost" type="button" onClick={() => void loadLineup(team.fantasyTeamId)}>Riprova</button>
+        </div>
+      ) : (
+        <div className="stack gd-loading" role="status" aria-label="Carico la formazione">
+          <div className="skeleton skeleton-card" />
+        </div>
+      );
+    }
+    return (
+      <TeamBlock
+        opponent={typeof fetched === "object" ? fetched : team}
+        scored={Boolean(scored)}
+        waiting={waiting}
+        detail={details[detailKey(team.fantasyTeamId)] ?? null}
+        onRetry={() => void loadDetail(team.fantasyTeamId)}
+      />
+    );
+  };
 
   useEffect(() => {
     if (hubWeekId.current === hub.selectedGameweekId) return;

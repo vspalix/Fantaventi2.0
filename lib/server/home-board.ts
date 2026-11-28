@@ -11,6 +11,7 @@ import { loadHomePromo, type HomePromo } from "@/lib/server/home-promo";
 import { readSponsors } from "@/lib/server/sponsors";
 import { readTeamLook } from "@/lib/server/team-look";
 import { reportError } from "@/lib/server/error-report";
+import { readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type HomeFixture = {
@@ -187,12 +188,14 @@ async function leagueCard(
   };
   try {
     const settings = await readLeagueSettings(admin, leagueId);
-    const members = await admin
+    const members = await readAllRows((from, to) => admin
       .from("private_league_members")
       .select("fantasy_team_id, fantasy_teams(name)")
-      .eq("private_league_id", leagueId);
+      .eq("private_league_id", leagueId)
+      .order("fantasy_team_id")
+      .range(from, to));
     if (members.error) return empty;
-    const teams = (members.data ?? []).map((row) => {
+    const teams = members.data.map((row) => {
       const fantasy = Array.isArray(row.fantasy_teams) ? row.fantasy_teams[0] : row.fantasy_teams;
       return {
         id: row.fantasy_team_id as string,

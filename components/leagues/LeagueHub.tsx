@@ -6,6 +6,8 @@ import { BusyLabel } from "@/components/BusyLabel";
 import { EmptyState } from "@/components/EmptyState";
 import { LeagueAdminPanel } from "@/components/leagues/LeagueAdminPanel";
 import { LeagueRulesReadout } from "@/components/leagues/LeagueRulesReadout";
+import { fetchOpponent } from "@/components/leagues/fetch-opponent";
+import { useShown } from "@/components/ShowMore";
 import { ScoringChoiceDialog } from "@/components/leagues/ScoringChoiceDialog";
 import { LeagueBoard } from "@/components/leagues/LeagueBoard";
 import { MatchCenter } from "@/components/leagues/MatchCenter";
@@ -1223,6 +1225,7 @@ export function LeagueHub({
             pick: hub.lineup,
             roster: hub.roster,
           } : null}
+          load={(fantasyTeamId) => fetchOpponent(hub.league.id, hub.selectedGameweekId ?? "", fantasyTeamId)}
         />
       ) : null}
 
@@ -1363,12 +1366,16 @@ function Formations({
   revealed,
   gameweekNumber,
   carried,
+  load,
 }: {
   opponents: OpponentLineup[];
   revealed: boolean;
   gameweekNumber: number | null;
   carried: { from: number; pick: LeagueHubData["lineup"]; roster: CatalogPlayer[] } | null;
+  /** Nelle leghe grandi le formazioni degli altri si chiedono una alla volta. */
+  load: (fantasyTeamId: string) => Promise<OpponentLineup>;
 }) {
+  const { shown, more } = useShown(opponents, 20);
   return (
     <section className="stack">
       <p className="small muted">
@@ -1382,12 +1389,47 @@ function Formations({
         </EmptyState>
       ) : (
         <div className="formation-board">
-          {opponents.map((opponent) => (
+          {shown.map((opponent) => (opponent.deferred ? (
+            <DeferredFormationCard key={`${gameweekNumber}:${opponent.fantasyTeamId}`} opponent={opponent} load={load} />
+          ) : (
             <FormationCard key={opponent.fantasyTeamId} opponent={opponent} carried={opponent.isMine ? carried : null} />
-          ))}
+          )))}
         </div>
       )}
+      {more}
     </section>
+  );
+}
+
+function DeferredFormationCard({ opponent, load }: { opponent: OpponentLineup; load: (fantasyTeamId: string) => Promise<OpponentLineup> }) {
+  const [loaded, setLoaded] = useState<OpponentLineup | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (loaded) return <FormationCard opponent={loaded} carried={null} />;
+  async function show() {
+    setPending(true);
+    setError(null);
+    try {
+      setLoaded(await load(opponent.fantasyTeamId));
+    } catch (reason) {
+      setError(readableError(reason, "Formazione non disponibile."));
+    } finally {
+      setPending(false);
+    }
+  }
+  return (
+    <article className="panel formation-card">
+      <h2>{opponent.teamName}</h2>
+      <p className="small muted">{opponent.displayName}</p>
+      {error ? <p className="banner">{error}</p> : null}
+      {!opponent.filed ? <p>Non schierata.</p> : !opponent.revealed ? (
+        <p>Schierata. I nomi si vedono all&apos;inizio della giornata.</p>
+      ) : (
+        <button className="ghost" type="button" disabled={pending} aria-busy={pending} onClick={() => void show()}>
+          <BusyLabel pending={pending} idle="Vedi la formazione" busy="Carico..." />
+        </button>
+      )}
+    </article>
   );
 }
 
@@ -1508,6 +1550,7 @@ function GameweekBar({
 }
 
 function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
+  const { shown, more } = useShown(squads, 20);
   if (squads.length === 0) {
     return (
       <EmptyState title="Nessuna squadra">
@@ -1517,7 +1560,7 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
   }
   return (
     <div className="stack">
-      {squads.map((squad) => (
+      {shown.map((squad) => (
         <article className="card" key={squad.fantasyTeamId}>
           <div className="row" style={{ justifyContent: "space-between" }}>
             <h2>{squad.teamName}{squad.isMine ? " · la tua" : ""}</h2>
@@ -1548,6 +1591,7 @@ function Squads({ squads }: { squads: LeagueHubData["squads"] }) {
           )}
         </article>
       ))}
+      {more}
     </div>
   );
 }
@@ -1659,6 +1703,7 @@ function StandingBoard({
 }) {
   const leader = source.reduce((max, row) => Math.max(max, row.points), 0);
   const mine = source.find((row) => row.fantasyTeamId === mineId) ?? null;
+  const { shown, more } = useShown(rows, 100);
   return (
     <>
       {mine ? <MinePin rank={`${mine.rank}°`} name={mine.teamName} detail={mine.displayName} points={formatPoints(mine.points)} /> : null}
@@ -1678,7 +1723,7 @@ function StandingBoard({
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td className="pin" colSpan={showEntry ? 9 : 8}>Nessuna squadra con questo nome.</td></tr> : rows.map((row) => (
+            {rows.length === 0 ? <tr><td className="pin" colSpan={showEntry ? 9 : 8}>Nessuna squadra con questo nome.</td></tr> : shown.map((row) => (
               <tr key={row.fantasyTeamId} data-mine={row.fantasyTeamId === mineId}>
                 <td className="pin">{row.rank}</td>
                 <td className="pin pin-team">
@@ -1697,6 +1742,7 @@ function StandingBoard({
           </tbody>
         </table>
       </div>
+      {more}
       <p className="board-legend">
         <InfoTip label="Colonne classifica">PT è il punteggio in classifica. G sono le giornate disputate. Media è PT diviso G. Top è il miglior punteggio di giornata. Diff è lo scarto dal primo. Grezzi sono i punti senza l&apos;ingresso di chi parte dopo.{showEntry ? " Ingresso si vede solo all'admin di lega." : ""}</InfoTip>
       </p>
@@ -1706,6 +1752,7 @@ function StandingBoard({
 
 function LiveTable({ rows, source, mineId }: { rows: LeagueHubData["liveStandings"]; source: LeagueHubData["liveStandings"]; mineId: string | null }) {
   const mine = source.find((row) => row.fantasyTeamId === mineId) ?? null;
+  const { shown, more } = useShown(rows, 100);
   return (
     <>
       {mine ? <MinePin rank={`${mine.rank}°`} name={mine.teamName} detail={mine.displayName} points={formatPoints(mine.points)} /> : null}
@@ -1721,7 +1768,7 @@ function LiveTable({ rows, source, mineId }: { rows: LeagueHubData["liveStanding
           <tbody>
             {rows.length === 0 ? (
               <tr><td className="pin" colSpan={3}>Nessuna squadra con questo nome.</td></tr>
-            ) : rows.map((row) => (
+            ) : shown.map((row) => (
               <tr key={row.fantasyTeamId} data-mine={row.fantasyTeamId === mineId}>
                 <td className="pin">{row.rank}</td>
                 <td className="pin pin-team">
@@ -1734,12 +1781,14 @@ function LiveTable({ rows, source, mineId }: { rows: LeagueHubData["liveStanding
           </tbody>
         </table>
       </div>
+      {more}
     </>
   );
 }
 
 function PartialTable({ rows, source, mineId }: { rows: LeagueHubData["partial"]; source: LeagueHubData["partial"]; mineId: string | null }) {
   const mine = source.find((row) => row.fantasyTeamId === mineId) ?? null;
+  const { shown, more } = useShown(rows, 100);
   return (
     <>
       {mine ? <MinePin rank={mine.rank ? `${mine.rank}°` : "–"} name={mine.teamName} detail={mine.office ? "D'ufficio" : mine.filed ? "Schierata" : "Non schierata"} points={mine.points === null ? "—" : formatPoints(mine.points)} /> : null}
@@ -1753,7 +1802,7 @@ function PartialTable({ rows, source, mineId }: { rows: LeagueHubData["partial"]
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? <tr><td className="pin" colSpan={3}>Nessuna squadra con questo nome.</td></tr> : rows.map((row) => (
+            {rows.length === 0 ? <tr><td className="pin" colSpan={3}>Nessuna squadra con questo nome.</td></tr> : shown.map((row) => (
               <tr key={row.fantasyTeamId} data-mine={row.fantasyTeamId === mineId}>
                 <td className="pin">{row.rank || "—"}</td>
                 <td className="pin pin-team">
@@ -1766,6 +1815,7 @@ function PartialTable({ rows, source, mineId }: { rows: LeagueHubData["partial"]
           </tbody>
         </table>
       </div>
+      {more}
       <p className="board-legend"><InfoTip label="Classifica di giornata">PG è il punteggio di questa giornata. Prima del calcolo resta un trattino.</InfoTip></p>
     </>
   );

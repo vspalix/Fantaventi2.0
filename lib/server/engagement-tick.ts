@@ -4,7 +4,9 @@ import { inLeagueRange, parseLeagueRules, weekScoreMode } from "@/lib/league-rul
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import { writeLeagueFeed } from "@/lib/server/league-feed";
 import { previewProvisional } from "@/lib/server/live-score";
-import { readReminderSettings, reminderKey } from "@/lib/server/lineup-reminder";
+import { claimNotices, readReminderSettings, reminderKey } from "@/lib/server/lineup-reminder";
+import { leagueTeamIds } from "@/lib/server/league-members";
+import { inChunks, readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { sendPushToUsers } from "@/lib/server/web-push";
 import { reportError } from "@/lib/server/error-report";
 import { createAdminSupabase } from "@/lib/supabase/admin";
@@ -76,20 +78,27 @@ async function warnDeadlines(now: Date, template: Template) {
   if (weeks.error) return 0;
   let sent = 0;
   for (const week of weeks.data ?? []) {
-    const teams = await admin.from("fantasy_teams").select("id, user_id").eq("season_id", week.season_id as string);
-    if (teams.error) continue;
-    const teamIds = (teams.data ?? []).map((row) => row.id as string);
-    if (teamIds.length === 0) continue;
-    const filed = await admin.from("lineups").select("fantasy_team_id").eq("gameweek_id", week.id as string).in("fantasy_team_id", teamIds);
+    const teams = await readAllRows((from, to) => admin
+      .from("fantasy_teams")
+      .select("id, user_id")
+      .eq("season_id", week.season_id as string)
+      .order("id")
+      .range(from, to));
+    if (teams.error || teams.data.length === 0) continue;
+    const filed = await readAllRows((from, to) => admin
+      .from("lineups")
+      .select("fantasy_team_id")
+      .eq("gameweek_id", week.id as string)
+      .order("id")
+      .range(from, to));
     if (filed.error) continue;
-    const ready = new Set((filed.data ?? []).map((row) => row.fantasy_team_id as string));
-    const pending = (teams.data ?? []).filter((row) => !ready.has(row.id as string));
-    const userIds: string[] = [];
-    for (const team of pending) {
-      const userId = team.user_id as string;
-      // Stessa chiave del promemoria automatico: una sola notifica per squadra e giornata.
-      if (await claim(reminderKey(week.id as string, team.id as string))) userIds.push(userId);
-    }
+    const ready = new Set(filed.data.map((row) => row.fantasy_team_id as string));
+    const pending = teams.data.filter((row) => !ready.has(row.id as string));
+    // Stessa chiave del promemoria automatico: una sola notifica per squadra e giornata.
+    const claimed = await claimNotices(admin, pending.map((team) => reminderKey(week.id as string, team.id as string)));
+    const userIds = pending
+      .filter((team) => claimed.has(reminderKey(week.id as string, team.id as string)))
+      .map((team) => team.user_id as string);
     if (userIds.length === 0) continue;
     const result = await sendPushToUsers([...new Set(userIds)], {
       title: fill(template.title, { matchday: String(week.number) }),
@@ -117,15 +126,11 @@ async function notifyBonuses(template: Template) {
     }
     const stats = preview.stats;
     const teamIds = preview.lineups.map((lineup) => lineup.fantasyTeamId);
-    const owners = teamIds.length
-      ? await admin.from("fantasy_teams").select("id, user_id").in("id", teamIds)
-      : { data: [], error: null };
-    const ownerOf = new Map((owners.data ?? []).map((row) => [row.id as string, row.user_id as string]));
+    const owners = await readAllChunks(teamIds, (ids, from, to) => admin.from("fantasy_teams").select("id, user_id").in("id", ids).order("id").range(from, to));
+    const ownerOf = new Map(owners.data.map((row) => [row.id as string, row.user_id as string]));
     const playerIds = [...new Set(preview.lineups.flatMap((lineup) => lineup.slots.map((slot) => slot.playerId)))];
-    const people = playerIds.length
-      ? await admin.from("players").select("id, full_name").in("id", playerIds)
-      : { data: [], error: null };
-    const playerName = new Map((people.data ?? []).map((row) => [row.id as string, row.full_name as string]));
+    const people = await readAllChunks(playerIds, (ids, from, to) => admin.from("players").select("id, full_name").in("id", ids).order("id").range(from, to));
+    const playerName = new Map(people.data.map((row) => [row.id as string, row.full_name as string]));
     for (const lineup of preview.lineups) {
       const events = pitchEvents(lineup.slots.filter((slot) => slot.benchOrder == null).map((slot) => ({
         playerId: slot.playerId,
@@ -152,10 +157,10 @@ async function notifyBonuses(template: Template) {
 async function notifyOvertakes(template: Template) {
   if (!template.enabled) return 0;
   const admin = createAdminSupabase();
-  const leagues = await admin.from("private_leagues").select("id, season_id, settings");
+  const leagues = await readAllRows((from, to) => admin.from("private_leagues").select("id, season_id, settings").order("id").range(from, to));
   if (leagues.error) return 0;
   let sent = 0;
-  for (const league of leagues.data ?? []) {
+  for (const league of leagues.data) {
     const rules = parseLeagueRules(league.settings);
     const week = await admin
       .from("gameweeks")
@@ -167,29 +172,31 @@ async function notifyOvertakes(template: Template) {
       .maybeSingle();
     if (week.error || !week.data) continue;
     const currentWeek = week.data;
-    const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", league.id as string);
-    if (members.error) continue;
-    const teamIds = (members.data ?? []).map((row) => row.fantasy_team_id as string);
+    const teamIds = await leagueTeamIds(admin, league.id as string);
     if (teamIds.length < 2) continue;
-    const scores = await admin
+    const scores = await readAllChunks(teamIds, (ids, from, to) => admin
       .from("team_gameweek_scores")
       .select("fantasy_team_id, provisional_total, is_live")
       .eq("gameweek_id", currentWeek.id as string)
-      .in("fantasy_team_id", teamIds);
+      .in("fantasy_team_id", ids)
+      .order("fantasy_team_id")
+      .range(from, to));
     if (scores.error) continue;
-    const live = new Map((scores.data ?? []).filter((row) => row.is_live).map((row) => [row.fantasy_team_id as string, Number(row.provisional_total ?? 0)]));
+    const live = new Map(scores.data.filter((row) => row.is_live).map((row) => [row.fantasy_team_id as string, Number(row.provisional_total ?? 0)]));
     if (live.size < 2) continue;
     const after = teamIds.map((teamId) => ({ teamId, points: live.get(teamId) ?? 0 }));
-    const previous = await admin
+    const previous = await readAllRows((from, to) => admin
       .from("live_rank_snapshots")
       .select("fantasy_team_id, points")
       .eq("league_id", league.id as string)
-      .eq("gameweek_id", currentWeek.id as string);
+      .eq("gameweek_id", currentWeek.id as string)
+      .order("fantasy_team_id")
+      .range(from, to));
     if (previous.error) continue;
-    const before = (previous.data ?? []).map((row) => ({ teamId: row.fantasy_team_id as string, points: Number(row.points) }));
-    const names = await admin.from("fantasy_teams").select("id, user_id, name").in("id", teamIds);
-    const teamName = new Map((names.data ?? []).map((row) => [row.id as string, row.name as string]));
-    const userOf = new Map((names.data ?? []).map((row) => [row.id as string, row.user_id as string]));
+    const before = previous.data.map((row) => ({ teamId: row.fantasy_team_id as string, points: Number(row.points) }));
+    const names = await readAllChunks(teamIds, (ids, from, to) => admin.from("fantasy_teams").select("id, user_id, name").in("id", ids).order("id").range(from, to));
+    const teamName = new Map(names.data.map((row) => [row.id as string, row.name as string]));
+    const userOf = new Map(names.data.map((row) => [row.id as string, row.user_id as string]));
     if (before.length > 0) {
       const mode = weekScoreMode(rules, Number(currentWeek.number));
       const moves = overtakes(before, after);
@@ -234,12 +241,14 @@ async function notifyOvertakes(template: Template) {
         });
       }
     }
-    await admin.from("live_rank_snapshots").upsert(after.map((row) => ({
-      league_id: league.id as string,
-      gameweek_id: currentWeek.id as string,
-      fantasy_team_id: row.teamId,
-      points: row.points,
-    })), { onConflict: "league_id,gameweek_id,fantasy_team_id" });
+    for (const part of inChunks(after, 500)) {
+      await admin.from("live_rank_snapshots").upsert(part.map((row) => ({
+        league_id: league.id as string,
+        gameweek_id: currentWeek.id as string,
+        fantasy_team_id: row.teamId,
+        points: row.points,
+      })), { onConflict: "league_id,gameweek_id,fantasy_team_id" });
+    }
   }
   return sent;
 }
@@ -259,9 +268,9 @@ async function awardLatestBadges() {
     const seasonId = week.season_id as string;
     if (seen.has(seasonId)) continue;
     seen.add(seasonId);
-    const leagues = await admin.from("private_leagues").select("id, name, settings").eq("season_id", seasonId);
+    const leagues = await readAllRows((from, to) => admin.from("private_leagues").select("id, name, settings").eq("season_id", seasonId).order("id").range(from, to));
     if (leagues.error) continue;
-    for (const league of leagues.data ?? []) {
+    for (const league of leagues.data) {
       const existing = await admin
         .from("league_badges")
         .select("id")
@@ -280,23 +289,35 @@ async function awardLeagueWeek(leagueId: string, gameweekId: string, gameweekNum
   const admin = createAdminSupabase();
   // Niente premi per giornate fuori dalla lega.
   if (!inLeagueRange((await readLeagueSettings(admin, leagueId)).range, gameweekNumber)) return 0;
-  const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", leagueId);
-  if (members.error) return 0;
-  const teamIds = (members.data ?? []).map((row) => row.fantasy_team_id as string);
+  const teamIds = await leagueTeamIds(admin, leagueId);
   if (teamIds.length === 0) return 0;
-  const teams = await admin.from("fantasy_teams").select("id, name").in("id", teamIds);
-  const teamName = new Map((teams.data ?? []).map((row) => [row.id as string, row.name as string]));
-  const lineups = await admin.from("lineups").select("id, fantasy_team_id").eq("gameweek_id", gameweekId).in("fantasy_team_id", teamIds);
-  if (lineups.error || (lineups.data ?? []).length === 0) return 0;
-  const lineupIds = (lineups.data ?? []).map((row) => row.id as string);
-  const slots = await admin.from("lineup_slots").select("lineup_id, player_id, is_starter").in("lineup_id", lineupIds);
+  const teams = await readAllChunks(teamIds, (ids, from, to) => admin.from("fantasy_teams").select("id, name").in("id", ids).order("id").range(from, to));
+  const teamName = new Map(teams.data.map((row) => [row.id as string, row.name as string]));
+  const lineups = await readAllChunks(teamIds, (ids, from, to) => admin
+    .from("lineups")
+    .select("id, fantasy_team_id")
+    .eq("gameweek_id", gameweekId)
+    .in("fantasy_team_id", ids)
+    .order("id")
+    .range(from, to));
+  if (lineups.error || lineups.data.length === 0) return 0;
+  const lineupIds = lineups.data.map((row) => row.id as string);
+  const slots = await readAllChunks(lineupIds, (ids, from, to) => admin
+    .from("lineup_slots")
+    .select("lineup_id, player_id, is_starter")
+    .in("lineup_id", ids)
+    .order("lineup_id")
+    .order("player_id")
+    .range(from, to));
   if (slots.error) return 0;
-  const stats = await admin
+  const stats = await readAllRows((from, to) => admin
     .from("player_gameweek_stats")
     .select("player_id, voto, goals, assists, yellow_cards, red_cards, penalties_scored, penalties_missed, penalties_saved, own_goals")
-    .eq("gameweek_id", gameweekId);
+    .eq("gameweek_id", gameweekId)
+    .order("id")
+    .range(from, to));
   if (stats.error) return 0;
-  const statOf = new Map((stats.data ?? []).map((row) => [row.player_id as string, {
+  const statOf = new Map(stats.data.map((row) => [row.player_id as string, {
     playerId: row.player_id as string,
     role: "MID" as const,
     voto: row.voto == null ? null : Number(row.voto),
@@ -310,12 +331,12 @@ async function awardLeagueWeek(leagueId: string, gameweekId: string, gameweekNum
     ownGoals: Number(row.own_goals ?? 0),
   }]));
   const slotsByLineup = new Map<string, { playerId: string; starter: boolean }[]>();
-  for (const slot of slots.data ?? []) {
+  for (const slot of slots.data) {
     const list = slotsByLineup.get(slot.lineup_id as string) ?? [];
     list.push({ playerId: slot.player_id as string, starter: slot.is_starter !== false });
     slotsByLineup.set(slot.lineup_id as string, list);
   }
-  const rows = (lineups.data ?? []).map((lineup) => {
+  const rows = lineups.data.map((lineup) => {
     const picked = slotsByLineup.get(lineup.id as string) ?? [];
     let benchBonus = 0;
     let bonus = 0;
@@ -387,10 +408,11 @@ export async function rebuildWeekBoard(gameweekId: string) {
   if (clearedFeed.error && !/league_feed|schema cache|could not find/i.test(clearedFeed.error.message)) {
     throw new Error(clearedFeed.error.message);
   }
-  const leagues = await admin.from("private_leagues").select("id").eq("season_id", week.data.season_id);
+  const seasonId = week.data.season_id as string;
+  const leagues = await readAllRows((from, to) => admin.from("private_leagues").select("id").eq("season_id", seasonId).order("id").range(from, to));
   if (leagues.error) return 0;
   let rebuilt = 0;
-  for (const league of leagues.data ?? []) {
+  for (const league of leagues.data) {
     rebuilt += await awardLeagueWeek(league.id as string, gameweekId, Number(week.data.number));
   }
   return rebuilt;

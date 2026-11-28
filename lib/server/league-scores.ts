@@ -129,10 +129,13 @@ export async function fantasyPointsForLeague(
     : extended;
   if (slotsQuery.error) throw new Error(slotsQuery.error.message);
 
-  const { data: statRows, error: statError } = await readAllRows((from, to) => admin
+  // Servono solo i voti di chi è in una formazione della lega: tutto il listone peserebbe a ogni visita.
+  const fieldedIds = [...new Set(slotsQuery.data.map((slot) => slot.player_id))];
+  const { data: statRows, error: statError } = await readAllChunks(fieldedIds, (ids, from, to) => admin
     .from("player_gameweek_stats")
     .select("gameweek_id, player_id, voto, goals, assists, yellow_cards, red_cards, penalties_scored, penalties_missed, penalties_saved, own_goals, goals_conceded")
     .in("gameweek_id", gameweekIds)
+    .in("player_id", ids)
     .order("id")
     .range(from, to));
   if (statError) throw new Error(statError.message);
@@ -201,13 +204,11 @@ export async function fantasyPointsForLeague(
     statsByWeek.set(row.gameweek_id, list);
   }
 
-  const points = new Map<string, number>();
-  for (const lineup of lineupRows ?? []) {
-    const gameweekId = lineup.gameweek_id as string;
-    const number = numberById.get(gameweekId);
-    if (number === undefined) continue;
-    const { roles, clubs: clubByPlayer } = rosterAt(number);
-    const definition = at(number);
+  /** I voti di una giornata, preparati una volta per tutte le squadre. */
+  const weekStats = new Map<string, Map<string, PlayerStat>>();
+  function statsOf(gameweekId: string, roles: Map<string, PlayerRole>) {
+    const cached = weekStats.get(gameweekId);
+    if (cached) return cached;
     const stats = new Map<string, PlayerStat>();
     for (const row of statsByWeek.get(gameweekId) ?? []) {
       const playerId = row.player_id;
@@ -226,6 +227,18 @@ export async function fantasyPointsForLeague(
         goalsConceded: Number(row.goals_conceded ?? 0),
       });
     }
+    weekStats.set(gameweekId, stats);
+    return stats;
+  }
+
+  const points = new Map<string, number>();
+  for (const lineup of lineupRows ?? []) {
+    const gameweekId = lineup.gameweek_id as string;
+    const number = numberById.get(gameweekId);
+    if (number === undefined) continue;
+    const { roles, clubs: clubByPlayer } = rosterAt(number);
+    const definition = at(number);
+    let stats = statsOf(gameweekId, roles);
     const slots: LineupSlotInput[] = (slotsByLineup.get(lineup.id as string) ?? []).map((slot) => ({
       playerId: slot.player_id,
       isCaptain: Boolean(slot.is_captain) && slot.is_starter !== false,
@@ -235,6 +248,8 @@ export async function fantasyPointsForLeague(
     }));
     const held = heldByWeek.get(gameweekId);
     if (held && held.size > 0) {
+      // Le partite rinviate cambiano solo le righe di questa formazione: si lavora su una copia.
+      stats = new Map(stats);
       for (const slot of slots) {
         const clubId = clubByPlayer.get(slot.playerId);
         if (!clubId || !held.has(clubId)) continue;

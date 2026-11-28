@@ -5,6 +5,8 @@ import { listAdminAudit } from "@/lib/server/audit";
 import { getCurrentSeason } from "@/lib/server/catalog";
 import { reportIfTechnical } from "@/lib/server/error-report";
 import { PROVISIONAL_SOURCE } from "@/lib/server/provisional-votes";
+import { leagueTeamIds } from "@/lib/server/league-members";
+import { readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import { ADMIN_LEAGUE_COOKIE } from "@/lib/admin-area";
 
@@ -29,6 +31,8 @@ export type AdminLeagues = {
 };
 
 const DAY = 24 * 60 * 60 * 1000;
+/** Fermo di sicurezza per l'elenco degli accessi: 200.000 persone. */
+const MAX_USER_PAGES = 1000;
 
 function pickCurrent(weeks: Week[]): Week | null {
   const lastClosed = weeks.reduce((max, week) => (
@@ -59,39 +63,44 @@ export const loadAdminLeagues = cache(async (): Promise<AdminLeagues> => {
   if (weeks.error) throw new Error(weeks.error.message);
   const week = pickCurrent((weeks.data ?? []) as Week[]);
 
-  let listed = await admin
+  const read = (columns: string) => readAllRows<{ id: string; name: string; is_sandbox?: boolean }>((from, to) => admin
     .from("private_leagues")
-    .select("id, name, is_sandbox")
+    .select(columns)
     .eq("season_id", season.id)
-    .order("name");
-  if (listed.error && /is_sandbox/i.test(listed.error.message)) {
-    listed = await admin.from("private_leagues").select("id, name").eq("season_id", season.id).order("name") as typeof listed;
-  }
+    .order("name")
+    .order("id")
+    .range(from, to)
+    .returns<{ id: string; name: string; is_sandbox?: boolean }[]>());
+  let listed = await read("id, name, is_sandbox");
+  if (listed.error && /is_sandbox/i.test(listed.error.message)) listed = await read("id, name");
   if (listed.error) throw new Error(listed.error.message);
-  const rows = (listed.data ?? []) as { id: string; name: string; is_sandbox?: boolean }[];
+  const rows = listed.data;
 
   const teamsByLeague = new Map<string, string[]>();
   const filedTeams = new Set<string>();
   if (rows.length > 0) {
-    const members = await admin
+    const members = await readAllChunks(rows.map((row) => row.id), (ids, from, to) => admin
       .from("private_league_members")
       .select("private_league_id, fantasy_team_id")
-      .in("private_league_id", rows.map((row) => row.id));
+      .in("private_league_id", ids)
+      .order("private_league_id")
+      .order("fantasy_team_id")
+      .range(from, to));
     if (members.error) throw new Error(members.error.message);
-    for (const row of members.data ?? []) {
+    for (const row of members.data) {
       const list = teamsByLeague.get(row.private_league_id as string) ?? [];
       list.push(row.fantasy_team_id as string);
       teamsByLeague.set(row.private_league_id as string, list);
     }
-    const allTeams = [...new Set([...teamsByLeague.values()].flat())];
-    if (week && allTeams.length > 0) {
-      const lineups = await admin
+    if (week && teamsByLeague.size > 0) {
+      const lineups = await readAllRows((from, to) => admin
         .from("lineups")
         .select("fantasy_team_id")
         .eq("gameweek_id", week.id)
-        .in("fantasy_team_id", allTeams);
+        .order("id")
+        .range(from, to));
       if (lineups.error) throw new Error(lineups.error.message);
-      for (const row of lineups.data ?? []) filedTeams.add(row.fantasy_team_id as string);
+      for (const row of lineups.data) filedTeams.add(row.fantasy_team_id as string);
     }
   }
 
@@ -126,19 +135,23 @@ export type TeamLineup ={ id: string; name: string; filed: boolean; savedAt: str
 /** Squadre di una lega e stato della formazione nella giornata corrente. */
 export async function loadLeagueLineups(leagueId: string, weekId: string | null): Promise<TeamLineup[]> {
   const admin = createAdminSupabase();
-  const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", leagueId);
-  if (members.error) throw new Error(members.error.message);
-  const ids = (members.data ?? []).map((row) => row.fantasy_team_id as string);
+  const ids = await leagueTeamIds(admin, leagueId);
   if (ids.length === 0) return [];
-  const teams = await admin.from("fantasy_teams").select("id, name").in("id", ids);
+  const teams = await readAllChunks(ids, (part, from, to) => admin.from("fantasy_teams").select("id, name").in("id", part).order("id").range(from, to));
   if (teams.error) throw new Error(teams.error.message);
   const saved = new Map<string, string | null>();
   if (weekId) {
-    const lineups = await admin.from("lineups").select("fantasy_team_id, saved_at").eq("gameweek_id", weekId).in("fantasy_team_id", ids);
+    const lineups = await readAllChunks(ids, (part, from, to) => admin
+      .from("lineups")
+      .select("fantasy_team_id, saved_at")
+      .eq("gameweek_id", weekId)
+      .in("fantasy_team_id", part)
+      .order("id")
+      .range(from, to));
     if (lineups.error) throw new Error(lineups.error.message);
-    for (const row of lineups.data ?? []) saved.set(row.fantasy_team_id as string, (row.saved_at as string | null) ?? null);
+    for (const row of lineups.data) saved.set(row.fantasy_team_id as string, (row.saved_at as string | null) ?? null);
   }
-  return (teams.data ?? [])
+  return teams.data
     .map((row) => ({
       id: row.id as string,
       name: String(row.name ?? "Squadra"),
@@ -171,7 +184,7 @@ async function activeUsersThisWeek(): Promise<number | null> {
     const admin = createAdminSupabase();
     const since = Date.now() - 7 * DAY;
     let active = 0;
-    for (let page = 1; page <= 20; page += 1) {
+    for (let page = 1; page <= MAX_USER_PAGES; page += 1) {
       const listed = await admin.auth.admin.listUsers({ page, perPage: 200 });
       if (listed.error) throw new Error(listed.error.message);
       active += listed.data.users.filter((user) => user.last_sign_in_at && new Date(user.last_sign_in_at).getTime() >= since).length;

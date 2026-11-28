@@ -1,6 +1,7 @@
 import { checkAdminPage } from "@/components/admin/AdminGate";
 import { ScopeChip } from "@/components/admin/AdminShell";
 import { SetupNotice } from "@/components/SetupNotice";
+import { PagedList, PagedTable } from "@/components/ShowMore";
 import { publicError } from "@/lib/server/api-error";
 import { loadLeagueLineups, resolveAdminLeague } from "@/lib/server/admin-area";
 import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
@@ -38,16 +39,14 @@ export default async function AdminLineupsPage() {
               <span className="sa-muted sa-small">{selected.filed} consegnate su {selected.teams}</span>
             </div>
             {teams.length === 0 ? <p className="sa-muted">Nessuna squadra in questa lega.</p> : (
-              <ul className="sa-list">
-                {teams.map((team) => (
-                  <li key={team.id}>
-                    <span className="sa-grow">{team.name}</span>
-                    {team.filed
-                      ? <span className="sa-state sa-ok"><span className="sa-dot" aria-hidden="true" />Consegnata{team.savedAt ? ` ${WHEN.format(new Date(team.savedAt))}` : ""}</span>
-                      : <span className="sa-state sa-bad"><span className="sa-dot" aria-hidden="true" />Manca</span>}
-                  </li>
-                ))}
-              </ul>
+              <PagedList className="sa-list" rows={teams.map((team) => (
+                <li key={team.id}>
+                  <span className="sa-grow">{team.name}</span>
+                  {team.filed
+                    ? <span className="sa-state sa-ok"><span className="sa-dot" aria-hidden="true" />Consegnata{team.savedAt ? ` ${WHEN.format(new Date(team.savedAt))}` : ""}</span>
+                    : <span className="sa-state sa-bad"><span className="sa-dot" aria-hidden="true" />Manca</span>}
+                </li>
+              ))} />
             )}
             <p className="sa-muted sa-small">Per riaprire le formazioni di una giornata usa «Impostazioni della lega».</p>
           </section>
@@ -58,24 +57,22 @@ export default async function AdminLineupsPage() {
               <span className="sa-muted sa-small">Scegli una lega in alto per vedere le squadre</span>
             </div>
             {data.leagues.length === 0 ? <p className="sa-muted">Nessuna lega in questa stagione.</p> : (
-              <div className="sa-table-wrap">
-                <table className="sa-table">
-                  <thead><tr><th scope="col">Lega</th><th scope="col" className="sa-num">Squadre</th><th scope="col" className="sa-num">Consegnate</th><th scope="col" className="sa-num">Mancano</th></tr></thead>
-                  <tbody>
-                    {data.leagues.map((league) => {
-                      const missing = Math.max(0, league.teams - league.filed);
-                      return (
-                        <tr key={league.id}>
-                          <td>{league.name}{league.sandbox ? <span className="sa-muted sa-small"> · di prova</span> : null}</td>
-                          <td className="sa-num">{league.teams}</td>
-                          <td className="sa-num">{league.filed}</td>
-                          <td className={`sa-num ${missing > 0 ? "sa-bad" : "sa-ok"}`}>{missing}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <PagedTable
+                wrapClassName="sa-table-wrap"
+                className="sa-table"
+                head={<thead><tr><th scope="col">Lega</th><th scope="col" className="sa-num">Squadre</th><th scope="col" className="sa-num">Consegnate</th><th scope="col" className="sa-num">Mancano</th></tr></thead>}
+                rows={data.leagues.map((league) => {
+                  const missing = Math.max(0, league.teams - league.filed);
+                  return (
+                    <tr key={league.id}>
+                      <td>{league.name}{league.sandbox ? <span className="sa-muted sa-small"> · di prova</span> : null}</td>
+                      <td className="sa-num">{league.teams}</td>
+                      <td className="sa-num">{league.filed}</td>
+                      <td className={`sa-num ${missing > 0 ? "sa-bad" : "sa-ok"}`}>{missing}</td>
+                    </tr>
+                  );
+                })}
+              />
             )}
           </section>
         )}

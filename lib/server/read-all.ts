@@ -21,8 +21,25 @@ export function inChunks<T>(items: T[], size = 100) {
   return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
 }
 
+/** Quante richieste insieme quando i blocchi sono tanti: tutte in una volta il database le rifiuta. */
+const AT_ONCE = 6;
+
+/** Esegue `run` su ogni elemento, pochi alla volta; i risultati restano nell'ordine degli elementi. */
+export async function inParallel<T, R>(items: T[], run: (item: T) => Promise<R>, limit = AT_ONCE) {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const index = next;
+      next += 1;
+      results[index] = await run(items[index]);
+    }
+  }));
+  return results;
+}
+
 /** Una lettura filtrata per un elenco lungo di codici: a blocchi, e ogni blocco a pagine. */
 export async function readAllChunks<T>(ids: string[], page: (chunk: string[], from: number, to: number) => Page<T>) {
-  const parts = await Promise.all(inChunks(ids).map((chunk) => readAllRows<T>((from, to) => page(chunk, from, to))));
+  const parts = await inParallel(inChunks(ids), (chunk) => readAllRows<T>((from, to) => page(chunk, from, to)));
   return { data: parts.flatMap((part) => part.data), error: parts.find((part) => part.error)?.error ?? null };
 }

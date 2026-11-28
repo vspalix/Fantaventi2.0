@@ -27,6 +27,12 @@ export function LeagueManager({ signedIn, startCreating = false }: { signedIn: b
   /** null finché l'elenco non è arrivato. */
   const [leagues, setLeagues] = useState<LeagueSummary[] | null>(known);
   const [publicLeagues, setPublicLeagues] = useState<LeagueSummary[]>([]);
+  /** Da dove riprendere l'elenco pubblico; null quando è finito. */
+  const [publicNext, setPublicNext] = useState<number | null>(null);
+  const [publicQuery, setPublicQuery] = useState("");
+  const [publicBusy, setPublicBusy] = useState(false);
+  /** La ricerca che l'elenco a video sta mostrando. */
+  const publicAsked = useRef("");
   const [calendar, setCalendar] = useState<SeasonCalendar | null>(null);
   const [mode, setMode] = useState<"join" | "create">(startCreating ? "create" : "join");
   const [code, setCode] = useState("");
@@ -64,11 +70,12 @@ export function LeagueManager({ signedIn, startCreating = false }: { signedIn: b
     if (!signedIn) return;
     let cancelled = false;
     fetch("/api/leagues")
-      .then((response) => readJson<{ leagues: LeagueSummary[]; publicLeagues?: LeagueSummary[]; calendar?: SeasonCalendar }>(response))
+      .then((response) => readJson<{ leagues: LeagueSummary[]; publicLeagues?: LeagueSummary[]; publicNext?: number | null; calendar?: SeasonCalendar }>(response))
       .then((body) => {
         if (!cancelled) {
           setLeagues(body.leagues);
           setPublicLeagues(body.publicLeagues ?? []);
+          setPublicNext(body.publicNext ?? null);
           setCalendar(body.calendar ?? null);
         }
       })
@@ -82,6 +89,33 @@ export function LeagueManager({ signedIn, startCreating = false }: { signedIn: b
       cancelled = true;
     };
   }, [signedIn]);
+
+  async function loadPublic(search: string, offset: number) {
+    publicAsked.current = search;
+    setPublicBusy(true);
+    try {
+      const query = new URLSearchParams({ q: search, offset: String(offset) });
+      const body = await readJson<{ publicLeagues: LeagueSummary[]; publicNext: number | null }>(await fetch(`/api/leagues?${query}`));
+      // Una ricerca più recente ha già preso il posto di questa.
+      if (publicAsked.current !== search) return;
+      setPublicLeagues((current) => (offset === 0 ? body.publicLeagues : [...current, ...body.publicLeagues]));
+      setPublicNext(body.publicNext);
+    } catch (reason) {
+      setError({ place: "public", text: readableError(reason, "Leghe pubbliche non disponibili.") });
+    } finally {
+      if (publicAsked.current === search) setPublicBusy(false);
+    }
+  }
+
+  // Si cerca poco dopo l'ultima lettera, non a ogni tasto.
+  useEffect(() => {
+    const search = publicQuery.trim();
+    if (search === publicAsked.current) return;
+    const timer = window.setTimeout(() => void loadPublic(search, 0), 350);
+    return () => window.clearTimeout(timer);
+    // loadPublic cambia a ogni disegno: conta solo il testo cercato.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publicQuery]);
 
   async function createLeague(league: NewLeague) {
     if (flight.current) return false;
@@ -203,10 +237,12 @@ export function LeagueManager({ signedIn, startCreating = false }: { signedIn: b
           </div>
         </section>
 
-        {publicLeagues.length > 0 ? (
+        {publicLeagues.length > 0 || publicNext !== null || publicQuery.trim() ? (
           <section className="card lg-card">
             <h2>Leghe pubbliche</h2>
             {offer ? null : errorAt("public")}
+            <input type="search" aria-label="Cerca una lega pubblica" placeholder="Cerca per nome" value={publicQuery} onChange={(event) => setPublicQuery(event.target.value)} />
+            {publicLeagues.length === 0 ? <p className="lg-hint">{publicBusy ? "Cerco..." : "Nessuna lega pubblica con questo nome."}</p> : null}
             <ul className="lg-list">
               {publicLeagues.map((league) => (
                 <li key={league.id} className="lg-row">
@@ -227,6 +263,11 @@ export function LeagueManager({ signedIn, startCreating = false }: { signedIn: b
                 </li>
               ))}
             </ul>
+            {publicNext !== null ? (
+              <button className="ghost" type="button" disabled={publicBusy} aria-busy={publicBusy} onClick={() => void loadPublic(publicAsked.current, publicNext)}>
+                <BusyLabel pending={publicBusy} idle="Mostra altre leghe" busy="Carico..." />
+              </button>
+            ) : null}
           </section>
         ) : null}
       </div>

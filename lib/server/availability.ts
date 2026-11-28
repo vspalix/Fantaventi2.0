@@ -7,6 +7,7 @@ import { getCurrentSeason } from "@/lib/server/catalog";
 import { readSystemSettings } from "@/lib/server/system-settings";
 import type { CatalogPlayer } from "@/lib/types";
 import { reportError } from "@/lib/server/error-report";
+import { readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 const SETTINGS_KEY = "availability";
@@ -220,13 +221,15 @@ async function commitAvailability(
 
 async function knownPlayers(seasonId: string, matchday: number): Promise<KnownPlayer[]> {
   const admin = createAdminSupabase();
-  const regs = await admin
+  const regs = await readAllRows((from, to) => admin
     .from("player_registrations")
     .select("player_id, club_id, effective_from_gameweek, effective_to_gameweek")
-    .eq("season_id", seasonId);
+    .eq("season_id", seasonId)
+    .order("id")
+    .range(from, to));
   if (regs.error) throw new Error(regs.error.message);
   const current = new Map<string, { clubId: string; from: number }>();
-  for (const row of regs.data ?? []) {
+  for (const row of regs.data) {
     const from = Number(row.effective_from_gameweek);
     const to = row.effective_to_gameweek == null ? null : Number(row.effective_to_gameweek);
     if (from > matchday || (to != null && to < matchday)) continue;
@@ -237,12 +240,12 @@ async function knownPlayers(seasonId: string, matchday: number): Promise<KnownPl
   const clubIds = [...new Set([...current.values()].map((item) => item.clubId))];
   if (playerIds.length === 0) return [];
   const [players, clubs] = await Promise.all([
-    admin.from("players").select("id, full_name").in("id", playerIds),
+    readAllChunks(playerIds, (ids, from, to) => admin.from("players").select("id, full_name").in("id", ids).order("id").range(from, to)),
     admin.from("clubs").select("id, code, club_translations(locale, name)").in("id", clubIds),
   ]);
   if (players.error) throw new Error(players.error.message);
   if (clubs.error) throw new Error(clubs.error.message);
-  const names = new Map((players.data ?? []).map((row) => [row.id as string, row.full_name as string]));
+  const names = new Map(players.data.map((row) => [row.id as string, row.full_name as string]));
   const clubNames = new Map((clubs.data ?? []).map((row) => {
     const translations = (row.club_translations ?? []) as { locale: string; name: string }[];
     const label = translations.find((item) => item.locale === "it") ?? translations[0];

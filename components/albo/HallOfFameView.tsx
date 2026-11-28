@@ -1,9 +1,7 @@
-"use client";
-
-import { useState } from "react";
+import Link from "next/link";
 import { EmptyState } from "@/components/EmptyState";
 import { ScoreIcon } from "@/components/scores/ScoreIcons";
-import type { Leader, LeagueArchive, SeasonArchive } from "@/lib/server/hall-of-fame";
+import type { HallOfFame, Leader, LeagueArchive } from "@/lib/server/hall-of-fame";
 
 const points = new Intl.NumberFormat("it-IT", { maximumFractionDigits: 2 });
 
@@ -87,10 +85,18 @@ function League({ league }: { league: LeagueArchive }) {
   );
 }
 
-/** Le stagioni concluse: si sceglie la stagione, poi ogni lega ha podio e record. */
-export function HallOfFameView({ seasons }: { seasons: SeasonArchive[] }) {
-  const [chosen, setChosen] = useState<string | null>(null);
-  const season = seasons.find((item) => item.seasonId === chosen) ?? seasons[0];
+/** L'indirizzo dell'Albo per una stagione, una ricerca e una pagina. */
+function address(seasonId: string, search = "", page = 1) {
+  const query = new URLSearchParams({ stagione: seasonId });
+  if (search) query.set("cerca", search);
+  if (page > 1) query.set("pagina", String(page));
+  return `/albo?${query}`;
+}
+
+/** Le stagioni concluse: si sceglie la stagione, poi ogni lega ha podio e record. Le leghe vanno a pagine. */
+export function HallOfFameView({ board }: { board: HallOfFame }) {
+  const { seasons, search, page, more } = board;
+  const season = seasons.find((item) => item.seasonId === board.chosen) ?? seasons[0];
   if (!season) {
     return (
       <EmptyState title="Nessuna stagione conclusa">
@@ -103,21 +109,38 @@ export function HallOfFameView({ seasons }: { seasons: SeasonArchive[] }) {
       {seasons.length > 1 ? (
         <div className="al-seasons" role="group" aria-label="Stagione">
           {seasons.map((item) => (
-            <button key={item.seasonId} type="button" aria-pressed={item.seasonId === season.seasonId} onClick={() => setChosen(item.seasonId)}>
+            <Link key={item.seasonId} href={address(item.seasonId)} aria-current={item.seasonId === season.seasonId ? "true" : undefined}>
               {item.seasonCode}
-            </button>
+            </Link>
           ))}
         </div>
       ) : (
         <p className="al-season">Stagione {season.seasonCode}</p>
       )}
+      {more || page > 1 || search ? (
+        <form className="al-search" action="/albo" method="get">
+          <input type="hidden" name="stagione" value={season.seasonId} />
+          <input type="search" name="cerca" defaultValue={search} aria-label="Cerca una lega" placeholder="Cerca una lega per nome" />
+          <button className="ghost" type="submit">Cerca</button>
+        </form>
+      ) : null}
       {season.leagues.length === 0 ? (
-        <EmptyState title="Nessuna lega in questa stagione">La stagione è conclusa, ma non ha leghe da ricordare.</EmptyState>
+        search ? (
+          <EmptyState title="Nessuna lega con questo nome">Prova con un altro nome.</EmptyState>
+        ) : (
+          <EmptyState title="Nessuna lega in questa stagione">La stagione è conclusa, ma non ha leghe da ricordare.</EmptyState>
+        )
       ) : (
         <div className="al-leagues">
           {season.leagues.map((league) => <League key={league.leagueId} league={league} />)}
         </div>
       )}
+      {more || page > 1 ? (
+        <nav className="al-pages" aria-label="Altre leghe">
+          {page > 1 ? <Link className="ghost" href={address(season.seasonId, search, page - 1)}>Leghe precedenti</Link> : <span />}
+          {more ? <Link className="ghost" href={address(season.seasonId, search, page + 1)}>Altre leghe</Link> : <span />}
+        </nav>
+      ) : null}
     </div>
   );
 }

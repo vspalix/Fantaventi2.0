@@ -13,6 +13,7 @@ import {
 } from "@/lib/league-rules";
 import { scoringHistoryLines } from "@/lib/scoring-history";
 import { BusyLabel } from "@/components/BusyLabel";
+import { useShown } from "@/components/ShowMore";
 import { CopyInviteLink, ShareJoinCode } from "@/components/leagues/CopyInviteLink";
 import type { LeagueDetail } from "@/lib/types";
 
@@ -37,6 +38,7 @@ export function LeagueAdminPanel({
   onGrant: (userId: string) => Promise<void>;
   onRevoke: (userId: string) => Promise<void>;
 }) {
+  const members = useShown(league.participants, 50);
   const [name, setName] = useState(league.name);
   const [startMatchday, setStartMatchday] = useState(league.startMatchday);
   const [endMatchday, setEndMatchday] = useState(league.endMatchday);
@@ -112,7 +114,7 @@ export function LeagueAdminPanel({
           </button>
         </div>
         <ul className="list">
-          {league.participants.map((participant) => {
+          {members.shown.map((participant) => {
             const role = participant.role ?? "member";
             const handle = participant.displayName || participant.teamName;
             return (
@@ -144,6 +146,7 @@ export function LeagueAdminPanel({
             );
           })}
         </ul>
+        {members.more}
         {league.isOwner ? (
           <p className="small muted">Un admin di lega gestisce inviti, partecipanti e regole. Il Laboratorio globale resta solo del super admin.</p>
         ) : <p className="small muted">Sei admin di questa lega. Non hai accesso al Laboratorio globale.</p>}

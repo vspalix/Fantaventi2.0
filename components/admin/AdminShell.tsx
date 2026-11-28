@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useShown } from "@/components/ShowMore";
 import { ADMIN_GROUPS, ADMIN_HOME, ADMIN_LEAGUE_COOKIE, type AdminScope } from "@/lib/admin-area";
 
 export type ShellLeague = { id: string; name: string; sandbox: boolean; teams: number; filed: number };
@@ -48,6 +49,7 @@ export function AdminShell({
   const [menuOpen, setMenuOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const picker = useShown(leagues, 50);
   const menuRef = useRef<HTMLElement>(null);
   const pickerRef = useRef<HTMLDivElement>(null);
 
@@ -146,7 +148,7 @@ export function AdminShell({
                     <span className="sa-grow">Tutte le leghe<span className="sa-option-meta">Riepilogo di {leagues.length} {leagues.length === 1 ? "lega" : "leghe"}</span></span>
                     {totalMissing > 0 ? <span className="sa-pill-bad">{totalMissing} mancanti</span> : null}
                   </button>
-                  {leagues.map((league) => (
+                  {picker.shown.map((league) => (
                     <button key={league.id} type="button" className="sa-option" data-on={league.id === selected?.id} onClick={() => chooseLeague(league.id)}>
                       <span className="sa-grow">
                         {league.name}
@@ -155,6 +157,7 @@ export function AdminShell({
                       {missingOf(league) > 0 ? <span className="sa-pill-bad">{missingOf(league)} mancanti</span> : null}
                     </button>
                   ))}
+                  {picker.more}
                   {leagues.length === 0 ? <p className="sa-muted sa-small">Nessuna lega in questa stagione.</p> : null}
                 </div>
               </div>

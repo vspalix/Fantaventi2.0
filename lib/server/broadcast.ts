@@ -1,4 +1,6 @@
 import { FAKE_NOTICE, logFake, realNotificationsAllowed } from "@/lib/outbound";
+import { leagueTeamIds } from "@/lib/server/league-members";
+import { inChunks, readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type BroadcastInput = {
@@ -52,23 +54,21 @@ export function parseBroadcast(input: unknown, self: { id: string; email: string
 async function recipientIds(leagueId: string | null) {
   const admin = createAdminSupabase();
   if (!leagueId) {
-    const profiles = await admin.from("profiles").select("id, email");
+    const profiles = await readAllRows((from, to) => admin.from("profiles").select("id, email").order("id").range(from, to));
     if (profiles.error) throw new Error(profiles.error.message);
-    return (profiles.data ?? []).map((row) => ({
+    return profiles.data.map((row) => ({
       id: row.id as string,
       email: typeof row.email === "string" ? row.email : "",
     }));
   }
-  const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", leagueId);
-  if (members.error) throw new Error(members.error.message);
-  const teamIds = (members.data ?? []).map((row) => row.fantasy_team_id as string);
+  const teamIds = await leagueTeamIds(admin, leagueId);
   if (teamIds.length === 0) return [];
-  const teams = await admin.from("fantasy_teams").select("user_id").in("id", teamIds);
+  const teams = await readAllChunks(teamIds, (ids, from, to) => admin.from("fantasy_teams").select("user_id").in("id", ids).order("id").range(from, to));
   if (teams.error) throw new Error(teams.error.message);
-  const userIds = [...new Set((teams.data ?? []).map((row) => row.user_id as string))];
-  const profiles = await admin.from("profiles").select("id, email").in("id", userIds);
+  const userIds = [...new Set(teams.data.map((row) => row.user_id as string))];
+  const profiles = await readAllChunks(userIds, (ids, from, to) => admin.from("profiles").select("id, email").in("id", ids).order("id").range(from, to));
   if (profiles.error) throw new Error(profiles.error.message);
-  return (profiles.data ?? []).map((row) => ({
+  return profiles.data.map((row) => ({
     id: row.id as string,
     email: typeof row.email === "string" ? row.email : "",
   }));
@@ -104,12 +104,14 @@ export async function sendBroadcast(input: BroadcastInput) {
   let emailSkipped = false;
   if (input.inbox && people.length > 0) {
     const rows = people.map((person) => ({ user_id: person.id, title: input.subject, body: input.message }));
-    const saved = await admin.from("user_notices").insert(rows);
-    if (saved.error) {
-      if (/user_notices|schema cache|does not exist/i.test(saved.error.message)) {
-        throw httpError("Manca la tabella. Esegui app_announcements.sql nell'editor SQL.", 503);
+    for (const part of inChunks(rows, 500)) {
+      const saved = await admin.from("user_notices").insert(part);
+      if (saved.error) {
+        if (/user_notices|schema cache|does not exist/i.test(saved.error.message)) {
+          throw httpError("Manca la tabella. Esegui app_announcements.sql nell'editor SQL.", 503);
+        }
+        throw new Error(saved.error.message);
       }
-      throw new Error(saved.error.message);
     }
     inbox = people.length;
   }

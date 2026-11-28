@@ -7,7 +7,8 @@ import { reportError } from "@/lib/server/error-report";
 import { listLeaguesForUser } from "@/lib/server/leagues";
 import { processGameweekLifecycle } from "@/lib/server/gameweek-lifecycle";
 import { schemaHint } from "@/lib/server/live-score";
-import { inChunks, readAllRows } from "@/lib/server/read-all";
+import { leagueTeamIds } from "@/lib/server/league-members";
+import { readAllChunks } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { CatalogPlayer, PlayerRole } from "@/lib/types";
 
@@ -460,24 +461,22 @@ export async function loadRivalRosters(
   try {
     const admin = createAdminSupabase();
     const [members, listed] = await Promise.all([
-      admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", leagueId),
+      leagueTeamIds(admin, leagueId),
       catalogPlayers,
     ]);
-    if (members.error) throw new Error(members.error.message);
-    const teamIds = (members.data ?? []).map((row) => row.fantasy_team_id as string).filter((id) => id !== myTeamId);
+    const teamIds = members.filter((id) => id !== myTeamId);
     if (teamIds.length === 0) return null;
     const numbers = new Map(teamIds.map((id, index) => [id, index]));
-    const reads = await Promise.all(inChunks(teamIds).map((chunk) => readAllRows((from, to) => admin
+    const reads = await readAllChunks(teamIds, (ids, from, to) => admin
       .from("roster_stints")
       .select("fantasy_team_id, player_id, active_from_gameweek, active_until_gameweek")
-      .in("fantasy_team_id", chunk)
+      .in("fantasy_team_id", ids)
       .order("id")
-      .range(from, to))));
-    const failed = reads.find((read) => read.error);
-    if (failed?.error) throw new Error(failed.error.message);
+      .range(from, to));
+    if (reads.error) throw new Error(reads.error.message);
     const byId = new Map(listed.map((player) => [player.id, player]));
     const players = new Map<string, CalendarRivals["players"][number]>();
-    const stints = reads.flatMap((read) => read.data).flatMap((row) => {
+    const stints = reads.data.flatMap((row) => {
       const player = byId.get(row.player_id as string);
       if (!player) return [];
       players.set(player.id, { id: player.id, name: player.fullName, clubId: player.clubId });

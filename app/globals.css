@@ -2748,8 +2748,15 @@ a.lg-row:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent
 .al-lede { margin: 6px 0 0; color: var(--muted); font-size: var(--fs-sm); }
 .al { display: grid; gap: 14px; min-width: 0; }
 .al-seasons { display: flex; flex-wrap: wrap; gap: 8px; }
-.al-seasons button { min-height: 44px; padding: 8px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-weight: 600; }
-.al-seasons button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.al-seasons a { display: inline-flex; align-items: center; min-height: 44px; padding: 8px 18px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font-weight: 600; text-decoration: none; }
+.al-seasons a[aria-current="true"] { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); }
+.al-search { display: flex; gap: 8px; }
+.al-search input { flex: 1; min-width: 0; }
+.al-search .ghost { flex: none; width: auto; }
+.al-pages { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.al-pages a { display: inline-flex; align-items: center; justify-content: center; text-decoration: none; }
+/* Il pulsante che allunga le liste lunghe. */
+.show-more { justify-self: center; margin-top: 8px; }
 .al-season { margin: 0; color: var(--accent); font-size: var(--fs-xs); font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
 .al-leagues { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); gap: 14px; align-items: start; }
 .card.al-league { display: grid; gap: 16px; min-width: 0; padding: 18px 14px; }

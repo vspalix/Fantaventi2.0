@@ -1,3 +1,6 @@
+"use client";
+
+import { useShown } from "@/components/ShowMore";
 import { CopyInviteLink, ShareJoinCode } from "@/components/leagues/CopyInviteLink";
 import { BONUS_FIELDS, COMPETITION_FORMATS, type LeagueRules } from "@/lib/league-rules";
 import type { LeagueDetail } from "@/lib/types";
@@ -14,6 +17,7 @@ function formatLabel(rules: LeagueRules) {
 
 export function LeagueRulesReadout({ league }: { league: LeagueDetail }) {
   const rules = league.rules;
+  const members = useShown(league.participants, 50);
   return (
     <div className="stack">
       <section className="card stack">
@@ -82,7 +86,7 @@ export function LeagueRulesReadout({ league }: { league: LeagueDetail }) {
       <section className="card stack">
         <h2>Partecipanti</h2>
         <ul className="list">
-          {league.participants.map((participant) => (
+          {members.shown.map((participant) => (
             <li className="person" key={participant.fantasyTeamId}>
               <span className="person-main">
                 <strong>{participant.teamName}</strong>
@@ -91,6 +95,7 @@ export function LeagueRulesReadout({ league }: { league: LeagueDetail }) {
             </li>
           ))}
         </ul>
+        {members.more}
       </section>
     </div>
   );

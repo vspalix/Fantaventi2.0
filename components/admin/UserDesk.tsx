@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import { BusyLabel } from "@/components/BusyLabel";
+import { useShown } from "@/components/ShowMore";
 import type { PlatformUserRow } from "@/lib/server/platform-users";
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -16,6 +17,12 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
   const [pendingId, setPendingId] = useState<string | null>(null);
   const flight = useRef(false);
   const roleMissing = users.length > 0 && users.every((user) => user.platformRole === "unknown");
+  const [search, setSearch] = useState("");
+  const needle = search.trim().toLowerCase();
+  const found = needle
+    ? users.filter((user) => [user.firstName, user.lastName, user.displayName, user.email].join(" ").toLowerCase().includes(needle))
+    : users;
+  const { shown, more } = useShown(found, 50, "altri");
 
   async function reload() {
     const body = await readJson<{ users: PlatformUserRow[] }>(await fetch("/api/admin/users"));
@@ -93,6 +100,9 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
     <div className="stack">
       {roleMissing ? <p className="banner">Per nominare un super admin esegui platform_access.sql nell&apos;editor SQL.</p> : null}
       {error ? <p className="banner">{error}</p> : null}
+      {users.length > 20 ? (
+        <input type="search" aria-label="Cerca un utente" placeholder="Cerca per nome o email" value={search} onChange={(event) => setSearch(event.target.value)} />
+      ) : null}
       <div className="card user-table-wrap">
         <table className="user-table as-cards">
           <thead>
@@ -106,7 +116,9 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
           <tbody>
             {users.length === 0 ? (
               <tr><td colSpan={4}>Nessun utente registrato.</td></tr>
-            ) : users.map((user) => (
+            ) : found.length === 0 ? (
+              <tr><td colSpan={4}>Nessun utente con questo nome.</td></tr>
+            ) : shown.map((user) => (
               <tr key={user.id}>
                 <td data-label="Nome">
                   <strong>{[user.firstName, user.lastName].filter(Boolean).join(" ") || user.displayName || "Senza nome"}</strong>
@@ -145,6 +157,7 @@ export function UserDesk({ initial, currentUserId }: { initial: PlatformUserRow[
           </tbody>
         </table>
       </div>
+      {more}
     </div>
   );
 }

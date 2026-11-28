@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createAdminSupabase, hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 import { missingSandboxColumn, SANDBOX_SEASON_CODE } from "@/lib/server/sandbox-flag";
 import { shared, SHARED_TAGS } from "@/lib/server/shared-cache";
+import { readAllRows } from "@/lib/server/read-all";
 import { DEFAULT_RULES, type CatalogPlayer, type CatalogResponse, type ClubRef, type PlayerRole, type RosterRules } from "@/lib/types";
 
 export const SEASON_COOKIE = "fv-season";
@@ -197,11 +198,13 @@ async function queryListone(seasonId: string) {
       .from("season_clubs")
       .select("club_id, clubs(code, club_translations(locale, name, short_name))")
       .eq("season_id", seasonId),
-    admin
+    readAllRows((from, to) => admin
       .from("player_registrations")
       .select("player_id, role, club_id, players(full_name), clubs(code, club_translations(locale, name, short_name))")
       .eq("season_id", seasonId)
-      .is("effective_to_gameweek", null),
+      .is("effective_to_gameweek", null)
+      .order("id")
+      .range(from, to)),
   ]);
   if (clubQuery.error) throw new Error(clubQuery.error.message);
   if (registrationQuery.error) throw new Error(registrationQuery.error.message);
@@ -217,7 +220,7 @@ async function queryListone(seasonId: string) {
     };
   }).sort((a, b) => a.name.localeCompare(b.name, "it"));
 
-  const players: CatalogPlayer[] = (registrationQuery.data as RegistrationRow[] | null ?? []).map((row) => {
+  const players: CatalogPlayer[] = (registrationQuery.data as unknown as RegistrationRow[]).map((row) => {
     const player = one(row.players);
     const club = one(row.clubs);
     const label = italianName(club?.club_translations, club?.code ?? "Club");

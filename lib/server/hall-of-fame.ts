@@ -3,7 +3,7 @@ import { weekScoreMode } from "@/lib/league-rules";
 import { standingsFor, type GameweekRow } from "@/lib/server/league-hub";
 import { readLeagueSettings } from "@/lib/server/league-settings";
 import type { ScoreParts } from "@/lib/server/league-scores";
-import { inChunks, readAllRows } from "@/lib/server/read-all";
+import { inChunks, readAllChunks } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type PodiumPlace = {
@@ -51,8 +51,17 @@ export type SeasonArchive = {
 };
 
 export type HallOfFame = {
+  /** Tutte le stagioni concluse; le leghe sono caricate solo per quella scelta. */
   seasons: SeasonArchive[];
+  chosen: string | null;
+  search: string;
+  page: number;
+  /** Ci sono altre leghe dopo questa pagina. */
+  more: boolean;
 };
+
+/** Quante leghe per pagina: il podio di ognuna si calcola sul momento. */
+export const HALL_PAGE = 10;
 
 type Member = {
   leagueId: string;
@@ -197,80 +206,124 @@ async function archiveOf(
   };
 }
 
-export async function loadHallOfFame(): Promise<HallOfFame> {
+/** Le leghe di chi guarda in una stagione: nell'Albo vengono per prime. */
+async function ownLeagueIds(admin: ReturnType<typeof createAdminSupabase>, userId: string, seasonId: string) {
+  const teams = await admin.from("fantasy_teams").select("id").eq("user_id", userId).eq("season_id", seasonId);
+  if (teams.error) throw new Error(teams.error.message);
+  const teamIds = (teams.data ?? []).map((row) => row.id as string);
+  const members = await readAllChunks(teamIds, (ids, from, to) => admin
+    .from("private_league_members")
+    .select("private_league_id")
+    .in("fantasy_team_id", ids)
+    .order("private_league_id")
+    .order("fantasy_team_id")
+    .range(from, to));
+  if (members.error) throw new Error(members.error.message);
+  return [...new Set(members.data.map((row) => row.private_league_id as string))];
+}
+
+/** Una pagina di leghe di una stagione conclusa: prima le proprie, poi le altre in ordine di nome. */
+async function leaguesOfPage(
+  admin: ReturnType<typeof createAdminSupabase>,
+  seasonId: string,
+  options: { search: string; page: number; userId?: string },
+) {
+  const columns = "id, name, season_id, start_matchday, end_matchday";
+  const from = (options.page - 1) * HALL_PAGE;
+  let query = admin.from("private_leagues").select(columns).eq("season_id", seasonId);
+  // I caratteri speciali di `like` cercati per quello che sono.
+  if (options.search) query = query.ilike("name", `%${options.search.replace(/[\\%_*]/g, "\\$&")}%`);
+  const [found, ownIds] = await Promise.all([
+    // Una riga in più dice se c'è un'altra pagina.
+    query.order("name").order("id").range(from, from + HALL_PAGE),
+    options.userId && !options.search ? ownLeagueIds(admin, options.userId, seasonId) : Promise.resolve([] as string[]),
+  ]);
+  if (found.error) throw new Error(found.error.message);
+  const rows = (found.data ?? []) as LeagueRow[];
+  const mine: LeagueRow[] = [];
+  if (options.page === 1 && ownIds.length > 0) {
+    const own = await admin.from("private_leagues").select(columns).eq("season_id", seasonId).in("id", ownIds.slice(0, HALL_PAGE)).order("name");
+    if (own.error) throw new Error(own.error.message);
+    mine.push(...((own.data ?? []) as LeagueRow[]));
+  }
+  const shown = new Set(ownIds.slice(0, HALL_PAGE));
+  return {
+    more: rows.length > HALL_PAGE,
+    leagues: [...mine, ...rows.slice(0, HALL_PAGE).filter((row) => !shown.has(row.id))],
+  };
+}
+
+export async function loadHallOfFame(options: { seasonId?: string; search?: string; page?: number; userId?: string } = {}): Promise<HallOfFame> {
   const admin = createAdminSupabase();
+  const search = (options.search ?? "").trim().slice(0, 40);
+  const page = Math.max(1, Math.trunc(options.page ?? 1) || 1);
   const seasons = await admin.from("seasons").select("id, code").eq("status", "closed").order("code", { ascending: false });
   if (seasons.error) throw new Error(seasons.error.message);
   const seasonRows = seasons.data ?? [];
-  if (seasonRows.length === 0) return { seasons: [] };
+  if (seasonRows.length === 0) return { seasons: [], chosen: null, search, page, more: false };
+  const chosen = (seasonRows.find((row) => row.id === options.seasonId) ?? seasonRows[0]).id as string;
 
-  const seasonIds = seasonRows.map((row) => row.id as string);
-  const leagues = await admin
-    .from("private_leagues")
-    .select("id, name, season_id, start_matchday, end_matchday")
-    .in("season_id", seasonIds);
-  if (leagues.error) throw new Error(leagues.error.message);
-  const leagueRows = (leagues.data ?? []) as LeagueRow[];
-
-  const weeks = await admin
-    .from("gameweeks")
-    .select("id, number, season_id, status, deadline_at")
-    .in("season_id", seasonIds)
-    .order("number", { ascending: true });
+  const [listed, weeks] = await Promise.all([
+    leaguesOfPage(admin, chosen, { search, page, userId: options.userId }),
+    admin
+      .from("gameweeks")
+      .select("id, number, season_id, status, deadline_at")
+      .eq("season_id", chosen)
+      .order("number", { ascending: true }),
+  ]);
   if (weeks.error) throw new Error(weeks.error.message);
-  const weekRows = (weeks.data ?? []) as (GameweekRow & { season_id: string })[];
+  const leagueRows = listed.leagues;
+  const weekRows = (weeks.data ?? []) as GameweekRow[];
 
+  const members = await readAllChunks(leagueRows.map((row) => row.id), (ids, from, to) => admin
+    .from("private_league_members")
+    .select("private_league_id, fantasy_team_id, fantasy_teams(name, user_id)")
+    .in("private_league_id", ids)
+    .order("private_league_id")
+    .order("fantasy_team_id")
+    .range(from, to));
+  if (members.error) throw new Error(members.error.message);
   const memberRows: Member[] = [];
-  for (const ids of inChunks(leagueRows.map((row) => row.id))) {
-    const page = await readAllRows((from, to) => admin
-      .from("private_league_members")
-      .select("private_league_id, fantasy_team_id, fantasy_teams(name, user_id)")
-      .in("private_league_id", ids)
-      .order("private_league_id")
-      .order("fantasy_team_id")
-      .range(from, to));
-    if (page.error) throw new Error(page.error.message);
-    for (const row of page.data) {
-      const team = one(row.fantasy_teams as { name?: string; user_id?: string } | { name?: string; user_id?: string }[] | null);
-      if (!row.fantasy_team_id || !row.private_league_id) continue;
-      memberRows.push({
-        leagueId: row.private_league_id as string,
-        teamId: row.fantasy_team_id as string,
-        teamName: team?.name || "Squadra",
-        userId: team?.user_id ?? "",
-      });
-    }
+  for (const row of members.data) {
+    const team = one(row.fantasy_teams as { name?: string; user_id?: string } | { name?: string; user_id?: string }[] | null);
+    if (!row.fantasy_team_id || !row.private_league_id) continue;
+    memberRows.push({
+      leagueId: row.private_league_id as string,
+      teamId: row.fantasy_team_id as string,
+      teamName: team?.name || "Squadra",
+      userId: team?.user_id ?? "",
+    });
   }
 
   const userIds = [...new Set(memberRows.map((member) => member.userId).filter(Boolean))];
-  const names = new Map<string, string>();
-  for (const ids of inChunks(userIds)) {
-    const profiles = await admin.from("profiles").select("id, display_name").in("id", ids);
-    if (profiles.error) throw new Error(profiles.error.message);
-    for (const profile of profiles.data ?? []) {
-      names.set(profile.id as string, publicHandle(profile.display_name as string));
-    }
-  }
+  const profiles = await readAllChunks(userIds, (ids, from, to) => admin
+    .from("profiles")
+    .select("id, display_name")
+    .in("id", ids)
+    .order("id")
+    .range(from, to));
+  if (profiles.error) throw new Error(profiles.error.message);
+  const names = new Map(profiles.data.map((profile) => [profile.id as string, publicHandle(profile.display_name as string)]));
 
-  const archives = new Map<string, LeagueArchive>();
+  const archives: LeagueArchive[] = [];
   for (const group of inChunks(leagueRows, AT_ONCE)) {
-    const built = await Promise.all(group.map((league) => archiveOf(
+    archives.push(...await Promise.all(group.map((league) => archiveOf(
       league,
       memberRows.filter((member) => member.leagueId === league.id),
       names,
-      weekRows.filter((week) => week.season_id === league.season_id),
-    )));
-    for (const archive of built) archives.set(archive.leagueId, archive);
+      weekRows,
+    ))));
   }
 
   return {
+    chosen,
+    search,
+    page,
+    more: listed.more,
     seasons: seasonRows.map((season) => ({
       seasonId: season.id as string,
       seasonCode: season.code as string,
-      leagues: leagueRows
-        .filter((league) => league.season_id === season.id)
-        .flatMap((league) => archives.get(league.id) ?? [])
-        .sort((left, right) => left.leagueName.localeCompare(right.leagueName, "it")),
+      leagues: season.id === chosen ? archives : [],
     })),
   };
 }

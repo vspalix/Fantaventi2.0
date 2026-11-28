@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { EmptyState } from "@/components/EmptyState";
+import { useShown } from "@/components/ShowMore";
 import type { LiveCenter } from "@/lib/server/live-center";
 import { readableError } from "@/lib/feedback";
 
@@ -38,7 +39,9 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
     role,
     players: (live?.mine?.starters ?? []).filter((player) => player.role === role).sort((left, right) => ROLE_ROW[left.role] - ROLE_ROW[right.role]),
   })).filter((row) => row.players.length > 0);
-  const maxBar = Math.max(1, ...(live?.table ?? []).map((row) => row.points));
+  const maxBar = (live?.table ?? []).reduce((max, row) => Math.max(max, row.points), 1);
+  const table = useShown(live?.table ?? [], 50);
+  const events = useShown(live?.events ?? [], 50, "altri");
 
   return (
     <div className="stack">
@@ -96,23 +99,25 @@ export function MatchCenter({ leagueId }: { leagueId: string }) {
       ) : null}
       <section className="card stack">
         <h2>{live?.mode === "head_to_head" ? "Classifica live" : live?.mode === "knockout" ? "Coppa, fuori dalla classifica" : "Proiezione classifica"}</h2>
-        {(live?.table ?? []).map((row) => (
-          <div className="bar-row" key={row.teamName}>
+        {table.shown.map((row, index) => (
+          <div className="bar-row" key={`${row.teamName}-${index}`}>
             <span>{row.teamName}</span>
             <span className="bar"><span style={{ width: `${Math.max(8, (row.points / maxBar) * 100)}%` }} /></span>
             <strong>{row.points.toLocaleString("it-IT")}</strong>
           </div>
         ))}
+        {table.more}
       </section>
       <section className="card stack">
         <h2>Eventi dei titolari</h2>
         {(live?.events.length ?? 0) === 0 ? <p>Nessun gol, bonus o cartellino pubblicato finora.</p> : (
           <ol className="event-feed">
-            {live?.events.map((event, index) => (
+            {events.shown.map((event, index) => (
               <li key={`${event.playerName}-${event.label}-${index}`}>{event.playerName} · {event.teamName} · {event.label}</li>
             ))}
           </ol>
         )}
+        {events.more}
       </section>
     </div>
   );

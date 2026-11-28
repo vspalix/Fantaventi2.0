@@ -11,10 +11,21 @@ type Relation = { table: string; kind: "many" | "one"; local: string; foreign: s
 
 const RELATIONS: Record<string, Record<string, Relation>> = {
   lineups: { lineup_slots: { table: "lineup_slots", kind: "many", local: "id", foreign: "lineup_id" } },
-  seasons: { rulesets: { table: "rulesets", kind: "one", local: "ruleset_id", foreign: "id" } },
+  seasons: {
+    rulesets: { table: "rulesets", kind: "one", local: "ruleset_id", foreign: "id" },
+    competitions: { table: "competitions", kind: "one", local: "competition_id", foreign: "id" },
+  },
+  competitions: { competition_translations: { table: "competition_translations", kind: "many", local: "id", foreign: "competition_id" } },
+  player_registrations: {
+    players: { table: "players", kind: "one", local: "player_id", foreign: "id" },
+    clubs: { table: "clubs", kind: "one", local: "club_id", foreign: "id" },
+  },
   clubs: { club_translations: { table: "club_translations", kind: "many", local: "id", foreign: "club_id" } },
   season_clubs: { clubs: { table: "clubs", kind: "one", local: "club_id", foreign: "id" } },
-  private_league_members: { fantasy_teams: { table: "fantasy_teams", kind: "one", local: "fantasy_team_id", foreign: "id" } },
+  private_league_members: {
+    fantasy_teams: { table: "fantasy_teams", kind: "one", local: "fantasy_team_id", foreign: "id" },
+    private_leagues: { table: "private_leagues", kind: "one", local: "private_league_id", foreign: "id" },
+  },
 };
 
 /** Come il database vero: una lettura restituisce al massimo 1000 righe e taglia il resto senza errori. */
@@ -26,6 +37,7 @@ const MAX_URL = 16 * 1024;
 const UNIQUE: Record<string, string[][]> = {
   lineups: [["id"], ["fantasy_team_id", "gameweek_id"]],
   team_gameweek_scores: [["fantasy_team_id", "gameweek_id"]],
+  engagement_notices: [["dedupe_key"]],
 };
 
 export type Call = { method: string; table: string; query: string };
@@ -62,6 +74,12 @@ function listSet(raw: string) {
   return lastList.values;
 }
 
+/** Il modello di `like`: `%` (o `*`) vale per qualunque testo, `_` per un carattere. */
+function pattern(raw: string, flags: string) {
+  const source = raw.replace(/[.+?^$\{}()|[\]\\]/g, "\\$&").replace(/[%*]/g, ".*").replace(/_/g, ".");
+  return new RegExp(`^${source}$`, flags);
+}
+
 /** Numeri come numeri; il resto, date comprese, come testo. */
 function order(value: unknown, raw: string) {
   const left = Number(value);
@@ -74,13 +92,17 @@ function matches(row: Row, column: string, filter: string) {
   const dot = filter.indexOf(".");
   const op = filter.slice(0, dot);
   const raw = filter.slice(dot + 1);
-  const value = row[column];
+  // `settings->>visibility`: una voce dentro una colonna JSON, letta come testo.
+  const [base, key] = column.split("->>");
+  const value = key === undefined ? row[column] : (row[base] as Record<string, unknown> | null | undefined)?.[key];
   const text = value === null || value === undefined ? null : String(value);
   switch (op) {
     case "eq": return text === raw;
     case "neq": return text !== raw;
     case "is": return raw === "null" ? value == null : text === raw;
     case "in": return text !== null && listSet(raw).has(text);
+    case "like": return text !== null && pattern(raw, "").test(text);
+    case "ilike": return text !== null && pattern(raw, "i").test(text);
     case "lt": return value != null && order(value, raw) < 0;
     case "lte": return value != null && order(value, raw) <= 0;
     case "gt": return value != null && order(value, raw) > 0;
@@ -92,10 +114,39 @@ function matches(row: Row, column: string, filter: string) {
 export class FakeSupabase {
   readonly tables: Tables;
   readonly calls: Call[] = [];
+  /** Byte di risposta mandati: quanto traffico farebbe il database vero. */
+  sent = 0;
   private server: Server | null = null;
+  private readonly indexed: boolean;
+  /** Per le prove di carico: righe raggruppate per valore, così non si scorre ogni volta tutta la tabella. */
+  private readonly groups = new Map<string, Map<string, Row[]>>();
 
-  constructor(tables: Tables) {
+  /** `indexed` solo se le tabelle si cambiano attraverso le richieste, non a mano durante la prova. */
+  constructor(tables: Tables, options: { indexed?: boolean } = {}) {
     this.tables = tables;
+    this.indexed = Boolean(options.indexed);
+  }
+
+  private grouped(table: string, column: string) {
+    const name = `${table}.${column}`;
+    let found = this.groups.get(name);
+    if (!found) {
+      found = new Map();
+      for (const row of this.tables[table] ?? []) {
+        const key = String(row[column]);
+        const list = found.get(key);
+        if (list) list.push(row);
+        else found.set(key, [row]);
+      }
+      this.groups.set(name, found);
+    }
+    return found;
+  }
+
+  private forget(table: string) {
+    for (const name of [...this.groups.keys()]) {
+      if (name.startsWith(`${table}.`)) this.groups.delete(name);
+    }
   }
 
   async start() {
@@ -106,7 +157,9 @@ export class FakeSupabase {
           "content-type": "application/json",
           ...(count === undefined ? {} : { "content-range": `*/${count}` }),
         });
-        response.end(body === undefined ? "" : JSON.stringify(body));
+        const text = body === undefined ? "" : JSON.stringify(body);
+        this.sent += Buffer.byteLength(text);
+        response.end(text);
       });
     });
     await new Promise<void>((resolve) => this.server!.listen(0, "127.0.0.1", resolve));
@@ -130,7 +183,9 @@ export class FakeSupabase {
         if (embed) {
           const relation = RELATIONS[table]?.[embed[1]];
           if (!relation) throw new Error(`Collegamento non previsto: ${table}.${embed[1]}`);
-          const linked = (this.tables[relation.table] ?? []).filter((item) => item[relation.foreign] === row[relation.local]);
+          const linked = this.indexed
+            ? this.grouped(relation.table, relation.foreign).get(String(row[relation.local])) ?? []
+            : (this.tables[relation.table] ?? []).filter((item) => item[relation.foreign] === row[relation.local]);
           const shaped = this.select(relation.table, linked, embed[2]);
           out[embed[1]] = relation.kind === "many" ? shaped : shaped[0] ?? null;
           continue;
@@ -143,18 +198,33 @@ export class FakeSupabase {
   }
 
   private filtered(table: string, params: URLSearchParams) {
-    let rows = [...(this.tables[table] ?? [])];
-    for (const [key, value] of params) {
-      if (["select", "order", "limit", "offset", "columns", "on_conflict"].includes(key)) continue;
-      rows = rows.filter((row) => matches(row, key, value));
+    const filters = [...params].filter(([key]) => !["select", "order", "limit", "offset", "columns", "on_conflict"].includes(key));
+    let rows: Row[] | null = null;
+    if (this.indexed) {
+      // Si parte dal filtro che lascia meno righe.
+      for (const [key, value] of filters) {
+        if (key.includes("->>") || !/^(eq|in)\./.test(value)) continue;
+        const values = value.startsWith("eq.") ? [value.slice(3)] : [...listSet(value.slice(3))];
+        const groups = this.grouped(table, key);
+        const size = values.reduce((sum, item) => sum + (groups.get(item)?.length ?? 0), 0);
+        if (rows === null || size < rows.length) rows = values.flatMap((item) => groups.get(item) ?? []);
+      }
     }
+    rows ??= [...(this.tables[table] ?? [])];
+    for (const [key, value] of filters) rows = rows.filter((row) => matches(row, key, value));
     return rows;
   }
 
-  private clash(table: string, row: Row, ignore?: Row) {
-    return (UNIQUE[table] ?? []).find((columns) => (this.tables[table] ?? []).some((other) => (
-      other !== ignore && columns.every((column) => other[column] === row[column])
-    )));
+  /** La riga già presente che viola un vincolo di unicità, con le colonne del vincolo. */
+  private clash(table: string, row: Row) {
+    for (const columns of UNIQUE[table] ?? []) {
+      const candidates = this.indexed
+        ? this.grouped(table, columns[0]).get(String(row[columns[0]])) ?? []
+        : this.tables[table] ?? [];
+      const other = candidates.find((item) => columns.every((column) => item[column] === row[column]));
+      if (other) return { columns, other };
+    }
+    return null;
   }
 
   private async handle(request: IncomingMessage): Promise<{ status: number; body?: unknown; count?: number }> {
@@ -202,34 +272,47 @@ export class FakeSupabase {
       if (method === "POST") {
         const incoming = (Array.isArray(payload) ? payload : [payload ?? {}]).map((row) => ({ ...row }));
         const merge = prefer.includes("resolution=merge-duplicates");
+        const ignore = prefer.includes("resolution=ignore-duplicates");
         const saved: Row[] = [];
         for (const row of incoming) {
-          const columns = this.clash(table, row);
-          if (columns && merge) {
-            const target = (this.tables[table] ?? []).find((other) => columns.every((column) => other[column] === row[column]))!;
-            Object.assign(target, row);
-            saved.push(target);
+          const found = this.clash(table, row);
+          if (found && merge) {
+            Object.assign(found.other, row);
+            saved.push(found.other);
             continue;
           }
-          if (columns) {
+          if (found && ignore) continue;
+          if (found) {
             return {
               status: 409,
-              body: { code: "23505", message: `duplicate key value violates unique constraint "${table}_${columns.join("_")}_key"` },
+              body: { code: "23505", message: `duplicate key value violates unique constraint "${table}_${found.columns.join("_")}_key"` },
             };
           }
           this.tables[table].push(row);
           saved.push(row);
+          // I gruppi già costruiti per questa tabella ricevono la riga nuova.
+          for (const [name, groups] of this.groups) {
+            if (!name.startsWith(`${table}.`)) continue;
+            const key = String(row[name.slice(table.length + 1)]);
+            const list = groups.get(key);
+            if (list) list.push(row);
+            else groups.set(key, [row]);
+          }
         }
         return prefer.includes("return=representation") ? respond(saved) : { status: 201 };
       }
       if (method === "PATCH") {
         const rows = this.filtered(table, params);
         for (const row of rows) Object.assign(row, payload);
+        this.forget(table);
         return prefer.includes("return=representation") ? respond(rows) : { status: 204 };
       }
       if (method === "DELETE") {
         const gone = new Set(this.filtered(table, params));
-        this.tables[table] = this.tables[table].filter((row) => !gone.has(row));
+        if (gone.size > 0) {
+          this.tables[table] = this.tables[table].filter((row) => !gone.has(row));
+          this.forget(table);
+        }
         return prefer.includes("return=representation") ? respond([...gone]) : { status: 204 };
       }
       return { status: 405, body: { message: "Metodo non previsto" } };

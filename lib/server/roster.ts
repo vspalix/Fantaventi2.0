@@ -7,6 +7,8 @@ import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { MATCH_CLOSE_MS } from "@/lib/server/match-window";
 import { ensureFantasyTeam, ensureProfile, getCurrentSeason, teamInLeague } from "@/lib/server/catalog";
 import { ensureLeagueTeam, listLeaguesForUser } from "@/lib/server/leagues";
+import { leagueTeamIds } from "@/lib/server/league-members";
+import { readAllChunks } from "@/lib/server/read-all";
 import type { RosterMarket } from "@/lib/types";
 
 const MATCH_WINDOW_MS = MATCH_CLOSE_MS;
@@ -358,22 +360,19 @@ async function assertExclusiveRosters(
 ) {
   for (const league of leagues) {
     if (!league.rules.exclusiveRosters) continue;
-    const members = await admin
-      .from("private_league_members")
-      .select("fantasy_team_id")
-      .eq("private_league_id", league.id);
-    if (members.error) throw new Error(members.error.message);
-    const otherIds = (members.data ?? [])
-      .map((row) => row.fantasy_team_id as string)
-      .filter((id) => id !== teamId);
+    const otherIds = (await leagueTeamIds(admin, league.id)).filter((id) => id !== teamId);
     if (otherIds.length === 0) continue;
-    const stints = await admin
+    // Solo i propri calciatori: bastano per sapere se qualcuno li ha già, anche con tantissime squadre.
+    const stints = await readAllChunks(otherIds, (ids, from, to) => admin
       .from("roster_stints")
       .select("player_id")
-      .in("fantasy_team_id", otherIds)
-      .is("active_until_gameweek", null);
+      .in("fantasy_team_id", ids)
+      .in("player_id", playerIds)
+      .is("active_until_gameweek", null)
+      .order("id")
+      .range(from, to));
     if (stints.error) throw new Error(stints.error.message);
-    const clash = sharedPlayerIds(playerIds, [(stints.data ?? []).map((row) => row.player_id as string)]);
+    const clash = sharedPlayerIds(playerIds, [stints.data.map((row) => row.player_id as string)]);
     if (clash.length > 0) {
       throw httpError("In questa lega le rose sono esclusive: un calciatore non può stare in due squadre.", 409);
     }

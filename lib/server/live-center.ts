@@ -7,6 +7,7 @@ import { fantasyPointsForLeague, leagueEntries, waitingEntries } from "@/lib/ser
 import { definitionForLeague } from "@/lib/server/league-settings";
 import { previewProvisional } from "@/lib/server/live-score";
 import { reportError } from "@/lib/server/error-report";
+import { readAllChunks } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { LeagueDetail } from "@/lib/types";
 import type { PlayerRole } from "@/lib/types";
@@ -57,14 +58,14 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
   const number = Number(liveWeek.number);
   const mode = weekScoreMode(league.rules, number);
   const phase = liveWeek.status === "scheduled" ? "countdown" : "live";
+  const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
   let preview: Awaited<ReturnType<typeof previewProvisional>> | null = null;
   try {
-    preview = await previewProvisional(liveWeek.id as string, now);
+    preview = await previewProvisional(liveWeek.id as string, now, teamIds);
   } catch (error) {
     void reportError("Lega: centro partite, punteggi in diretta", error);
     preview = null;
   }
-  const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
   const names = new Map(league.participants.map((participant) => [participant.fantasyTeamId, participant.teamName]));
   const closed = rows
     .filter((row) => (row.status === "scored" || row.status === "final") && Number(row.number) < number && weekScoreMode(league.rules, Number(row.number)) !== "knockout")
@@ -160,11 +161,14 @@ export async function loadLiveCenter(league: LeagueDetail, userId: string, now =
     .sort((left, right) => right.points - left.points || left.teamName.localeCompare(right.teamName, "it"));
 
   const playerIds = [...new Set(leagueLineups.flatMap((lineup) => lineup.slots.map((slot) => slot.playerId)))];
-  const people = playerIds.length
-    ? await admin.from("players").select("id, full_name").in("id", playerIds)
-    : { data: [], error: null };
+  const people = await readAllChunks(playerIds, (ids, from, to) => admin
+    .from("players")
+    .select("id, full_name")
+    .in("id", ids)
+    .order("id")
+    .range(from, to));
   if (people.error) throw new Error(people.error.message);
-  const playerName = new Map((people.data ?? []).map((row) => [row.id as string, row.full_name as string]));
+  const playerName = new Map(people.data.map((row) => [row.id as string, row.full_name as string]));
 
   const viewerId = league.participants.find((participant) => participant.userId === userId)?.fantasyTeamId
     ?? leagueLineups[0]?.fantasyTeamId;

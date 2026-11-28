@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
 export type PlatformUserRow = {
@@ -31,24 +32,27 @@ async function quietDelete(admin: SupabaseClient, table: string, column: string,
 export async function listPlatformUsers(): Promise<PlatformUserRow[]> {
   const admin = createAdminSupabase();
   const authUsers: { id: string; email?: string; created_at?: string }[] = [];
-  for (let page = 1; page <= 20; page += 1) {
+  // Tutte le pagine; il limite è solo un fermo di sicurezza (200.000 persone).
+  for (let page = 1; page <= 1000; page += 1) {
     const listed = await admin.auth.admin.listUsers({ page, perPage: 200 });
     if (listed.error) throw new Error(listed.error.message);
     authUsers.push(...listed.data.users);
     if (listed.data.users.length < 200) break;
   }
 
-  const profiles = await admin
+  const profiles = await readAllRows((from, to) => admin
     .from("profiles")
-    .select("id, email, first_name, last_name, phone, display_name, created_at, must_reset_password");
+    .select("id, email, first_name, last_name, phone, display_name, created_at, must_reset_password")
+    .order("id")
+    .range(from, to));
   const roleById = new Map<string, string>();
   let roleKnown = true;
-  const roles = await admin.from("profiles").select("id, platform_role");
+  const roles = await readAllRows((from, to) => admin.from("profiles").select("id, platform_role").order("id").range(from, to));
   if (roles.error) {
     if (missing(roles.error.message)) roleKnown = false;
     else throw new Error(roles.error.message);
   } else {
-    for (const row of roles.data ?? []) roleById.set(row.id as string, String(row.platform_role ?? "member"));
+    for (const row of roles.data) roleById.set(row.id as string, String(row.platform_role ?? "member"));
   }
 
   const byId = new Map<string, {
@@ -61,7 +65,7 @@ export async function listPlatformUsers(): Promise<PlatformUserRow[]> {
     must_reset_password?: boolean | null;
   }>();
   if (!profiles.error) {
-    for (const row of profiles.data ?? []) byId.set(row.id as string, row);
+    for (const row of profiles.data) byId.set(row.id as string, row);
   } else if (!missing(profiles.error.message)) {
     throw new Error(profiles.error.message);
   }

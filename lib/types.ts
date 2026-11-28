@@ -127,6 +127,8 @@ export type SavedLineup = { lineup: LineupPick; savedAt: string | null };
 export type ScoringChoice = { fromMatchday: number; changed: string[] };
 
 export type OpponentLineup = {
+  /** Leghe grandi: titolari, panchina e voti si chiedono a parte, una squadra alla volta. */
+  deferred?: boolean;
   fantasyTeamId: string;
   teamName: string;
   displayName: string;
@@ -258,6 +260,8 @@ export type LeagueHubData = {
   lineupOrigin: LineupOrigin;
   carriedFromMatchday: number | null;
   opponents: OpponentLineup[];
+  /** Solo quando le formazioni sono a richiesta: vero se nessun titolare ha ancora un voto. */
+  awaiting?: boolean;
   squads: LeagueSquad[];
   partial: PartialStanding[];
   liveSheet: LiveLineupSheet | null;

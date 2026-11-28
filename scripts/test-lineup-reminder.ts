@@ -93,10 +93,10 @@ function fakeDeps(state: World, clock: { now: number }): ReminderDeps {
     upcomingWeeks: async (now, until) => state.weeks.filter((week) => week.deadlineAt > now && week.deadlineAt <= until),
     blocked: async () => state.blocked,
     pendingTeams: async () => state.teams.filter((team) => !state.filed.has(team.teamId)),
-    claim: async (key) => {
-      if (state.claimed.has(key)) return false;
-      state.claimed.add(key);
-      return true;
+    claim: async (keys) => {
+      const free = keys.filter((key) => !state.claimed.has(key));
+      for (const key of free) state.claimed.add(key);
+      return new Set(free);
     },
     send: async (userIds, payload, expiresAt) => {
       state.sends.push({ at: clock.now, userIds, payload, expiresAt });
@@ -358,7 +358,8 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
   private orderBy: { column: string; ascending: boolean } | null = null;
   private max: number | null = null;
   private single = false;
-  private action: "select" | "insert" | "update" | "delete" = "select";
+  private action: "select" | "insert" | "upsert" | "update" | "delete" = "select";
+  private offset = 0;
   private payload: Row[] = [];
   private patch: Row = {};
 
@@ -366,6 +367,9 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
 
   select() { return this; }
   insert(rows: Row | Row[]) { this.action = "insert"; this.payload = Array.isArray(rows) ? rows : [rows]; return this; }
+  /** Solo come lo usa il promemoria: inserisce le righe nuove e restituisce quelle. */
+  upsert(rows: Row[]) { this.action = "upsert"; this.payload = rows; return this; }
+  range(from: number, to: number) { this.offset = from; this.max = to - from + 1; return this; }
   update(patch: Row) { this.action = "update"; this.patch = patch; return this; }
   delete() { this.action = "delete"; return this; }
   eq(column: string, value: unknown) { this.filters.push((row) => row[column] === value); return this; }
@@ -392,6 +396,12 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
       rows.push(...this.payload.map((row) => ({ ...row })));
       return { data: this.single ? this.payload[0] : this.payload, error: null };
     }
+    if (this.action === "upsert") {
+      const key = this.db.unique[this.table];
+      const fresh = this.payload.filter((row) => !rows.some((existing) => existing[key] === row[key]));
+      rows.push(...fresh.map((row) => ({ ...row })));
+      return { data: fresh, error: null };
+    }
     let found = rows.filter((row) => this.filters.every((filter) => filter(row)));
     if (this.action === "update") {
       for (const row of found) Object.assign(row, this.patch);
@@ -403,7 +413,7 @@ class FakeQuery implements PromiseLike<{ data: unknown; error: { message: string
       const { column, ascending } = this.orderBy;
       found = [...found].sort((left, right) => (comparable(left[column]) > comparable(right[column]) ? 1 : -1) * (ascending ? 1 : -1));
     }
-    if (this.max !== null) found = found.slice(0, this.max);
+    if (this.max !== null) found = found.slice(this.offset, this.offset + this.max);
     return { data: this.single ? found[0] ?? null : found, error: null };
   }
 
@@ -521,7 +531,7 @@ async function databaseCases(): Promise<Case[]> {
   const writes = db.calls.filter((call) => !call.startsWith("select"));
   cases.push({
     name: "Scrive solo in engagement_notices",
-    pass: writes.every((call) => call === "insert engagement_notices"),
+    pass: writes.length > 0 && writes.every((call) => call === "upsert engagement_notices"),
     detail: writes.join(", "),
   });
   return cases;

@@ -5,18 +5,25 @@ import { createLeague, listLeaguesForUser, listPublicLeagues, seasonCalendar } f
 import { requireSessionUser } from "@/lib/server/session";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     assertServiceEnv();
     const user = await requireSessionUser();
+    const params = new URL(request.url).searchParams;
+    const wanted = { search: params.get("q") ?? "", offset: Number(params.get("offset") ?? 0) };
+    // Cercando o sfogliando le leghe pubbliche non serve rileggere il resto.
+    if (params.has("q") || params.has("offset")) {
+      const page = await listPublicLeagues(user.id, undefined, wanted);
+      return NextResponse.json({ publicLeagues: page.leagues, publicNext: page.next });
+    }
     const own = listLeaguesForUser(user.id);
     const admin = createAdminSupabase();
-    const [leagues, publicLeagues, calendar] = await Promise.all([
+    const [leagues, page, calendar] = await Promise.all([
       own,
       listPublicLeagues(user.id, own),
       getCurrentSeason(admin).then((season) => seasonCalendar(admin, season.id)),
     ]);
-    return NextResponse.json({ leagues, publicLeagues, calendar });
+    return NextResponse.json({ leagues, publicLeagues: page.leagues, publicNext: page.next, calendar });
   } catch (error) {
     return apiError("API /api/leagues (GET)", error);
   }

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PagedTable } from "@/components/ShowMore";
 import { checkAdminPage } from "@/components/admin/AdminGate";
 import { ScopeChip } from "@/components/admin/AdminShell";
 import { ReadVotesNow } from "@/components/admin/ReadVotesNow";
@@ -170,23 +171,22 @@ export default async function AdminOverviewPage() {
                 </ul>
               )
             ) : data.leagues.length === 0 ? <p className="sa-muted">Nessuna lega in questa stagione.</p> : (
-              <div className="sa-table-wrap">
-                <table className="sa-table">
-                  <thead><tr><th scope="col">Lega</th><th scope="col" className="sa-num">Consegnate</th><th scope="col" className="sa-num">Mancano</th></tr></thead>
-                  <tbody>
-                    {data.leagues.map((league) => {
-                      const missing = Math.max(0, league.teams - league.filed);
-                      return (
-                        <tr key={league.id}>
-                          <td>{league.name}{league.sandbox ? <span className="sa-muted sa-small"> · di prova</span> : null}</td>
-                          <td className="sa-num">{league.filed} / {league.teams}</td>
-                          <td className={`sa-num ${missing > 0 ? "sa-bad" : "sa-ok"}`}>{missing}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+              <PagedTable
+                page={10}
+                wrapClassName="sa-table-wrap"
+                className="sa-table"
+                head={<thead><tr><th scope="col">Lega</th><th scope="col" className="sa-num">Consegnate</th><th scope="col" className="sa-num">Mancano</th></tr></thead>}
+                rows={data.leagues.map((league) => {
+                  const missing = Math.max(0, league.teams - league.filed);
+                  return (
+                    <tr key={league.id}>
+                      <td>{league.name}{league.sandbox ? <span className="sa-muted sa-small"> · di prova</span> : null}</td>
+                      <td className="sa-num">{league.filed} / {league.teams}</td>
+                      <td className={`sa-num ${missing > 0 ? "sa-bad" : "sa-ok"}`}>{missing}</td>
+                    </tr>
+                  );
+                })}
+              />
             )}
             <Link href="/admin/formazioni">{selected ? "Tutte le squadre della lega" : "Vedi chi manca"}</Link>
           </section>

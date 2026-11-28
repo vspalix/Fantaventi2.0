@@ -10,6 +10,7 @@ import { changedScoring, nextScoringHistory, scoringLabel } from "@/lib/scoring-
 import type { LeagueDetail, LeagueSummary, RosterImportSource, ScoringChoice } from "@/lib/types";
 import { createDedicatedTeam, ensureProfile, getCurrentSeason, listSeasonTeams, teamInLeague } from "@/lib/server/catalog";
 import { readAllChunks, readAllRows } from "@/lib/server/read-all";
+import { leagueTeamIds } from "@/lib/server/league-members";
 import { rosterAppliesFrom } from "@/lib/server/gameweek-cycle";
 import { missingSandboxColumn } from "@/lib/server/sandbox-flag";
 
@@ -496,18 +497,18 @@ async function rosterToImport(admin: ReturnType<typeof createAdminSupabase>, use
   if (playerIds.length === 0) throw httpError("Quella rosa non ha calciatori da portare.", 409);
   const settings = await readLeagueSettings(admin, targetLeagueId);
   if (settings.ready && settings.rules.exclusiveRosters) {
-    const members = await admin.from("private_league_members").select("fantasy_team_id").eq("private_league_id", targetLeagueId);
-    if (members.error) throw new Error(members.error.message);
-    const otherIds = (members.data ?? []).map((row) => row.fantasy_team_id as string);
+    const otherIds = await leagueTeamIds(admin, targetLeagueId);
     if (otherIds.length > 0) {
-      const taken = await admin
+      const taken = await readAllChunks(otherIds, (ids, from, to) => admin
         .from("roster_stints")
         .select("player_id")
-        .in("fantasy_team_id", otherIds)
-        .is("active_until_gameweek", null);
+        .in("fantasy_team_id", ids)
+        .in("player_id", playerIds)
+        .is("active_until_gameweek", null)
+        .order("id")
+        .range(from, to));
       if (taken.error) throw new Error(taken.error.message);
-      const owned = new Set((taken.data ?? []).map((row) => row.player_id as string));
-      if (playerIds.some((playerId) => owned.has(playerId))) {
+      if (taken.data.length > 0) {
         throw httpError("In questa lega le rose sono esclusive e alcuni calciatori sono già in un'altra squadra. Puoi entrare con una rosa vuota.", 409);
       }
     }
@@ -686,36 +687,56 @@ async function assertCanJoin(
   if (started) throw httpError("Questa lega è a numero chiuso ed è già iniziata: non accetta nuovi ingressi.", 409);
 }
 
-/** `own`: le leghe dell'utente, se chi chiama le sta già leggendo (evita di calcolarle due volte). */
-export async function listPublicLeagues(userId: string, own?: Promise<LeagueSummary[]>): Promise<LeagueSummary[]> {
+/** Quante leghe pubbliche si mostrano per volta. */
+export const PUBLIC_LEAGUES_PAGE = 20;
+
+/**
+ * Le leghe pubbliche a cui non si è iscritti, una pagina alla volta e cercabili per nome.
+ * `own`: le leghe dell'utente, se chi chiama le sta già leggendo (evita di calcolarle due volte).
+ */
+export async function listPublicLeagues(
+  userId: string,
+  own?: Promise<LeagueSummary[]>,
+  options: { search?: string; offset?: number } = {},
+): Promise<{ leagues: LeagueSummary[]; next: number | null }> {
   const admin = createAdminSupabase();
   const season = await getCurrentSeason(admin);
-  const [extended, joined] = await Promise.all([
-    admin
-      .from("private_leagues")
-      .select("id, name, join_code, settings")
-      .eq("season_id", season.id),
+  const offset = Math.max(0, Math.trunc(options.offset ?? 0) || 0);
+  // I caratteri speciali di `like` cercati per quello che sono.
+  const search = (options.search ?? "").trim().slice(0, 40).replace(/[\\%_*]/g, "\\$&");
+  let query = admin
+    .from("private_leagues")
+    .select("id, name, join_code, settings")
+    .eq("season_id", season.id)
+    .eq("settings->>visibility", "public");
+  if (search) query = query.ilike("name", `%${search}%`);
+  const [found, joined] = await Promise.all([
+    // Una riga in più dice se c'è un'altra pagina.
+    query.order("name").order("id").range(offset, offset + PUBLIC_LEAGUES_PAGE),
     own ?? listLeaguesForUser(userId),
   ]);
-  if (extended.error) {
-    if (/settings/i.test(extended.error.message)) return [];
-    throw new Error(extended.error.message);
+  if (found.error) {
+    if (/settings/i.test(found.error.message)) return { leagues: [], next: null };
+    throw new Error(found.error.message);
   }
   const mine = new Set(joined.map((league) => league.id));
-  return (extended.data ?? []).flatMap((row) => {
-    const rules = parseLeagueRules(row.settings);
-    if (rules.visibility !== "public" || mine.has(row.id as string)) return [];
-    return [{
-      id: row.id as string,
-      name: row.name as string,
-      joinCode: row.join_code as string,
-      seasonCode: season.code,
-      isOwner: false,
-      isManager: false,
-      teamId: null,
-      teamName: "",
-    }];
-  });
+  const rows = found.data ?? [];
+  return {
+    next: rows.length > PUBLIC_LEAGUES_PAGE ? offset + PUBLIC_LEAGUES_PAGE : null,
+    leagues: rows.slice(0, PUBLIC_LEAGUES_PAGE).flatMap((row) => {
+      if (parseLeagueRules(row.settings).visibility !== "public" || mine.has(row.id as string)) return [];
+      return [{
+        id: row.id as string,
+        name: row.name as string,
+        joinCode: row.join_code as string,
+        seasonCode: season.code,
+        isOwner: false,
+        isManager: false,
+        teamId: null,
+        teamName: "",
+      }];
+    }),
+  };
 }
 
 export async function joinPublicLeague(

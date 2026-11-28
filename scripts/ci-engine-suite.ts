@@ -150,11 +150,15 @@ async function main() {
   console.log(`Leghe grandi: ${largeLeague.failures.length === 0 ? "PASSED" : "FAILED"} ${largeLeague.passed}/${largeLeague.total}`);
   for (const failure of largeLeague.failures) console.log(`- ${failure}`);
 
-  const total = largeLeague.total + hallOfFame.total + report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + titles.total + history.total + rivals.total;
-  const passed = largeLeague.passed + hallOfFame.passed + report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + titles.passed + history.passed + rivals.passed;
+  const largeSite = runIsolated("test-large-site.ts");
+  console.log(`Sito grande: ${largeSite.failures.length === 0 ? "PASSED" : "FAILED"} ${largeSite.passed}/${largeSite.total}`);
+  for (const failure of largeSite.failures) console.log(`- ${failure}`);
+
+  const total = largeSite.total + largeLeague.total + hallOfFame.total + report.checks.length + lifecycle.total + substitutions.total + rules.total + gaps.total + schedule.total + errors.total + lineups.total + lineupSave.total + reminders.total + leagueStart.total + office.total + announcements.total + homeRound.total + outbound.total + titles.total + history.total + rivals.total;
+  const passed = largeSite.passed + largeLeague.passed + hallOfFame.passed + report.passed + lifecycle.passedCount + substitutions.passed + rules.passed + gaps.passed + schedule.passed + errors.passed + lineups.passed + lineupSave.passed + reminders.passed + leagueStart.passed + office.passed + announcements.passed + homeRound.passed + outbound.passed + titles.passed + history.passed + rivals.passed;
   console.log(`Verifica complessiva: ${passed}/${total}`);
 
-  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || titles.failures.length > 0 || history.failures.length > 0 || hallOfFame.failures.length > 0 || largeLeague.failures.length > 0 || rivals.failures.length > 0 || total < 100) process.exit(1);
+  if (broken.length > 0 || !lifecycle.passed || substitutions.failures.length > 0 || rules.failures.length > 0 || gaps.failures.length > 0 || schedule.failures.length > 0 || errors.failures.length > 0 || lineups.failures.length > 0 || lineupSave.failures.length > 0 || reminders.failures.length > 0 || leagueStart.failures.length > 0 || office.failures.length > 0 || announcements.failures.length > 0 || homeRound.failures.length > 0 || outbound.failures.length > 0 || titles.failures.length > 0 || history.failures.length > 0 || hallOfFame.failures.length > 0 || largeLeague.failures.length > 0 || largeSite.failures.length > 0 || rivals.failures.length > 0 || total < 100) process.exit(1);
 }
 
 /**

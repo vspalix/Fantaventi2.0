@@ -124,7 +124,7 @@ export async function runLargeLeagueChecks() {
   for (const name of ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "CRON_SECRET"]) delete process.env[name];
 
   try {
-    const { standingsFor, loadCalendarWeek, loadLeagueRosters } = await import("../lib/server/league-hub");
+    const { standingsFor, loadCalendarWeek, loadLeagueRosters, loadOpponentLineup } = await import("../lib/server/league-hub");
     const { loadCheckpointHistory } = await import("../lib/server/checkpoint-history");
     const { getLeagueDetail } = await import("../lib/server/leagues");
     const { parseLeagueRules } = await import("../lib/league-rules");
@@ -215,17 +215,33 @@ export async function runLargeLeagueChecks() {
         return row && row.points === expected && row.skipped === (index < 600 ? 0 : 1) ? [] : [`${row?.teamName}: ${row?.points} (attesi ${expected})`];
       }));
     });
-    await attempt("Calendario: formazioni complete e punti di giornata di tutte le squadre", async () => {
-      const week = await loadCalendarWeek(owner, leagueId(CROWD), weekId(CROWD, 2));
+    /** La formazione ha il suo titolare e il suo panchinaro. */
+    const complete = (opponent: { slots: { fullName: string }[]; bench: { fullName: string }[] } | undefined, index: number) => Boolean(
+      opponent?.slots.length === 1 && opponent.bench.length === 1
+      && opponent.slots[0].fullName === `Calciatore ${index}-0` && opponent.bench[0].fullName === `Calciatore ${index}-1`,
+    );
+    // L'ultima squadra che ha schierato guarda la lega: le sue righe sono oltre le prime mille.
+    await attempt("Calendario: la propria formazione completa e punti di tutte le squadre", async () => {
+      const week = await loadCalendarWeek(userId(CROWD, 599), leagueId(CROWD), weekId(CROWD, 2));
+      const mine = week.opponents.find((opponent) => opponent.isMine);
+      if (!complete(mine, 599)) return `la propria: ${mine?.slots.length} titolari, ${mine?.bench.length} in panchina`;
       const byTeam = new Map(week.opponents.map((opponent) => [opponent.fantasyTeamId, opponent]));
       const points = new Map(week.partial.map((row) => [row.fantasyTeamId, row.points]));
-      return wrong(indexes(600).flatMap((index) => {
-        const opponent = byTeam.get(teamId(CROWD, index));
-        const complete = opponent?.slots.length === 1 && opponent.bench.length === 1
-          && opponent.slots[0].fullName === `Calciatore ${index}-0` && opponent.bench[0].fullName === `Calciatore ${index}-1`;
-        return complete && points.get(teamId(CROWD, index)) === voteOf(index)
-          ? [] : [`${opponent?.teamName}: ${opponent?.slots.length} titolari, ${opponent?.bench.length} in panchina, ${points.get(teamId(CROWD, index))} punti`];
-      }));
+      return wrong(indexes(600).flatMap((index) => (
+        byTeam.get(teamId(CROWD, index))?.filed && points.get(teamId(CROWD, index)) === voteOf(index)
+          ? [] : [`Squadra ${index}: ${points.get(teamId(CROWD, index))} punti`]
+      )));
+    });
+    await attempt("Lega grande: la pagina non porta le formazioni degli altri", async () => {
+      const week = await loadCalendarWeek(owner, leagueId(CROWD), weekId(CROWD, 2));
+      const heavy = week.opponents.filter((opponent) => !opponent.isMine && (!opponent.deferred || opponent.slots.length > 0 || opponent.bench.length > 0));
+      const size = JSON.stringify(week).length;
+      return heavy.length === 0 && size < 1_000_000 ? "" : `${heavy.length} formazioni intere, ${size} caratteri`;
+    });
+    await attempt("Lega grande: ogni formazione si apre a richiesta", async () => {
+      const opened = await Promise.all([1, 599, 700].map((index) => loadOpponentLineup(owner, leagueId(CROWD), weekId(CROWD, 2), teamId(CROWD, index))));
+      return complete(opened[0], 1) && complete(opened[1], 599) && opened[2].filed === false && !opened[0].deferred
+        ? "" : opened.map((opponent) => `${opponent.teamName}: ${opponent.slots.length}+${opponent.bench.length}`).join(", ");
     });
     await attempt("Rose degli avversari: nessun calciatore perso", async () => {
       const players = indexes(1100).flatMap((index) => [0, 1].map((spot) => ({

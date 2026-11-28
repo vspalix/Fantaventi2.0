@@ -13,6 +13,7 @@ import { holeIdsKeepingHeldPlayers, isHeldMatch } from "@/lib/server/held-lineup
 import { playersWithVotesRead } from "@/lib/lineups/votes-read";
 import { isOfficialMatchClosed, isSettledGameweek } from "@/lib/server/match-window";
 import { loadProvisionalVotes, withProvisionalVotes } from "@/lib/server/provisional-votes";
+import { inChunks, readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { createAdminSupabase } from "@/lib/supabase/admin";
 import type { PlayerRole } from "@/lib/types";
 
@@ -44,12 +45,36 @@ type RawSlot = {
   slot_order?: number;
 };
 
+/** Quante squadre insieme nei calcoli: oltre, formazioni e righe da scrivere pesano troppo in memoria. */
+const TEAM_BATCH = 1000;
+/** Righe scritte per richiesta. */
+const WRITE_ROWS = 500;
+
+type LineupRecord = { fantasy_team_id: string; lineup_slots: RawSlot[] | RawSlot | null };
+
+/** Le formazioni di una giornata: di tutte le squadre, o solo di quelle indicate. A pagine in ogni caso. */
+async function lineupRecords(admin: ReturnType<typeof createAdminSupabase>, gameweekId: string, teamIds?: string[]) {
+  const read = (columns: string) => {
+    const base = () => admin.from("lineups").select(columns).eq("gameweek_id", gameweekId);
+    return teamIds
+      ? readAllChunks<LineupRecord>(teamIds, (ids, from, to) => base().in("fantasy_team_id", ids).order("id").range(from, to).returns<LineupRecord[]>())
+      : readAllRows<LineupRecord>((from, to) => base().order("id").range(from, to).returns<LineupRecord[]>());
+  };
+  const extended = await read("fantasy_team_id, lineup_slots(player_id, is_captain, is_vice_captain, is_starter, slot_order)");
+  const rows = extended.error && /is_starter|slot_order/i.test(extended.error.message)
+    ? await read("fantasy_team_id, lineup_slots(player_id, is_captain, is_vice_captain)")
+    : extended;
+  if (rows.error) throw new Error(rows.error.message);
+  return rows.data;
+}
+
 /**
  * `provisional` aggiunge i voti letti agli orari programmati. Il calcolo ufficiale non lo chiede mai.
  * `office` (solo per le schermate) aggiunge, dopo la chiusura, le formazioni d'ufficio che il calcolo
  * registrerà per chi non ha salvato: stesse regole, nessuna scrittura.
+ * `teamIds` limita la lettura a quelle squadre: una schermata di lega non deve leggere tutto il sito.
  */
-async function loadContext(gameweekId: string, options?: { provisional?: boolean; office?: boolean; now?: Date }) {
+async function loadContext(gameweekId: string, options?: { provisional?: boolean; office?: boolean; now?: Date; teamIds?: string[] }) {
   const admin = createAdminSupabase();
   const { data: gameweek, error: gameweekError } = await admin
     .from("gameweeks")
@@ -71,35 +96,28 @@ async function loadContext(gameweekId: string, options?: { provisional?: boolean
   const ruleset = Array.isArray(season.rulesets) ? season.rulesets[0] : season.rulesets;
   const definition = (ruleset?.definition ?? {}) as RulesetDefinition;
 
-  const extended = await admin
-    .from("lineups")
-    .select("fantasy_team_id, lineup_slots(player_id, is_captain, is_vice_captain, is_starter, slot_order)")
-    .eq("gameweek_id", gameweekId);
-  const lineupQuery = extended.error && /is_starter|slot_order/i.test(extended.error.message)
-    ? await admin
-      .from("lineups")
-      .select("fantasy_team_id, lineup_slots(player_id, is_captain, is_vice_captain)")
-      .eq("gameweek_id", gameweekId)
-    : extended;
-  if (lineupQuery.error) throw new Error(lineupQuery.error.message);
-  const lineupRows = lineupQuery.data;
+  const lineupRows = await lineupRecords(admin, gameweekId, options?.teamIds);
 
-  const { data: statRows, error: statError } = await admin
+  const { data: statRows, error: statError } = await readAllRows((from, to) => admin
     .from("player_gameweek_stats")
     .select("player_id, voto, goals, assists, yellow_cards, red_cards, penalties_scored, penalties_missed, penalties_saved, own_goals, goals_conceded")
-    .eq("gameweek_id", gameweekId);
+    .eq("gameweek_id", gameweekId)
+    .order("id")
+    .range(from, to));
   if (statError) throw new Error(statError.message);
 
-  const { data: registrations, error: registrationError } = await admin
+  const { data: registrations, error: registrationError } = await readAllRows((from, to) => admin
     .from("player_registrations")
     .select("player_id, club_id, role, effective_from_gameweek, effective_to_gameweek")
-    .eq("season_id", gameweek.season_id);
+    .eq("season_id", gameweek.season_id)
+    .order("id")
+    .range(from, to));
   if (registrationError) throw new Error(registrationError.message);
 
   const number = gameweek.number as number;
   const roleByPlayer = new Map<string, PlayerRole>();
   const clubByPlayer = new Map<string, string>();
-  for (const row of registrations ?? []) {
+  for (const row of registrations) {
     const from = row.effective_from_gameweek as number;
     const until = row.effective_to_gameweek as number | null;
     if (from > number || (until !== null && until < number)) continue;
@@ -115,11 +133,11 @@ async function loadContext(gameweekId: string, options?: { provisional?: boolean
     role: roleByPlayer.get(slot.player_id),
     benchOrder: slot.is_starter === false ? Number(slot.slot_order ?? 0) : undefined,
   });
-  const lineups: LineupRow[] = (lineupRows ?? []).map((row) => {
-    const raw = row.lineup_slots as RawSlot[] | RawSlot | null;
+  const lineups: LineupRow[] = lineupRows.map((row) => {
+    const raw = row.lineup_slots;
     const slots = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
     return {
-      fantasyTeamId: row.fantasy_team_id as string,
+      fantasyTeamId: row.fantasy_team_id,
       slots: slots.map(toInput),
     };
   });
@@ -127,14 +145,14 @@ async function loadContext(gameweekId: string, options?: { provisional?: boolean
   const closed = gameweek.status === "locked" || (Number.isFinite(closedAt) && closedAt <= (options?.now ?? new Date()).getTime());
   if (options?.office && closed && !isSettledGameweek(String(gameweek.status))) {
     const filed = new Set(lineups.map((lineup) => lineup.fantasyTeamId));
-    for (const [teamId, slots] of await planForgottenLineups(gameweekId)) {
+    for (const [teamId, slots] of await planForgottenLineups(gameweekId, options.teamIds)) {
       if (filed.has(teamId)) continue;
       lineups.push({ fantasyTeamId: teamId, slots: slots.map(toInput), office: true });
     }
   }
 
   const stats = new Map<string, PlayerStat>();
-  for (const row of statRows ?? []) {
+  for (const row of statRows) {
     const playerId = row.player_id as string;
     stats.set(playerId, {
       playerId,
@@ -222,53 +240,70 @@ async function loadContext(gameweekId: string, options?: { provisional?: boolean
   };
 }
 
-async function upsertLiveRow(
+/** Le colonne di una riga parziale già presente, da riscrivere così com'erano. */
+const SCORE_COLUMNS = "fantasy_team_id, gameweek_id, ruleset_id, players_points, captain_modifier, captain_player_id, fair_play, defense_modifier, defense_average, reserve_points, total, is_live";
+
+/** Scrive i parziali a blocchi. Una riga già ufficiale (`is_live` spento) non si tocca. */
+async function upsertLiveRows(
   admin: ReturnType<typeof createAdminSupabase>,
   gameweekId: string,
   rulesetId: string,
-  score: ProvisionalScore,
+  scores: ProvisionalScore[],
 ) {
-  const { data: existing, error: existingError } = await admin
-    .from("team_gameweek_scores")
-    .select("fantasy_team_id, is_live")
-    .eq("gameweek_id", gameweekId)
-    .eq("fantasy_team_id", score.fantasyTeamId)
-    .maybeSingle();
-  if (existingError) throw new Error(schemaHint(existingError.message));
-
-  const live = {
-    provisional_total: score.provisionalTotal,
-    rated_players_count: score.ratedPlayersCount,
-    on_pitch_count: score.onPitchCount,
-    is_live: true,
-  };
-
-  if (existing) {
-    if (existing.is_live === false) return;
-    const { error } = await admin
+  for (const batch of inChunks(scores)) {
+    const found = await admin
       .from("team_gameweek_scores")
-      .update(live)
+      .select(SCORE_COLUMNS)
       .eq("gameweek_id", gameweekId)
-      .eq("fantasy_team_id", score.fantasyTeamId);
+      .in("fantasy_team_id", batch.map((score) => score.fantasyTeamId))
+      .returns<Record<string, unknown>[]>();
+    if (found.error) throw new Error(schemaHint(found.error.message));
+    const existing = new Map((found.data ?? []).map((row) => [row.fantasy_team_id as string, row]));
+    const rows = batch.flatMap((score) => {
+      const current = existing.get(score.fantasyTeamId);
+      if (current && current.is_live === false) return [];
+      const base = current ?? {
+        fantasy_team_id: score.fantasyTeamId,
+        gameweek_id: gameweekId,
+        ruleset_id: rulesetId,
+        players_points: 0,
+        captain_modifier: 0,
+        captain_player_id: null,
+        fair_play: 0,
+        defense_modifier: 0,
+        defense_average: null,
+        reserve_points: 0,
+        total: 0,
+      };
+      return [{
+        ...base,
+        provisional_total: score.provisionalTotal,
+        rated_players_count: score.ratedPlayersCount,
+        on_pitch_count: score.onPitchCount,
+        is_live: true,
+      }];
+    });
+    if (rows.length === 0) continue;
+    const { error } = await admin.from("team_gameweek_scores").upsert(rows, { onConflict: "fantasy_team_id,gameweek_id" });
     if (error) throw new Error(schemaHint(error.message));
-    return;
   }
+}
 
-  const { error } = await admin.from("team_gameweek_scores").insert({
-    fantasy_team_id: score.fantasyTeamId,
-    gameweek_id: gameweekId,
-    ruleset_id: rulesetId,
-    players_points: 0,
-    captain_modifier: 0,
-    captain_player_id: null,
-    fair_play: 0,
-    defense_modifier: 0,
-    defense_average: null,
-    reserve_points: 0,
-    total: 0,
-    ...live,
-  });
-  if (error) throw new Error(schemaHint(error.message));
+/** Le squadre con una formazione nella giornata, divise a gruppi. Senza formazioni, un gruppo vuoto. */
+async function teamBatches(gameweekId: string, onlyTeamIds?: string[]) {
+  let teamIds = onlyTeamIds;
+  if (!teamIds) {
+    const admin = createAdminSupabase();
+    const filed = await readAllRows((from, to) => admin
+      .from("lineups")
+      .select("fantasy_team_id")
+      .eq("gameweek_id", gameweekId)
+      .order("id")
+      .range(from, to));
+    if (filed.error) throw new Error(filed.error.message);
+    teamIds = filed.data.map((row) => row.fantasy_team_id as string);
+  }
+  return teamIds.length > 0 ? inChunks(teamIds, TEAM_BATCH) : [[]];
 }
 
 function liveScoresFor(gameweekId: string, context: Awaited<ReturnType<typeof loadContext>>) {
@@ -278,20 +313,23 @@ function liveScoresFor(gameweekId: string, context: Awaited<ReturnType<typeof lo
 }
 
 export async function calculateProvisionalForTeam(fantasyTeamId: string, gameweekId: string) {
-  const context = await loadContext(gameweekId, { provisional: true });
+  const context = await loadContext(gameweekId, { provisional: true, teamIds: [fantasyTeamId] });
   if (isSettledGameweek(context.gameweek.status)) {
     throw httpError(`La giornata ${context.gameweek.number} è già calcolata: il parziale non la riscrive.`, 409);
   }
   const lineup = context.lineups.find((item) => item.fantasyTeamId === fantasyTeamId);
   if (!lineup) throw httpError("Questa squadra non ha una formazione per la giornata.", 404);
   const score = projectLiveScore(fantasyTeamId, gameweekId, lineup.slots, context.stats, context.definition);
-  await upsertLiveRow(context.admin, gameweekId, context.rulesetId, score);
+  await upsertLiveRows(context.admin, gameweekId, context.rulesetId, [score]);
   return score;
 }
 
-/** Solo lettura, per le schermate: voti provvisori e, dopo la chiusura, formazioni d'ufficio. */
-export async function previewProvisional(gameweekId: string, now = new Date()) {
-  const context = await loadContext(gameweekId, { provisional: true, office: true, now });
+/**
+ * Solo lettura, per le schermate: voti provvisori e, dopo la chiusura, formazioni d'ufficio.
+ * Una schermata passa in `teamIds` le squadre della sua lega.
+ */
+export async function previewProvisional(gameweekId: string, now = new Date(), teamIds?: string[]) {
+  const context = await loadContext(gameweekId, { provisional: true, office: true, now, teamIds });
   return {
     gameweekNumber: Number(context.gameweek.number),
     definition: context.definition,
@@ -311,12 +349,14 @@ export async function refreshProvisionalScores(gameweekId: string) {
   if (isSettledGameweek(String(gate.data.status))) {
     return { gameweekNumber: Number(gate.data.number), teams: 0, skipped: true };
   }
-  const context = await loadContext(gameweekId, { provisional: true });
-  const scores = liveScoresFor(gameweekId, context);
-  for (const score of scores) {
-    await upsertLiveRow(context.admin, gameweekId, context.rulesetId, score);
+  let teams = 0;
+  for (const teamIds of await teamBatches(gameweekId)) {
+    const context = await loadContext(gameweekId, { provisional: true, teamIds });
+    const scores = liveScoresFor(gameweekId, context);
+    await upsertLiveRows(context.admin, gameweekId, context.rulesetId, scores);
+    teams += scores.length;
   }
-  return { gameweekNumber: context.gameweek.number, teams: scores.length, skipped: false };
+  return { gameweekNumber: Number(gate.data.number), teams, skipped: false };
 }
 
 function officialRow(gameweekId: string, rulesetId: string, score: TeamScore) {
@@ -380,35 +420,48 @@ export async function scoreOfficialGameweek(
   }
 
   await fileForgottenLineups(gameweekId, options?.teamIds);
-  const context = await loadContext(gameweekId);
-  const limited = options?.teamIds ? new Set(options.teamIds) : null;
+  let teams = 0;
+  // Se si interrompe a metà la giornata non risulta calcolata: il giro dopo la riscrive tutta.
+  for (const batch of await teamBatches(gameweekId, options?.teamIds)) teams += await scoreTeams(gameweekId, batch);
+  return {
+    gameweekNumber,
+    teams,
+    status,
+    skipped: false,
+    reason: null,
+  };
+}
+
+/** Calcola e registra i punteggi ufficiali di un gruppo di squadre. */
+async function scoreTeams(gameweekId: string, batch: string[]) {
+  const context = await loadContext(gameweekId, { teamIds: batch });
   const lineupSize = context.definition.lineup_size ?? 11;
-  const scores = context.lineups
-    .filter((lineup) => !limited || limited.has(lineup.fantasyTeamId))
-    .map((lineup) => (
-      scoreLineup(
-        lineup.fantasyTeamId,
-        lineup.slots,
-        context.stats,
-        context.definition,
-        holeIdsKeepingHeldPlayers(lineup.slots, context.stats, lineupSize),
-      )
-    ));
-  const teamIds = scores.map((score) => score.fantasyTeamId);
-  if (scores.length > 0) {
+  const scores = context.lineups.map((lineup) => (
+    scoreLineup(
+      lineup.fantasyTeamId,
+      lineup.slots,
+      context.stats,
+      context.definition,
+      holeIdsKeepingHeldPlayers(lineup.slots, context.stats, lineupSize),
+    )
+  ));
+  for (const part of inChunks(scores, WRITE_ROWS)) {
     const { error } = await context.admin
       .from("team_gameweek_scores")
-      .upsert(scores.map((score) => officialRow(gameweekId, context.rulesetId, score)), {
+      .upsert(part.map((score) => officialRow(gameweekId, context.rulesetId, score)), {
         onConflict: "fantasy_team_id,gameweek_id",
       });
     if (error) throw new Error(schemaHint(error.message));
+  }
+  for (const part of inChunks(scores)) {
     const cleared = await context.admin
       .from("lineup_player_scores")
       .delete()
       .eq("gameweek_id", gameweekId)
-      .in("fantasy_team_id", teamIds);
+      .in("fantasy_team_id", part.map((score) => score.fantasyTeamId));
     if (cleared.error) throw new Error(cleared.error.message);
-    const playerRows = scores.flatMap((score) => score.players.map((player) => ({
+    // Le righe nuove subito dopo la cancellazione dello stesso blocco: il vuoto dura pochissimo.
+    const playerRows = part.flatMap((score) => score.players.map((player) => ({
       fantasy_team_id: score.fantasyTeamId,
       gameweek_id: gameweekId,
       player_id: player.playerId,
@@ -419,18 +472,12 @@ export async function scoreOfficialGameweek(
       player_points: player.playerPoints,
       is_effective_captain: player.isEffectiveCaptain,
     })));
-    if (playerRows.length > 0) {
-      const { error: playerError } = await context.admin.from("lineup_player_scores").insert(playerRows);
-      if (playerError) throw new Error(playerError.message);
+    for (const rows of inChunks(playerRows, WRITE_ROWS)) {
+      const { error } = await context.admin.from("lineup_player_scores").insert(rows);
+      if (error) throw new Error(error.message);
     }
   }
-  return {
-    gameweekNumber: context.gameweek.number,
-    teams: scores.length,
-    status: context.gameweek.status,
-    skipped: false,
-    reason: null,
-  };
+  return scores.length;
 }
 
 export function newId() {

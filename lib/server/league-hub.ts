@@ -6,6 +6,7 @@ import { filedPlayerScore, liveFormula, projectLiveScore, type LineupSlotInput }
 import { carryLineup, lineupSaveIssue } from "@/lib/formations";
 import { headToHeadPoints, weekScoreMode, type LeaguePhase, type LeagueRules } from "@/lib/league-rules";
 import { teamWeekPoints } from "@/lib/office-lineup";
+import { awaitingVotes } from "@/lib/lineups/compact-sheet";
 import { entryCredit, entryPolicy } from "@/lib/late-entry";
 import { fantasyPointsForLeague, leagueEntries, waitingEntries, type ScoreParts } from "@/lib/server/league-scores";
 import { readAllChunks } from "@/lib/server/read-all";
@@ -32,6 +33,21 @@ import type {
 } from "@/lib/types";
 
 const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 };
+
+/** Oltre queste squadre la pagina porta solo la propria formazione: le altre si chiedono una alla volta. */
+export const INLINE_FORMATIONS = 100;
+
+/** Nelle leghe grandi toglie dalle formazioni altrui ciò che pesa: titolari, panchina e voti. */
+function deferFormations(opponents: OpponentLineup[]) {
+  if (opponents.length <= INLINE_FORMATIONS) return { opponents, awaiting: undefined };
+  return {
+    // Va calcolato prima di togliere le schede: serve a dire «In attesa dei voti».
+    awaiting: awaitingVotes(opponents.map((opponent) => opponent.sheet)),
+    opponents: opponents.map((opponent) => (opponent.isMine
+      ? opponent
+      : { ...opponent, slots: [], bench: [], sheet: undefined, deferred: true })),
+  };
+}
 
 function teamOf(userId: string, participants: { userId: string; fantasyTeamId: string; teamName: string }[]) {
   const mine = participants.find((participant) => participant.userId === userId);
@@ -217,10 +233,10 @@ export async function loadLeagueHub(
     selected && teamIds.length ? lineupsFor(admin, selected.id, teamIds) : Promise.resolve([] as Awaited<ReturnType<typeof lineupsFor>>),
     standingsFor(admin, league, league.participants, rows, now, inPlay),
     selectedUnderway && selected
-      ? loadPreview(selected.id, league.id)
+      ? loadPreview(selected.id, league.id, teamIds)
       : Promise.resolve(null),
     liveWeek && liveWeek.id !== selected?.id
-      ? loadPreview(liveWeek.id, league.id)
+      ? loadPreview(liveWeek.id, league.id, teamIds)
       : Promise.resolve(null),
     team && focus
       ? admin.from("lineups").select("saved_at").eq("fantasy_team_id", team.id).eq("gameweek_id", focus.id).maybeSingle()
@@ -256,8 +272,9 @@ export async function loadLeagueHub(
     }
   }
 
+  const savedByTeam = new Map(lineupRows.map((item) => [item.fantasy_team_id, item]));
   const opponents: OpponentLineup[] = league.participants.map((participant) => {
-    const saved = lineupRows.find((item) => item.fantasy_team_id === participant.fantasyTeamId);
+    const saved = savedByTeam.get(participant.fantasyTeamId);
     const office = saved ? null : officeRows(participant.fantasyTeamId);
     const row = saved ?? (office ? { fantasy_team_id: participant.fantasyTeamId, lineup_slots: office } : undefined);
     const isMine = participant.fantasyTeamId === team?.id;
@@ -353,6 +370,8 @@ export async function loadLeagueHub(
     ? fixtures
     : selectedFixturesExtra ?? [];
 
+  const formations = deferFormations(opponents);
+
   return {
     league,
     gameweeks: rows.map((gameweek) => ({
@@ -370,7 +389,8 @@ export async function loadLeagueHub(
     lineup,
     lineupOrigin,
     carriedFromMatchday,
-    opponents,
+    opponents: formations.opponents,
+    awaiting: formations.awaiting,
     squads: [],
     partial,
     liveSheet,
@@ -442,6 +462,7 @@ export type CalendarWeek = {
   number: number;
   revealOpponents: boolean;
   opponents: OpponentLineup[];
+  awaiting?: boolean;
   partial: PartialStanding[];
   selectedFixtures: HubFixture[];
 };
@@ -457,7 +478,8 @@ function clubShortOf(translations: { locale?: string; name?: string; short_name?
   return { name: label?.name || code, shortName: label?.short_name || label?.name || code };
 }
 
-export async function loadCalendarWeek(userId: string, leagueId: string, gameweekId: string): Promise<CalendarWeek> {
+/** Le formazioni di una giornata per le squadre indicate, con voti in diretta se la giornata è aperta. */
+async function weekFormations(userId: string, leagueId: string, gameweekId: string, onlyTeamId?: string) {
   const league = await getLeagueDetail(userId, leagueId);
   const admin = createAdminSupabase();
   const week = await admin
@@ -471,16 +493,22 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
   const row = week.data as GameweekRow;
   const locked = CLOSED.has(row.status) || new Date(row.deadline_at).getTime() <= Date.now();
   const team = teamOf(userId, league.participants);
-  const teamIds = league.participants.map((participant) => participant.fantasyTeamId);
+  const participants = onlyTeamId
+    ? league.participants.filter((participant) => participant.fantasyTeamId === onlyTeamId)
+    : league.participants;
+  if (onlyTeamId && participants.length === 0) throw httpError("Questa squadra non è in questa lega.", 404);
+  const teamIds = participants.map((participant) => participant.fantasyTeamId);
   const savedRows = teamIds.length ? await lineupsFor(admin, row.id, teamIds) : [];
   // Giornata chiusa e non ancora calcolata: chi non ha salvato gioca con la formazione d'ufficio.
-  const preview = locked && row.status !== "scored" && row.status !== "final" ? await loadPreview(row.id, league.id) : null;
+  const preview = locked && row.status !== "scored" && row.status !== "final" ? await loadPreview(row.id, league.id, teamIds) : null;
   const officeTeams = new Set<string>();
   const lineupRows = [...savedRows];
+  const wanted = new Set(teamIds);
+  const saved = new Set(lineupRows.map((item) => item.fantasy_team_id));
   for (const lineup of preview?.lineups ?? []) {
-    if (!lineup.office || !teamIds.includes(lineup.fantasyTeamId)) continue;
+    if (!lineup.office || !wanted.has(lineup.fantasyTeamId)) continue;
     officeTeams.add(lineup.fantasyTeamId);
-    lineupRows.push({ fantasy_team_id: lineup.fantasyTeamId, lineup_slots: slotRowsOf(lineup.slots) });
+    if (!saved.has(lineup.fantasyTeamId)) lineupRows.push({ fantasy_team_id: lineup.fantasyTeamId, lineup_slots: slotRowsOf(lineup.slots) });
   }
   const playerIds = [...new Set(lineupRows.flatMap((item) => slotsOf(item).map((slot) => slot.player_id)))];
   const byId = new Map<string, CatalogPlayer>();
@@ -536,8 +564,9 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
       });
     }
   }
-  const opponents: OpponentLineup[] = league.participants.map((participant) => {
-    const lineup = lineupRows.find((item) => item.fantasy_team_id === participant.fantasyTeamId);
+  const lineupByTeam = new Map(lineupRows.map((item) => [item.fantasy_team_id, item]));
+  const opponents: OpponentLineup[] = participants.map((participant) => {
+    const lineup = lineupByTeam.get(participant.fantasyTeamId);
     const isMine = participant.fantasyTeamId === team?.id;
     const revealed = isMine || locked;
     const named = (slot: SlotRow) => {
@@ -567,6 +596,17 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
       bench: source.filter((slot) => slot.is_starter === false).sort((left, right) => (left.slot_order ?? 0) - (right.slot_order ?? 0)).map(named),
     };
   });
+  return { league, admin, row, locked, preview, opponents, teamIds };
+}
+
+/** Una sola formazione, per le leghe grandi: stesse regole di visibilità del calendario. */
+export async function loadOpponentLineup(userId: string, leagueId: string, gameweekId: string, fantasyTeamId: string) {
+  const { opponents } = await weekFormations(userId, leagueId, gameweekId, fantasyTeamId);
+  return opponents[0];
+}
+
+export async function loadCalendarWeek(userId: string, leagueId: string, gameweekId: string): Promise<CalendarWeek> {
+  const { league, admin, row, locked, preview, opponents, teamIds } = await weekFormations(userId, leagueId, gameweekId);
   let counted: Map<string, number> | null = null;
   if (row.status === "scored" || row.status === "final") {
     try {
@@ -592,7 +632,7 @@ export async function loadCalendarWeek(userId: string, leagueId: string, gamewee
     selectedGameweekId: row.id,
     number: row.number,
     revealOpponents: locked,
-    opponents,
+    ...deferFormations(opponents),
     partial,
     selectedFixtures: await fixturesFor(admin, row.id, clubs),
   };
@@ -644,10 +684,16 @@ async function squadsFor(
     .range(from, to));
   if (error) throw new Error(error.message);
 
+  const stintsByTeam = new Map<string, typeof data>();
+  for (const stint of data) {
+    const list = stintsByTeam.get(stint.fantasy_team_id as string);
+    if (list) list.push(stint);
+    else stintsByTeam.set(stint.fantasy_team_id as string, [stint]);
+  }
+
   return participants.map((participant) => {
-    const players = data
+    const players = (stintsByTeam.get(participant.fantasyTeamId) ?? [])
       .filter((stint) => {
-        if (stint.fantasy_team_id !== participant.fantasyTeamId) return false;
         const from = stint.active_from_gameweek as number;
         const until = stint.active_until_gameweek as number | null;
         return from <= gameweekNumber && (until === null || until >= gameweekNumber);
@@ -674,9 +720,9 @@ async function squadsFor(
   });
 }
 
-async function loadPreview(gameweekId: string, leagueId: string) {
+async function loadPreview(gameweekId: string, leagueId: string, teamIds: string[]) {
   try {
-    const preview = await previewProvisional(gameweekId);
+    const preview = await previewProvisional(gameweekId, new Date(), teamIds);
     const { definition, rules } = await definitionForLeague(createAdminSupabase(), leagueId, preview.definition, preview.gameweekNumber);
     const stats = preview.stats;
     return {

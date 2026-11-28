@@ -15,6 +15,7 @@ import { useTapGuard } from "@/components/useTapGuard";
 import { evaluateRoster } from "@/lib/constraints";
 import { DEFAULT_RULES, ROLE_LABEL, type CatalogPlayer, type CatalogResponse, type LeagueSquad, type PlayerRole, type RosterImportSource, type RosterMarket, type RosterState } from "@/lib/types";
 import { readableError } from "@/lib/feedback";
+import { useShown } from "@/components/ShowMore";
 
 const ROLE_LETTER: Record<PlayerRole, string> = { GK: "P", DEF: "D", MID: "C", FWD: "A" };
 
@@ -22,6 +23,38 @@ const ROLE_ORDER: Record<PlayerRole, number> = { GK: 0, DEF: 1, MID: 2, FWD: 3 }
 
 function roleMax(role: PlayerRole, rules: { gkMax: number; outfieldMax: number }) {
   return role === "GK" ? rules.gkMax : rules.outfieldMax;
+}
+
+/** Le rose degli altri, a pezzi: in una lega grande tutte insieme bloccherebbero il telefono. */
+function OtherSquads({ squads }: { squads: LeagueSquad[] }) {
+  const { shown, more } = useShown(squads, 20);
+  return (
+    <>
+      {shown.map((squad) => (
+        <article className="card" key={squad.fantasyTeamId}>
+          <h2>{squad.teamName}</h2>
+          <p className="small muted">{[squad.displayName, `${squad.players.length} calciatori`].filter(Boolean).join(" · ")}</p>
+          {squad.players.length === 0 ? <p className="small muted">Rosa non ancora salvata.</p> : (
+            <div>
+              {(["GK", "DEF", "MID", "FWD"] as PlayerRole[]).map((role) => {
+                const rows = squad.players.filter((player) => player.role === role);
+                if (rows.length === 0) return null;
+                return (
+                  <section className="rosa-role" key={role}>
+                    <h2><span className="role-chip" data-role={role} aria-hidden="true">{ROLE_LETTER[role]}</span>{ROLE_LABEL[role]}<small>{rows.length}</small></h2>
+                    {rows.map((player) => (
+                      <p className="rosa-line" key={player.id}><TeamBadge teamName={player.clubShort} /><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
+                    ))}
+                  </section>
+                );
+              })}
+            </div>
+          )}
+        </article>
+      ))}
+      {more}
+    </>
+  );
 }
 
 export function RosterBuilder({
@@ -321,28 +354,7 @@ export function RosterBuilder({
             Quando gli altri della lega salvano la rosa, la vedi da qui.
           </EmptyState>
         ) : null}
-        {!othersLoading && othersView ? othersView.squads.map((squad) => (
-          <article className="card" key={squad.fantasyTeamId}>
-            <h2>{squad.teamName}</h2>
-            <p className="small muted">{[squad.displayName, `${squad.players.length} calciatori`].filter(Boolean).join(" · ")}</p>
-            {squad.players.length === 0 ? <p className="small muted">Rosa non ancora salvata.</p> : (
-              <div>
-                {(["GK", "DEF", "MID", "FWD"] as PlayerRole[]).map((role) => {
-                  const rows = squad.players.filter((player) => player.role === role);
-                  if (rows.length === 0) return null;
-                  return (
-                    <section className="rosa-role" key={role}>
-                      <h2><span className="role-chip" data-role={role} aria-hidden="true">{ROLE_LETTER[role]}</span>{ROLE_LABEL[role]}<small>{rows.length}</small></h2>
-                      {rows.map((player) => (
-                        <p className="rosa-line" key={player.id}><TeamBadge teamName={player.clubShort} /><strong>{player.fullName}</strong><span>{player.clubShort}</span></p>
-                      ))}
-                    </section>
-                  );
-                })}
-              </div>
-            )}
-          </article>
-        )) : null}
+        {!othersLoading && othersView ? <OtherSquads squads={othersView.squads} /> : null}
       </div>
     );
   }

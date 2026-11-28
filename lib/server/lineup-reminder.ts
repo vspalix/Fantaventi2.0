@@ -1,6 +1,7 @@
 // Promemoria automatico delle formazioni: parte con la sveglia dei voti, una volta per squadra e giornata,
 // solo a chi non ha ancora consegnato. Il «quando» è in lineup-reminder-plan.ts.
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { inChunks, readAllChunks, readAllRows } from "@/lib/server/read-all";
 import { logSkippedJob, realNotificationsAllowed } from "@/lib/outbound";
 import { reportError } from "@/lib/server/error-report";
 import { loadSeasonWeeks } from "@/lib/server/gameweek-cycle";
@@ -34,6 +35,9 @@ export type ReminderSettings = {
 export type ReminderWeek = { id: string; number: number; seasonId: string; status: string; deadlineAt: number };
 export type PendingTeam = { teamId: string; userId: string };
 
+/** Quante squadre si avvisano insieme. */
+const REMINDER_BATCH = 500;
+
 export type ReminderDeps = {
   settings(): Promise<ReminderSettings>;
   maintenance(): Promise<boolean>;
@@ -42,8 +46,8 @@ export type ReminderDeps = {
   /** Motivo per cui adesso non si può schierare su questa giornata, oppure null. */
   blocked(week: ReminderWeek, now: number): Promise<string | null>;
   pendingTeams(week: ReminderWeek): Promise<PendingTeam[]>;
-  /** true solo la prima volta per quella chiave, anche con due chiamate insieme. */
-  claim(key: string): Promise<boolean>;
+  /** Le chiavi prese adesso: ognuna vale una volta sola, anche con due chiamate insieme. */
+  claim(keys: string[]): Promise<Set<string>>;
   /** expiresAt: dopo la chiusura la notifica non va più consegnata (telefono spento o offline). */
   send(userIds: string[], payload: PushPayload, expiresAt: number, now: number): Promise<{ sent: number; people: number }>;
   record(summary: SentSummary, now: number): Promise<void>;
@@ -151,18 +155,28 @@ export async function runLineupReminder(now = Date.now(), deps: ReminderDeps = l
       continue;
     }
     const pending = await deps.pendingTeams(week);
-    const claimed: PendingTeam[] = [];
-    for (const team of pending) {
-      if (await deps.claim(reminderKey(week.id, team.teamId))) claimed.push(team);
+    let claimed = 0;
+    const delivery = { sent: 0, people: 0 };
+    const written = new Set<string>();
+    // Si prende e si invia un blocco alla volta: se la sveglia si interrompe, la successiva
+    // trova ancora libere le squadre non avvisate.
+    for (const batch of inChunks(pending, REMINDER_BATCH)) {
+      const mine = await deps.claim(batch.map((team) => reminderKey(week.id, team.teamId)));
+      const taken = batch.filter((team) => mine.has(reminderKey(week.id, team.teamId)));
+      claimed += taken.length;
+      // Chi ha più squadre riceve una sola notifica.
+      const userIds = [...new Set(taken.map((team) => team.userId))].filter((userId) => !written.has(userId));
+      if (userIds.length === 0) continue;
+      for (const userId of userIds) written.add(userId);
+      const result = await deps.send(userIds, reminderText(week.number, week.deadlineAt, now), week.deadlineAt, now);
+      delivery.sent += result.sent;
+      delivery.people += result.people;
     }
-    let delivery = { sent: 0, people: 0 };
-    if (claimed.length > 0) {
-      const userIds = [...new Set(claimed.map((team) => team.userId))];
-      delivery = await deps.send(userIds, reminderText(week.number, week.deadlineAt, now), week.deadlineAt, now);
+    if (claimed > 0) {
       await deps.record({
         gameweek: week.number,
         closing: closingWords(week.deadlineAt, now),
-        teams: claimed.length,
+        teams: claimed,
         people: delivery.people,
         devices: delivery.sent,
         late: verdict.late,
@@ -172,7 +186,7 @@ export async function runLineupReminder(now = Date.now(), deps: ReminderDeps = l
       gameweek: week.number,
       state: "done",
       teams: pending.length,
-      claimed: claimed.length,
+      claimed,
       people: delivery.people,
       devices: delivery.sent,
       late: verdict.late,
@@ -203,7 +217,7 @@ export function liveDeps(admin: SupabaseClient = createAdminSupabase(), send = s
     upcomingWeeks: (now, until) => upcomingWeeks(admin, now, until),
     blocked: (week, now) => blockedReason(admin, week, now),
     pendingTeams: (week) => pendingTeams(admin, week),
-    claim: (key) => claimNotice(admin, key),
+    claim: (keys) => claimNotices(admin, keys),
     send: async (userIds, payload, expiresAt, now) => {
       const result = await send(userIds, payload, admin, { ttlSeconds: (expiresAt - now) / 1000, urgent: true });
       return { sent: result.sent, people: result.people };
@@ -270,36 +284,63 @@ async function blockedReason(admin: SupabaseClient, week: ReminderWeek, now: num
 }
 
 async function pendingTeams(admin: SupabaseClient, week: ReminderWeek): Promise<PendingTeam[]> {
-  const leagues = await admin
+  const leagues = await readAllRows((from, to) => admin
     .from("private_leagues")
     .select("id, start_matchday, end_matchday, is_sandbox")
-    .eq("season_id", week.seasonId);
+    .eq("season_id", week.seasonId)
+    .order("id")
+    .range(from, to));
   if (leagues.error) throw new Error(leagues.error.message);
   // Le leghe di prova restano fuori; contano solo quelle che giocano questa giornata.
-  const leagueIds = (leagues.data ?? [])
+  const leagueIds = leagues.data
     .filter((row) => row.is_sandbox !== true)
     .filter((row) => Number(row.start_matchday ?? 1) <= week.number && Number(row.end_matchday ?? 38) >= week.number)
     .map((row) => row.id as string);
   if (leagueIds.length === 0) return [];
-  const members = await admin.from("private_league_members").select("fantasy_team_id").in("private_league_id", leagueIds);
+  const members = await readAllChunks(leagueIds, (ids, from, to) => admin
+    .from("private_league_members")
+    .select("fantasy_team_id")
+    .in("private_league_id", ids)
+    .order("private_league_id")
+    .order("fantasy_team_id")
+    .range(from, to));
   if (members.error) throw new Error(members.error.message);
-  const teamIds = [...new Set((members.data ?? []).map((row) => row.fantasy_team_id as string))];
+  const teamIds = [...new Set(members.data.map((row) => row.fantasy_team_id as string))];
   if (teamIds.length === 0) return [];
-  const teams = await admin.from("fantasy_teams").select("id, user_id").in("id", teamIds);
-  if (teams.error) throw new Error(teams.error.message);
-  const filed = await admin.from("lineups").select("fantasy_team_id").eq("gameweek_id", week.id).in("fantasy_team_id", teamIds);
+  const filed = await readAllRows((from, to) => admin
+    .from("lineups")
+    .select("fantasy_team_id")
+    .eq("gameweek_id", week.id)
+    .order("id")
+    .range(from, to));
   if (filed.error) throw new Error(filed.error.message);
-  const ready = new Set((filed.data ?? []).map((row) => row.fantasy_team_id as string));
-  return (teams.data ?? [])
-    .filter((row) => row.user_id && !ready.has(row.id as string))
-    .map((row) => ({ teamId: row.id as string, userId: row.user_id as string }));
+  const ready = new Set(filed.data.map((row) => row.fantasy_team_id as string));
+  const teams = await readAllChunks(teamIds.filter((teamId) => !ready.has(teamId)), (ids, from, to) => admin
+    .from("fantasy_teams")
+    .select("id, user_id")
+    .in("id", ids)
+    .order("id")
+    .range(from, to));
+  if (teams.error) throw new Error(teams.error.message);
+  return teams.data
+    .filter((row) => row.user_id)
+    .map((row) => ({ teamId: row.id as string, userId: row.user_id as string }))
+    // Le squadre della stessa persona vicine: finiscono nello stesso blocco.
+    .sort((left, right) => left.userId.localeCompare(right.userId) || left.teamId.localeCompare(right.teamId));
 }
 
-async function claimNotice(admin: SupabaseClient, key: string) {
-  const inserted = await admin.from("engagement_notices").insert({ dedupe_key: key });
-  if (!inserted.error) return true;
-  if (inserted.error.code === "23505" || /duplicate/i.test(inserted.error.message)) return false;
-  throw new Error(inserted.error.message);
+/** Prende le chiavi libere: il database restituisce solo quelle inserite adesso. */
+export async function claimNotices(admin: SupabaseClient, keys: string[]) {
+  const claimed = new Set<string>();
+  for (const part of inChunks(keys, REMINDER_BATCH)) {
+    const inserted = await admin
+      .from("engagement_notices")
+      .upsert(part.map((key) => ({ dedupe_key: key })), { onConflict: "dedupe_key", ignoreDuplicates: true })
+      .select("dedupe_key");
+    if (inserted.error) throw new Error(inserted.error.message);
+    for (const row of inserted.data ?? []) claimed.add(row.dedupe_key as string);
+  }
+  return claimed;
 }
 
 export type ReminderPreview = {
@@ -328,7 +369,7 @@ export async function previewLineupReminder(now = Date.now(), admin: SupabaseCli
   const pending = blocked ? null : (await pendingTeams(admin, week)).length;
   const notices = await admin
     .from("engagement_notices")
-    .select("dedupe_key")
+    .select("dedupe_key", { count: "exact", head: true })
     .like("dedupe_key", `${reminderKey(week.id, "")}%`);
   if (notices.error) throw new Error(notices.error.message);
   return {
@@ -339,7 +380,7 @@ export async function previewLineupReminder(now = Date.now(), admin: SupabaseCli
       momentAt: new Date(verdict.moment).toISOString(),
       overdue: verdict.due,
       pending,
-      reminded: (notices.data ?? []).length,
+      reminded: notices.count ?? 0,
       blocked,
     },
   };

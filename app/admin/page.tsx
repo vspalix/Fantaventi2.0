@@ -14,12 +14,10 @@ export default async function AdminDashboardPage() {
   try {
     const data = await loadDashboard();
     return (
-      <section className="sa-page">
+      <section className="sa-page db-page">
         <header className="sa-page-head">
-          <div>
-            <h1 className="sa-title">Dashboard</h1>
-            <p className="sa-muted">Stagione {data.seasonCode}</p>
-          </div>
+          <h1 className="sa-title">Dashboard</h1>
+          <p className="sa-muted">Stagione {data.seasonCode}</p>
         </header>
         <DashboardView data={data} />
       </section>

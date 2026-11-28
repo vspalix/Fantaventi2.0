@@ -5,7 +5,7 @@ import { AppDrawer } from "@/components/AppDrawer";
 import { InboxBell } from "@/components/InboxBell";
 import { LeagueSwitcher, LIST_UP_TO } from "@/components/leagues/LeagueSwitcher";
 import { useHomeCache } from "@/components/home/HomeCache";
-import { ModeSwitch } from "@/components/ModeSwitch";
+import { ViewSwitch } from "@/components/ViewSwitch";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createBrowserSupabase, hasPublicSupabaseEnv } from "@/lib/supabase/browser";
@@ -22,8 +22,6 @@ export function SiteHeader({
   activeSeasonId,
   squads,
   activeLeagueId,
-  platformAdmin,
-  hostMode,
   canSwitch,
 }: {
   email: string | null;
@@ -32,8 +30,7 @@ export function SiteHeader({
   activeSeasonId: string | null;
   squads: HeaderSquad[];
   activeLeagueId: string | null;
-  platformAdmin: boolean;
-  hostMode: boolean;
+  /** Solo per i super admin: il passaggio all'area admin. */
   canSwitch: boolean;
 }) {
   const pathname = usePathname();
@@ -180,7 +177,6 @@ export function SiteHeader({
                 <Link href="/leghe" onClick={() => setOpen(null)}>Leghe</Link>
                 <Link href="/calendario" onClick={() => setOpen(null)}>Calendario Serie A</Link>
                 <Link href="/albo" onClick={() => setOpen(null)}>Albo d&apos;oro</Link>
-                {hostMode && platformAdmin ? <Link href="/admin" onClick={() => setOpen(null)}>Pannello admin</Link> : null}
                 {seasons.length > 1 ? (
                   <label>
                     Stagione
@@ -191,9 +187,9 @@ export function SiteHeader({
                 ) : null}
                 <p className="drawer-kicker">Profilo</p>
                 <p className="profile-name">{profileLabel}</p>
-                {canSwitch ? <div className="profile-mode"><ModeSwitch mode={hostMode ? "host" : "player"} /></div> : null}
                 <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
                 <button type="button" onClick={() => void signOut()}>Esci</button>
+                {canSwitch ? <ViewSwitch to="host" className="view-switch-wide" /> : null}
               </AppDrawer>
             ) : null}
           </div>
@@ -239,6 +235,7 @@ export function SiteHeader({
         <Link href="/calendario" onClick={() => setOpen(null)}>Calendario Serie A</Link>
         <Link href="/albo" onClick={() => setOpen(null)}>Albo d&apos;oro</Link>
         <Link href="/account" onClick={() => setOpen(null)}>Account</Link>
+        {canSwitch ? <ViewSwitch to="host" className="view-switch-wide" /> : null}
       </div>
     ) : null}
   </>

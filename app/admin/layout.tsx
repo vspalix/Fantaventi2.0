@@ -8,14 +8,9 @@ import { hasServiceSupabaseEnv } from "@/lib/supabase/admin";
 
 const jost = Jost({ subsets: ["latin"], weight: ["400", "500", "600"], display: "swap", variable: "--font-jost" });
 
-function initialsOf(email: string | undefined) {
-  const name = (email ?? "").split("@")[0].replace(/[^a-z]/gi, "");
-  return (name.slice(0, 2) || "SA").toUpperCase();
-}
-
 // Primo controllo all'apertura. Ogni pagina ripete il suo, perché nei
 // passaggi tra schermate questo layout non viene rieseguito.
-// Intestazione, menu e selettore della lega compaiono solo a chi ha superato il controllo.
+// Intestazione, barra in basso e selettore della lega compaiono solo a chi ha superato il controllo.
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const gate = await checkAdminPage();
   if (!gate.ok) return gate.screen;
@@ -35,7 +30,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
 
   return (
     <div className={jost.variable}>
-      <AdminShell leagues={leagues} selectedId={selectedId} initials={initialsOf(gate.user.email)}>
+      <AdminShell leagues={leagues} selectedId={selectedId}>
         {children}
       </AdminShell>
     </div>

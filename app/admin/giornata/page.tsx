@@ -17,7 +17,7 @@ export default async function AdminPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Giornata in corso</h1>
+          <h1 className="section-title">Giornata</h1>
           <p className="lede">
             Stagione {lab.seasonCode}. Stato del sync live, voti della giornata, ricalcolo della classifica, rinvii e formazioni consegnate.
           </p>
@@ -30,7 +30,7 @@ export default async function AdminPage() {
     return (
       <section className="stack">
         <header>
-          <h1 className="section-title">Giornata in corso</h1>
+          <h1 className="section-title">Giornata</h1>
         </header>
         <p className="banner">{publicError("Admin", error).message}</p>
       </section>
